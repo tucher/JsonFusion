@@ -1,4 +1,8 @@
 # Another JSON library
+
+
+!!! Major upgrade to V2 is in process
+
 ## Main feature
 High-performance mapping between native first-class C++ objects and JSON without macros and code generation.
 
