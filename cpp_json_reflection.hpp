@@ -14,7 +14,6 @@
 #include <simdjson/to_chars.hpp>
 #include "string_ops.hpp"
 
-
 namespace JSONReflection {
 
 namespace  d {
@@ -48,14 +47,17 @@ struct JSONValueKindEnumPlain {};
 struct JSONValueKindEnumObject {};
 struct JSONValueKindEnumArray {};
 struct JSONValueKindEnumMap {};
+struct JSONValueKindEnumRawJSON {};
 
 template<typename T>
 concept JSONWrappedValueCompatible = requires {
         typename T::JSONValueKind;
-        requires std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumPlain>
+        requires
+           std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumPlain>
         || std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumObject>
         || std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumArray>
-        || std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumMap>;
+        || std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumMap>
+        || std::is_same_v<typename T::JSONValueKind, JSONValueKindEnumRawJSON>;
         };
 
 template <typename T>
@@ -115,12 +117,44 @@ concept JSONWrapable = JSONBasicValue<T> || JSONArrayValue<T> || JSONObjectValue
 
 }
 
+template<class HolderT> requires std::ranges::range<HolderT>
+class RawJSON {
+
+};
 template <class Src, d::ConstString Str = "">
 class J {
     template <class... T>
     static constexpr bool always_false = false;
     static_assert(always_false<Src>, "JSONReflection: Cannot represent type in terms of JSON. See next compiler messages for details");
     static_assert (d::JSONWrapable<Src>);
+};
+
+template <class RawJSONHolder, d::ConstString Str>
+class J<RawJSON<RawJSONHolder>, Str> {
+    RawJSONHolder m_value;
+public:
+    using JSONValueKind = d::JSONValueKindEnumRawJSON;
+    static constexpr auto FieldName = Str;
+    template<class InpIter> requires InputIteratorConcept<InpIter>
+    bool DeserializeInternal(InpIter & begin, const InpIter & end, DeserializationContext & ctx) {
+        std::uint8_t level = d::SkippingMaxNestingLevel;
+        auto b = begin;
+        bool r =  d::skipJsonValue(level, begin, end, ctx);
+        if(r) {
+            m_value = RawJSONHolder(b, begin);
+        }
+        return r;
+    }
+    const  RawJSONHolder & value() const {return m_value;}
+    RawJSONHolder & value() {return m_value;}
+    constexpr operator RawJSONHolder&() {
+        return m_value;
+    }
+    constexpr operator const RawJSONHolder&() const {
+        return m_value;
+    }
+    constexpr auto begin() const noexcept { return m_value.begin(); }
+    constexpr auto end()   const noexcept { return m_value.end(); }
 };
 
 template <d::JSONBasicValue Src, d::ConstString Str>
@@ -163,10 +197,10 @@ public:
     static constexpr auto FieldName = Str;
     static_assert(FieldName.check() == true, "Please, use printable chars in values keys");
 
-    operator Src&() {
+    constexpr operator Src&() {
         return content;
     }
-    operator const Src&() const {
+    constexpr operator const Src&() const {
         return content;
     }
     constexpr J(): content(Src())  {}
@@ -185,6 +219,14 @@ public:
     }
     auto operator!=(const Src& rhs) const {
         return content != rhs;
+    }
+
+    Src & value() {
+        return content;
+    }
+
+    const Src & value() const {
+        return content;
     }
 
     bool SerializeInternal(SerializerOutputCallbackConcept auto && clb) const {
@@ -302,7 +344,7 @@ public:
             } else {
                 return true;
             }
-        } else if constexpr(std::same_as<double, Src> || std::same_as<std::int64_t, Src>) {
+        } else if constexpr(std::is_integral_v<Src> || std::is_floating_point_v<Src>) {
              char buf[40];
              std::size_t index = 0;
              while(!d::isPlainEnd(*begin)) {
@@ -321,6 +363,10 @@ public:
              buf[index] = 0;
              double x;
              if(fast_double_parser::parse_number(buf, &x) != nullptr) {
+                 if(std::numeric_limits<Src>::max() < x || std::numeric_limits<Src>::min() > x) {
+                     ctx.setError(DeserializationContext::INTERNAL_ERROR, end - begin);
+                     return false;
+                 }
                  content = x;
                  return true;
              }
@@ -331,6 +377,7 @@ public:
         return false;
     }
 };
+
 
 template <d::JSONArrayValue Src, d::ConstString Str>
 class J<Src, Str> : public Src{
@@ -752,15 +799,23 @@ public:
     template<class InpIter> requires InputIteratorConcept<InpIter>
     DeserializationContext Deserialize(InpIter begin, const InpIter & end, ParseFlags flags = ParseFlags::DEFAULT) {
         DeserializationContext ctx(end-begin, flags);
+        auto copy = *this;
         bool ret = DeserializeInternal(begin, end, ctx);
+        if(!ret) {
+            *this = copy;
+        }
         return ctx;
     }
 
-    template<class ContainterT> requires std::ranges::range<ContainterT>
+    template<class ContainterT> requires std::ranges::sized_range<ContainterT>
     DeserializationContext Deserialize(const ContainterT & c, ParseFlags flags = ParseFlags::DEFAULT) {
-        DeserializationContext ctx(c.size(), flags);
+        auto copy = *this;
+        DeserializationContext ctx(c.end()-c.begin(), flags);
         auto b = c.begin();
         bool ret =  DeserializeInternal(b, c.end(), ctx);
+        if(!ret) {
+            *this = copy;
+        }
         return ctx;
     }
 
@@ -789,7 +844,7 @@ public:
                                    if constexpr(KeyIndexType::skip == false) {
                                        using FieldType = pfr::tuple_element_t<KeyIndexType::OriginalIndex, Src>;
                                        FieldType & f = pfr::get<KeyIndexType::OriginalIndex>(static_cast<Src &>(*this));
-                                       f = FieldType{};
+                                       // f = FieldType{};
 
                                    }
                                }
@@ -844,4 +899,15 @@ public:
 
 
 }
+
+
+template <JSONReflection::d::JSONBasicValue Src, JSONReflection::d::ConstString Str, typename Char>
+struct std::formatter<JSONReflection::J<Src, Str>, Char> : std::formatter<Src, Char> {
+    template <typename FormatContext>
+    auto format(const JSONReflection::J<Src, Str>& x, FormatContext& ctx) const {
+        // Delegate to the formatter for the underlying integer type
+        return std::formatter<Src, Char>::format(static_cast<Src>(x), ctx);
+    }
+};
+
 #endif // CPP_JSON_REFLECTION_HPP

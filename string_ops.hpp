@@ -1,5 +1,7 @@
 #include <iterator>
 #include <ranges>
+#undef NO_ERROR
+
 namespace JSONReflection {
 
 template<typename InpIter>
@@ -41,7 +43,8 @@ public:
         SKIPPING_ERROR,
         FIXED_SIZE_CONTAINER_UNDERFLOW,
         EXCESS_FIELD,
-        MISSING_FIELD
+        MISSING_FIELD,
+        NUMBER_DOES_NOT_FIT
     };
 
 private:
@@ -106,7 +109,7 @@ bool outputEscapedString(const char *data, std::size_t size, ClbT && clb) {
             case '\n': toOutEscaped[1] = 'n';  break;
             case '\t': toOutEscaped[1] = 't';  break;
             default:
-                toOutEscaped[1] == 0;
+                toOutEscaped[1] = 0;
             }
 
             if(segSize > 0) {
