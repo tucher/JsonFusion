@@ -74,20 +74,6 @@ public:
     }
 };
 
-enum class ParseFlags: std::uint32_t {
-    DEFAULT = 0,
-    FORBID_EXCESS_FIELDS = std::underlying_type_t<ParseFlags>(1) << 1,
-};
-
-inline constexpr ParseFlags operator| (const ParseFlags &l, const ParseFlags &r) {
-    using U = std::underlying_type_t<ParseFlags>;
-    return static_cast<ParseFlags>(static_cast<U>(l) | static_cast<U>(r));
-}
-
-template<ParseFlags F, ParseFlags Bit>
-inline constexpr bool has_flag_v =
-    (static_cast<std::underlying_type_t<ParseFlags>>(F) &
-     static_cast<std::underlying_type_t<ParseFlags>>(Bit)) != 0;
 
 namespace  parser_details {
 
@@ -196,7 +182,7 @@ bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
     return true;
 }
 
-template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonBool<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     auto& storage = get_storage(obj);
@@ -218,7 +204,7 @@ bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, Deserializa
 
 
 
-template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonNumber<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     auto& storage = get_storage(obj);
@@ -306,6 +292,32 @@ concept DynamicContainerTypeConcept = requires (T  v) {
     v.clear();
 };
 
+template <CharInputIterator It, CharSentinelFor<It> Sent>
+bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, std::uint16_t &out) {
+    out = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (currentPos == end) [[unlikely]] {
+            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            return false;
+        }
+        char currChar = *currentPos;
+        std::uint8_t v;
+        if (currChar >= '0' && currChar <= '9') {
+            v = static_cast<std::uint8_t>(currChar - '0');
+        } else if (currChar >= 'A' && currChar <= 'F') {
+            v = static_cast<std::uint8_t>(currChar - 'A' + 10);
+        } else if (currChar >= 'a' && currChar <= 'f') {
+            v = static_cast<std::uint8_t>(currChar - 'a' + 10);
+        } else {
+            ctx.setError(ErrorT::UNEXPECTED_SYMBOL, currentPos);
+            return false;
+        }
+        out = static_cast<std::uint16_t>((out << 4) | v);
+        ++currentPos;
+    }
+    return true;
+}
+
 template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent>
 bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if(*currentPos != '"'){
@@ -333,91 +345,115 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
                 return false;
             }
 
-
+            char out{};
             switch (*currentPos) {
             /* Allowed escaped symbols */
-            case '\"':
-            case '/':
-            case '\\':
-            case 'b':
-            case 'f':
-            case 'r':
-            case 'n':
-            case 't':
-            {
-                char unescaped[2] = {0, 0};
-                switch (*currentPos) {
-                case '"':  unescaped[0] = '"'; break;
-                case '/':  unescaped[0] = '/'; break;
-                case '\\': unescaped[0] = '\\'; break;
-                case 'b':  unescaped[0] = '\b'; break;
-                case 'f':  unescaped[0] = '\f'; break;
-                case 'r':  unescaped[0] = '\r'; break;
-                case 'n':  unescaped[0] = '\n'; break;
-                case 't':  unescaped[0] = '\t'; break;
-                }
-
-                if(!inserter(unescaped[0])) {
-                    ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
-                }
-                currentPos++;
-            }
-            break;
-                /* Allows escaped symbol \uXXXX */
+            case '"':  out = '"';  break;
+            case '/':  out = '/';  break;
+            case '\\': out = '\\'; break;
+            case 'b':  out = '\b'; break;
+            case 'f':  out = '\f'; break;
+            case 'r':  out = '\r'; break;
+            case 'n':  out = '\n'; break;
+            case 't':  out = '\t'; break;
             case 'u': {
+                ++currentPos; // move past 'u'
 
-                currentPos++;
-                std::array<char, 4> utf8bytes;
-                auto utfI = utf8bytes.begin();
-                while(true) {
-                    if(currentPos == end) [[unlikely]] {
+                std::uint16_t u1 = 0;
+                if (!readHex4(currentPos, end, ctx, u1)) {
+                    return false; // ctx already set
+                }
+
+                std::uint32_t codepoint = 0;
+
+                // Handle surrogate pairs per JSON/UTF-16 rules
+                if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
+                    // High surrogate -> must be followed by \uDC00..DFFF
+                    if (currentPos == end) [[unlikely]] {
                         ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
                         return false;
                     }
-                    if(utfI ==  utf8bytes.end())[[unlikely]] {
-                        break;
+                    if (*currentPos != '\\') {
+                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                        return false;
                     }
-                    char currChar = *currentPos;
-                    if (currChar >= 48 && currChar <= 57) {     /* 0-9 */
-                        *utfI = currChar-'0';
-                    } else if(currChar >= 65 && currChar <= 70){     /* A-F */
-                        *utfI = currChar-'A' + 10;
-                    } else if(currChar >= 97 && currChar <= 102) { /* a-f */
-                        *utfI = currChar-'a' + 10;
+                    ++currentPos;
+                    if (currentPos == end) [[unlikely]] {
+                        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+                        return false;
                     }
-                    else {
-                        ctx.setError(ErrorT::UNEXPECTED_SYMBOL, currentPos);
+                    if (*currentPos != 'u') {
+                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                        return false;
+                    }
+                    ++currentPos;
+
+                    std::uint16_t u2 = 0;
+                    if (!readHex4(currentPos, end, ctx, u2)) {
+                        return false;
+                    }
+                    if (u2 < 0xDC00u || u2 > 0xDFFFu) {
+                        // Low surrogate not in valid range
+                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
                         return false;
                     }
 
-                    currentPos++;
-                    utfI ++;
-                }
-                if(currentPos == end) [[unlikely]] {
-                    ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+                    codepoint = 0x10000u
+                                + ((static_cast<std::uint32_t>(u1) - 0xD800u) << 10)
+                                + (static_cast<std::uint32_t>(u2) - 0xDC00u);
+                } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
+                    // Lone low surrogate → invalid
+                    ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
                     return false;
-                }
-                char unescaped[3] = {0, 0, 0};
-                unescaped[0] |= (utf8bytes[0] << 4);
-                unescaped[0] |= utf8bytes[1];
-                unescaped[1] |= (utf8bytes[2] << 4);
-                unescaped[1] |= utf8bytes[3];
-                if(!inserter(unescaped[0]) || !inserter(unescaped[1])) {
-                    ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
+                } else {
+                    // Basic Multilingual Plane code point
+                    codepoint = u1;
                 }
 
+                // Encode codepoint as UTF-8
+                char utf8[4];
+                int len = 0;
+
+                if (codepoint <= 0x7Fu) {
+                    utf8[len++] = static_cast<char>(codepoint);
+                } else if (codepoint <= 0x7FFu) {
+                    utf8[len++] = static_cast<char>(0xC0 | (codepoint >> 6));
+                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                } else if (codepoint <= 0xFFFFu) {
+                    utf8[len++] = static_cast<char>(0xE0 | (codepoint >> 12));
+                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                } else { // up to 0x10FFFF
+                    utf8[len++] = static_cast<char>(0xF0 | (codepoint >> 18));
+                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                }
+
+                for (int i = 0; i < len; ++i) {
+                    if (!inserter(utf8[i])) {
+                        ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                        return false;
+                    }
+                }
             }
             break;
-                /* Unexpected symbol */
+
             default:
+                /* Unexpected symbol */
                 ctx.setError(ErrorT::UNEXPECTED_SYMBOL, currentPos);
                 return false;
             }
+            if (out) { // only emit if we actually set a simple escape
+                if (!inserter(out)) {
+                    ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    return false;
+                }
+                currentPos++;
+            }
 
-            break;
         }
+        break;
 
         default:
             if(!inserter(*currentPos)) {
@@ -430,7 +466,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 }
 
 
-template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonString<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
@@ -484,7 +520,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     }
 }
 
-template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonArray<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
@@ -528,12 +564,12 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
         if constexpr (DynamicContainerTypeConcept<T>) {
             auto & newItem = storage.emplace_back();
-            if(!ParseValue<flags>(newItem, currentPos, end, ctx)) {
+            if(!ParseValue(newItem, currentPos, end, ctx)) {
                 return false;
             }
         } else {
             if(parsed_items_count < storage.size()) {
-                if(!ParseValue<flags>(storage[parsed_items_count], currentPos, end, ctx)) {
+                if(!ParseValue(storage[parsed_items_count], currentPos, end, ctx)) {
                     return false;
                 }
 
@@ -856,7 +892,7 @@ struct FieldsHelper {
 };
 
 
-template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonObject<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
@@ -929,7 +965,9 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
 
         if(res == FH::fieldIndexesSortedByFieldName.end()) {
-            if constexpr (!has_flag_v<flags, ParseFlags::FORBID_EXCESS_FIELDS>) {
+            using Opts    = options::detail::field_meta_decayed<ObjT>::options;
+
+            if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
                 if(!SkipValue(currentPos, end, ctx)) {
                     return false;
                 }
@@ -940,7 +978,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         } else {
             bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage, &parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
                 return (
-                    (I==res->originalIndex && ParseValue<flags>(pfr::get<I>(storage), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
+                    (I==res->originalIndex && ParseValue(pfr::get<I>(storage), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
 
             }(std::make_index_sequence<FH::fieldsCount>{});
             if(!field_parse_result) {
@@ -963,7 +1001,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
 
 
-template <ParseFlags flags, CharInputIterator It, CharSentinelFor<It> Sent>
+template <CharInputIterator It, CharSentinelFor<It> Sent>
 bool ParseValue(static_schema::JsonValue auto & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
@@ -990,18 +1028,18 @@ bool ParseValue(static_schema::JsonValue auto & obj, It &currentPos, const Sent 
             return false;
         }
     }
-    return ParseNonNullValue<flags>(obj, currentPos, end, ctx);
+    return ParseNonNullValue(obj, currentPos, end, ctx);
 }
 
 } // namespace parser_details
 
-template <ParseFlags flags=ParseFlags::DEFAULT, static_schema::JsonValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <static_schema::JsonValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
 ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
     InputObjectT copy = obj;
     parser_details::DeserializationContext<decltype(begin)> ctx(begin);
 
 
-    parser_details::ParseValue<flags>(obj, begin, end, ctx);
+    parser_details::ParseValue(obj, begin, end, ctx);
 
     auto res = ctx.result();
     if(!res) {
@@ -1016,14 +1054,14 @@ ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
     return res;
 }
 
-template<ParseFlags flags=ParseFlags::DEFAULT, class InputObjectT, class ContainterT>
+template<class InputObjectT, class ContainterT>
 auto Parse(InputObjectT & obj, const ContainterT & c) {
-    return Parse<flags>(obj, c.begin(), c.end());
+    return Parse(obj, c.begin(), c.end());
 }
 
 
 // Pointer + length front-end
-template<ParseFlags flags = ParseFlags::DEFAULT, static_schema::JsonValue InputObjectT>
+template<static_schema::JsonValue InputObjectT>
 ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t size) {
     const char* begin = data;
     const char* end   = data + size;
@@ -1032,7 +1070,7 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
     parser_details::DeserializationContext<const char*> ctx(begin);
 
     const char* cur = begin;
-    parser_details::ParseValue<flags>(obj, cur, end, ctx);
+    parser_details::ParseValue(obj, cur, end, ctx);
 
     auto res = ctx.result();
     if(!res) {
@@ -1048,9 +1086,9 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
 }
 
 // string_view front-end
-template<ParseFlags flags = ParseFlags::DEFAULT, static_schema::JsonValue InputObjectT>
+template<static_schema::JsonValue InputObjectT>
 ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
-    return Parse<flags>(obj, sv.data(), sv.size());
+    return Parse(obj, sv.data(), sv.size());
 }
 
 } // namespace JSONReflection2

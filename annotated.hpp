@@ -2,6 +2,8 @@
 
 #include <iterator>
 #include <ranges>
+#include <utility>
+#include <cstddef>
 
 namespace JSONReflection2 {
 

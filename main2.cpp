@@ -7,9 +7,9 @@
 void schema_tests() {
     using std::string, std::list, std::vector, std::array, std::optional;
     using namespace JSONReflection2;
-    using namespace JSONReflection2::options;
+    using namespace options;
     struct Module2 {
-        // JSONReflection2::Annotated<string, "path"> path;
+        // Annotated<string, "path"> path;
         Annotated<int, key<"name">,
                   not_required,
                   range<0, 100>,
@@ -24,7 +24,7 @@ void schema_tests() {
     Root2 test;
 
 
-    static_assert(JSONReflection2::static_schema::JsonValue<Root2>);
+    static_assert(static_schema::JsonValue<Root2>);
     {
         using namespace JSONReflection2::static_schema;
         static_assert(JsonValue<bool>);
@@ -172,71 +172,87 @@ void test() {
     Root2 test;
     {
         bool bool_v;
-        assert(JSONReflection2::Parse(bool_v, std::string_view("true")) && bool_v);
-        assert(JSONReflection2::Parse(bool_v, std::string_view("false")) && !bool_v);
+        assert(Parse(bool_v, std::string_view("true")) && bool_v);
+        assert(Parse(bool_v, std::string_view("false")) && !bool_v);
     }
     {
         std::optional<bool> bool_opt_v;
-        assert(JSONReflection2::Parse(bool_opt_v, std::string_view("true")) && bool_opt_v && *bool_opt_v);
-        assert(JSONReflection2::Parse(bool_opt_v, std::string_view("false")) && bool_opt_v && !*bool_opt_v);
-        assert(JSONReflection2::Parse(bool_opt_v, std::string_view("null")) && !bool_opt_v);
+        assert(Parse(bool_opt_v, std::string_view("true")) && bool_opt_v && *bool_opt_v);
+        assert(Parse(bool_opt_v, std::string_view("false")) && bool_opt_v && !*bool_opt_v);
+        assert(Parse(bool_opt_v, std::string_view("null")) && !bool_opt_v);
     }
     {
         int iv;
         std::optional<int> opt_iv;
 
-        assert(JSONReflection2::Parse(iv, std::string_view("100")) && iv == 100);
-        assert(JSONReflection2::Parse(opt_iv, std::string_view("100")) && opt_iv && *opt_iv == 100);
-        assert(JSONReflection2::Parse(opt_iv, std::string_view("null")) && !opt_iv);
+        assert(Parse(iv, std::string_view("100")) && iv == 100);
+        assert(Parse(opt_iv, std::string_view("100")) && opt_iv && *opt_iv == 100);
+        assert(Parse(opt_iv, std::string_view("null")) && !opt_iv);
 
         float fv;
         std::optional<float> opt_fv;
         auto almost_equal = [] (float a, float b, float epsilon = 0.0001f) {
             return std::fabs(a - b) < epsilon;
         };
-        assert(JSONReflection2::Parse(fv, std::string_view("100.1")) && almost_equal(fv, 100.1));
-        assert(JSONReflection2::Parse(opt_fv, std::string_view("100.1")) && opt_fv && almost_equal(*opt_fv, 100.1));
-        assert(JSONReflection2::Parse(opt_fv, std::string_view("null")) && !opt_fv);
+        assert(Parse(fv, std::string_view("100.1")) && almost_equal(fv, 100.1));
+        assert(Parse(opt_fv, std::string_view("100.1")) && opt_fv && almost_equal(*opt_fv, 100.1));
+        assert(Parse(opt_fv, std::string_view("null")) && !opt_fv);
     }
     {
         std::string ds;
-        assert(JSONReflection2::Parse(ds, std::string_view("\"100\"")) && ds == "100");
+        assert(Parse(ds, std::string_view("\"100\"")) && ds == "100");
         std::array<char, 20> fs;
-        assert(JSONReflection2::Parse(fs, std::string_view("\"100\"")) && std::string(fs.data()) == "100");
+        assert(Parse(fs, std::string_view("\"100\"")) && std::string(fs.data()) == "100");
 
         Annotated<string, min_length<5>, max_length<10>> as;
-        assert(!JSONReflection2::Parse(as, std::string_view("\"100\"")));
-        assert(!JSONReflection2::Parse(as, std::string_view("\"123456789012345\"")));
-        assert(JSONReflection2::Parse(as, std::string_view("\"hellowrld\"")));
-    }
+        assert(!Parse(as, std::string_view("\"100\"")));
+        assert(!Parse(as, std::string_view("\"123456789012345\"")));
+        assert(Parse(as, std::string_view("\"hellowrld\"")));
 
+
+    }
     {
-        using JSONReflection2::options::range, JSONReflection2::Annotated;
+        std::string unicode;
+        assert(Parse(unicode, std::string_view(R"( "simple\ntext\twith\\escape\"" )")));
+        assert(unicode == "simple\ntext\twith\\escape\"");
+
+        assert(Parse(unicode, std::string_view(R"( "Caf\u00E9" )")));
+        assert(unicode == "Café");
+
+        assert(Parse(unicode, std::string_view(R"( "\u041F\u0440\u0438\u0432\u0435\u0442" )")));
+        assert(unicode == "Привет");
+
+        assert(Parse(unicode, std::string_view(R"( "\uD83D\uDE00" )")));
+        assert(unicode == "😀");
+    }
+    {
         Annotated<std::optional<int8_t>,  range<0, 100>> minValue;
 
-        assert(JSONReflection2::Parse(minValue, std::string_view("99")));
-        assert(!JSONReflection2::Parse(minValue, std::string_view("128")));
-        assert(!JSONReflection2::Parse(minValue, std::string_view("-1")));
+        assert(Parse(minValue, std::string_view("99")));
+        assert(!Parse(minValue, std::string_view("128")));
+        assert(!Parse(minValue, std::string_view("-1")));
     }
     {
         std::vector<int> ds;
         std::vector<int> expected = {1, 2, 3};
-        assert(JSONReflection2::Parse(ds, std::string_view("[1, 2, 3]")) && ds == expected);
+        assert(Parse(ds, std::string_view("[1, 2, 3]")) && ds == expected);
 
         std::array<int, 3> fs;
         std::array<int, 3> expectedfs = {1, 2, 3};
-        assert(JSONReflection2::Parse(fs, std::string_view("[1, 2, 3]")) && fs == expectedfs);
+        assert(Parse(fs, std::string_view("[1, 2, 3]")) && fs == expectedfs);
 
         std::array<int, 5> fs2{};
         std::array<int, 5> expectedfs2 = {1, 2, 3};
-        assert(JSONReflection2::Parse(fs2, std::string_view("[1, 2, 3]")) && fs2 == expectedfs2);
+        assert(Parse(fs2, std::string_view("[1, 2, 3]")) && fs2 == expectedfs2);
 
         Annotated<list<int>, min_items<3>, max_items<6>> arr_with_limits;
-        assert(!JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2]")));
-        assert(!JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2, 3, 4, 5, 6, 7]")));
-        assert(JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2, 3, 4]")));
+        assert(!Parse(arr_with_limits, std::string_view("[1, 2]")));
+        assert(!Parse(arr_with_limits, std::string_view("[1, 2, 3, 4, 5, 6, 7]")));
+        assert(Parse(arr_with_limits, std::string_view("[1, 2, 3, 4]")));
 
     }
+
+
     {
         struct A {
             Annotated<int, options::key<"f">> field;
@@ -245,7 +261,7 @@ void test() {
             Annotated<bool, not_required> may_be_missing;
         };
         A a;
-        assert(JSONReflection2::Parse(a, std::string_view(R"(
+        assert(Parse(a, std::string_view(R"(
             {
                 "opt": "213",
                 "f": 123,
@@ -334,7 +350,7 @@ void test() {
                 vector<optional<Node>>  nodeHistory;  // array of optional objects
             };
             ComplexConfig test;
-            assert(JSONReflection2::Parse(test, std::string_view(R"(
+            assert(Parse(test, std::string_view(R"(
 {
   "enabled": true,
   "mode": 1,

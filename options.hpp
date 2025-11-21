@@ -1,4 +1,9 @@
 #pragma once
+#include <cstdint>
+#include <algorithm>
+#include <string_view>
+#include <type_traits>
+#include <optional>
 
 #include "annotated.hpp"
 
@@ -32,6 +37,7 @@ namespace options {
 namespace detail {
 struct key_tag{};
 struct not_required_tag{};
+struct allow_excess_fields_tag{};
 struct range_tag{};
 struct description_tag{};
 struct min_length_tag {};
@@ -42,12 +48,17 @@ struct max_items_tag {};
 
 template<ConstString Desc>
 struct key {
+    static_assert(Desc.check(), "key contains control characters");
     using tag = detail::key_tag;
     static constexpr auto desc = Desc;
 };
 
 struct not_required {
     using tag = detail::not_required_tag;
+};
+
+struct allow_excess_fields {
+    using tag = detail::allow_excess_fields_tag;
 };
 
 template<auto Min, auto Max>
@@ -59,6 +70,7 @@ struct range {
 
 template<ConstString Desc>
 struct description {
+    static_assert(Desc.check(), "key contains control characters");
     using tag = detail::description_tag;
     static constexpr auto desc = Desc;
 };

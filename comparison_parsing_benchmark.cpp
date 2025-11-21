@@ -8,12 +8,11 @@
 #include <string_view>
 #include <vector>
 
-// Your library
 #include "parser.hpp"
 
-// RapidJSON
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
+#include <nlohmann/json.hpp>
 
 using std::array;
 using std::int64_t;
@@ -24,6 +23,7 @@ using std::string_view;
 using std::vector;
 
 namespace rj = rapidjson;
+namespace nl = nlohmann;
 
 // ----------------------
 // Test structures
@@ -391,6 +391,187 @@ static bool FillComplexConfig(const rj::Document& doc, ComplexConfig& out) {
     return true;
 }
 
+
+// ----------------------
+// nlohmann::json -> struct mapping
+// ----------------------
+
+static bool FillLimits(const nl::json& j, Limits& out) {
+    if (!j.is_object()) return false;
+    out.minValue = j.at("minValue").get<int>();
+    out.maxValue = j.at("maxValue").get<int>();
+    return true;
+}
+
+static bool FillNode(const nl::json& j, Node& out);
+
+static bool FillNodeArray(const nl::json& arr, vector<Node>& out) {
+    if (!arr.is_array()) return false;
+    out.clear();
+    out.resize(arr.size());
+    for (std::size_t i = 0; i < arr.size(); ++i) {
+        if (!FillNode(arr[i], out[i])) return false;
+    }
+    return true;
+}
+
+static bool FillNode(const nl::json& j, Node& out) {
+    if (!j.is_object()) return false;
+
+    out.name   = j.at("name").get<string>();
+    out.active = j.at("active").get<bool>();
+
+    const auto& w = j.at("weights");
+    if (!w.is_array()) return false;
+    out.weights.clear();
+    for (const auto& x : w) {
+        out.weights.push_back(x.get<int>());
+    }
+
+    const auto& bias = j.at("bias");
+    if (bias.is_null()) {
+        out.bias.reset();
+    } else {
+        out.bias = bias.get<double>();
+    }
+
+    const auto& flags = j.at("flags");
+    if (!flags.is_array()) return false;
+    out.flags.clear();
+    for (const auto& fv : flags) {
+        if (fv.is_null()) {
+            out.flags.emplace_back(std::nullopt);
+        } else {
+            out.flags.emplace_back(fv.get<bool>());
+        }
+    }
+
+    const auto& children = j.at("children");
+    return FillNodeArray(children, out.children);
+}
+
+static bool FillComplexConfig(const nl::json& j, ComplexConfig& out) {
+    if (!j.is_object()) return false;
+
+    // Scalars
+    out.enabled        = j.at("enabled").get<bool>();
+    out.mode           = static_cast<char>(j.at("mode").get<int>());
+    out.retryCount     = j.at("retryCount").get<int>();
+    out.timeoutSeconds = j.at("timeoutSeconds").get<double>();
+
+    // Strings
+    out.title          = j.at("title").get<string>();
+
+    const auto& fs = j.at("fixedStrings");
+    {
+        const char* code  = fs.at("code").get_ref<const std::string&>().c_str();
+        const char* label = fs.at("label").get_ref<const std::string&>().c_str();
+        std::snprintf(out.fixedStrings.code.data(),
+                      out.fixedStrings.code.size(), "%s", code);
+        std::snprintf(out.fixedStrings.label.data(),
+                      out.fixedStrings.label.size(), "%s", label);
+    }
+
+    // Arrays
+    const auto& rgb = j.at("rgb");
+    for (int i = 0; i < 3; ++i) {
+        out.rgb[i] = rgb.at(i).get<int>();
+    }
+
+    const auto& tags = j.at("tags");
+    out.tags.clear();
+    for (const auto& tv : tags) {
+        out.tags.emplace_back(tv.get<string>());
+    }
+
+    const auto& counters = j.at("counters");
+    out.counters.clear();
+    for (const auto& cv : counters) {
+        out.counters.push_back(cv.get<int64_t>());
+    }
+
+    const auto& matrix = j.at("matrix");
+    out.matrix.clear();
+    for (const auto& rowVal : matrix) {
+        vector<int> row;
+        for (const auto& cell : rowVal) {
+            row.push_back(cell.get<int>());
+        }
+        out.matrix.emplace_back(std::move(row));
+    }
+
+    // Optionals
+    if (j.contains("debugLevel") && !j.at("debugLevel").is_null())
+        out.debugLevel = j.at("debugLevel").get<int>();
+    else
+        out.debugLevel.reset();
+
+    if (j.contains("optionalNote") && !j.at("optionalNote").is_null())
+        out.optionalNote = j.at("optionalNote").get<string>();
+    else
+        out.optionalNote.reset();
+
+    if (j.contains("optionalArray") && !j.at("optionalArray").is_null()) {
+        const auto& arr = j.at("optionalArray");
+        vector<int> tmp;
+        for (const auto& iv : arr) tmp.push_back(iv.get<int>());
+        out.optionalArray = std::move(tmp);
+    } else {
+        out.optionalArray.reset();
+    }
+
+    if (j.contains("optionalLimits") && !j.at("optionalLimits").is_null()) {
+        Limits lim;
+        if (!FillLimits(j.at("optionalLimits"), lim)) return false;
+        out.optionalLimits = lim;
+    } else {
+        out.optionalLimits.reset();
+    }
+
+    // Nested objects
+    if (!FillLimits(j.at("hardLimits"), out.hardLimits)) return false;
+
+    const auto& creds = j.at("creds");
+    out.creds.user = creds.at("user").get<string>();
+    if (creds.contains("password") && !creds.at("password").is_null())
+        out.creds.password = creds.at("password").get<string>();
+    else
+        out.creds.password.reset();
+
+    // Recursive
+    if (!FillNode(j.at("rootNode"), out.rootNode)) return false;
+
+    const auto& extraNodes = j.at("extraNodes");
+    out.extraNodes.clear();
+    out.extraNodes.resize(extraNodes.size());
+    for (std::size_t i = 0; i < extraNodes.size(); ++i) {
+        if (!FillNode(extraNodes[i], out.extraNodes[i])) return false;
+    }
+
+    const auto& optionalNode = j.at("optionalNode");
+    if (optionalNode.is_null()) {
+        out.optionalNode.reset();
+    } else {
+        Node n;
+        if (!FillNode(optionalNode, n)) return false;
+        out.optionalNode = std::move(n);
+    }
+
+    const auto& history = j.at("nodeHistory");
+    out.nodeHistory.clear();
+    for (const auto& item : history) {
+        if (item.is_null()) {
+            out.nodeHistory.emplace_back(std::nullopt);
+        } else {
+            Node n;
+            if (!FillNode(item, n)) return false;
+            out.nodeHistory.emplace_back(std::move(n));
+        }
+    }
+
+    return true;
+}
+
 // ----------------------
 // Bench functions
 // ----------------------
@@ -413,8 +594,23 @@ bool ParseWithRapidJSON(ComplexConfig& cfg) {
                   << " at offset " << doc.GetErrorOffset() << "\n";
         return false;
     }
-    return FillComplexConfig(doc, cfg);
+    // return FillComplexConfig(doc, cfg);
+    return true;
 }
+
+
+// 2) nlohmann::json: parse + map to struct
+bool ParseWithNlohmann(ComplexConfig& cfg) {
+    nl::json j;
+    try {
+        j = nl::json::parse(kJson, kJson + sizeof(kJson) - 1);
+    } catch (const nl::json::parse_error& e) {
+        std::cerr << "nlohmann::json parse error: " << e.what() << "\n";
+        return false;
+    }
+    return FillComplexConfig(j, cfg);
+}
+
 
 // ----------------------
 // Main benchmark
@@ -434,6 +630,10 @@ int main() {
     }
     if (!ParseWithRapidJSON(cfg)) {
         std::cerr << "RapidJSON parser failed on warmup\n";
+        return 1;
+    }
+    if (!ParseWithNlohmann(cfg)) {
+        std::cerr << "nlohmann::json parser failed on warmup\n";
         return 1;
     }
 
@@ -464,6 +664,18 @@ int main() {
         auto total_us =
             std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
         std::cout << "RapidJSON+mapping: total " << total_us
+                  << " us, avg " << (double)total_us / iterations << " us/parse\n";
+    }
+    {
+        auto start = clock::now();
+        for (int i = 0; i < iterations; ++i) {
+            ComplexConfig c;
+            ParseWithNlohmann(c);
+        }
+        auto end = clock::now();
+        auto total_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        std::cout << "nlohmann::json+mapping: total " << total_us
                   << " us, avg " << (double)total_us / iterations << " us/parse\n";
     }
 
