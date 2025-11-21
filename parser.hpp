@@ -14,151 +14,8 @@
 #include <charconv>  // std::from_chars
 #include <algorithm>
 
+#include "options.hpp"
 namespace JSONReflection2 {
-
-template <typename CharT, std::size_t N> struct ConstString
-{
-    constexpr bool check()  const {
-        for(int i = 0; i < N; i ++) {
-            if(std::uint8_t(m_data[i]) < 32) return false;
-        }
-        return true;
-    }
-    constexpr ConstString(const CharT (&foo)[N+1]) {
-        std::copy_n(foo, N+1, m_data);
-    }
-    CharT m_data[N+1];
-    static constexpr std::size_t Length = N;
-    static constexpr std::size_t CharSize = sizeof (CharT);
-    constexpr std::string_view toStringView() const {
-        return {&m_data[0], &m_data[Length]};
-    }
-};
-template <typename CharT, std::size_t N>
-ConstString(const CharT (&str)[N])->ConstString<CharT, N-1>;
-
-
-
-namespace options {
-
-namespace detail {
-
-struct key_tag{};
-struct required_tag{};
-struct range_tag{};
-struct description_tag{};
-
-}
-template<ConstString Desc>
-struct key {
-    using tag = detail::key_tag;
-    static constexpr auto desc = Desc;
-};
-
-struct required {
-    using tag = detail::required_tag;
-};
-
-template<auto Min, auto Max>
-struct range {
-    using tag = detail::range_tag;
-    static constexpr auto min = Min;
-    static constexpr auto max = Max;
-};
-
-template<ConstString Desc>
-struct description {
-    using tag = detail::description_tag;
-    static constexpr auto desc = Desc;
-};
-
-
-namespace detail {
-
-
-template<class Tag, class... Opts>
-struct find_option_by_tag;
-
-// Base case: no options → void
-template<class Tag>
-struct find_option_by_tag<Tag> {
-    using type = void;
-};
-
-// Recursive case: check First::tag, or continue
-template<class Tag, class First, class... Rest>
-struct find_option_by_tag<Tag, First, Rest...> {
-private:
-    using first_tag = std::conditional_t<
-        requires { typename First::tag; },
-        typename First::tag,
-        void
-        >;
-
-    using next = typename find_option_by_tag<Tag, Rest...>::type;
-
-public:
-    using type = std::conditional_t<
-        std::is_same_v<Tag, first_tag>,
-        First,
-        next
-        >;
-};
-
-} // namespace detail
-
-
-struct no_options {
-    template<class Tag>
-    static constexpr bool has_option = false;
-
-    template<class Tag>
-    using get_option = void;
-};
-
-
-
-template<class T, class... Opts>
-struct field_options {
-    using underlying_type = T;
-
-    template<class Tag>
-    using option_type = typename detail::find_option_by_tag<Tag, Opts...>::type;
-
-    template<class Tag>
-    static constexpr bool has_option = !std::is_void_v<option_type<Tag>>;
-
-    template<class Tag>
-    using get_option = option_type<Tag>;
-};
-
-
-
-} //namespace options
-
-
-
-
-template <class T, typename... Options>
-struct Annotated {
-    using value_type   = T;
-    using options      = options::field_options<T, Options...>; //more likely will be used in parser, not here
-
-    T value{};
-
-    // Access
-    T&       get()       { return value; }
-    const T& get() const { return value; }
-
-    // Conversions/forwarding so parser can treat Annotated<T> like T
-    operator T&()             { return value; }
-    operator const T&() const { return value; }
-
-    Annotated& operator=(const T& v) {
-        value = v;
-        return *this;
-    }
-};
 
 enum ErrorT {
     NO_ERROR,
@@ -173,7 +30,11 @@ enum ErrorT {
     ILLFORMED_STRING,
     ILLFORMED_ARRAY,
     ILLFORMED_OBJECT,
-    EXCESS_DATA
+    EXCESS_DATA,
+    NUMBER_OUT_OF_RANGE_SCHEMA_ERROR,
+    STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR,
+    OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR,
+    ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR
 };
 
 
@@ -230,31 +91,6 @@ inline constexpr bool has_flag_v =
 
 namespace  parser_details {
 
-
-template<class Field>
-struct field_meta;
-
-// Base: non-annotated, non-optional
-template<class Field>
-struct field_meta {
-    using storage_type = std::remove_cvref_t<Field>;
-    using options      = JSONReflection2::options::no_options;
-};
-
-// Annotated<T, Opts...>
-template<class T, class... Opts>
-struct field_meta<Annotated<T, Opts...>> {
-    using storage_type = T;
-    using options      = JSONReflection2::options::field_options<T, Opts...>;
-};
-
-// optional<U> – delegate to U
-template<class U>
-struct field_meta<std::optional<U>> : field_meta<U> {};
-
-// Entry point with decay
-template<class Field>
-struct field_meta_decayed : field_meta<std::remove_cvref_t<Field>> {};
 
 
 
@@ -386,7 +222,7 @@ template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It
     requires static_schema::JsonNumber<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     auto& storage = get_storage(obj);
-    using Opts    = field_meta_decayed<ObjT>::options;
+    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
     using Under = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
     constexpr std::size_t NumberBufSize = 40;
     char buf[NumberBufSize];
@@ -428,7 +264,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         if constexpr (Opts::template has_option<options::detail::range_tag>) {
             using Range = Opts::template get_option<options::detail::range_tag>;
             if (value < Range::min || value > Range::max) {
-                ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+                ctx.setError(ErrorT::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                 return false;
             }
         }
@@ -443,7 +279,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             if constexpr (Opts::template has_option<options::detail::range_tag>) {
                 using Range = typename Opts::template get_option<options::detail::range_tag>;
                 if (x < Range::min || x > Range::max) {
-                    ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+                    ctx.setError(ErrorT::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                     return false;
                 }
             }
@@ -598,31 +434,49 @@ template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It
     requires static_schema::JsonString<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
+    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
+
 
     auto& storage = get_storage(obj);
-    std::size_t fixedSizeContainerPos = 0;
+    std::size_t parsedSize = 0;
     if constexpr (DynamicContainerTypeConcept<T>) {
         storage.clear();
     }
-    auto inserter = [&storage, &fixedSizeContainerPos] (char c) -> bool {
+    auto inserter = [&storage, &parsedSize, &ctx, &currentPos] (char c) -> bool {
         if constexpr (!DynamicContainerTypeConcept<T>) {
-            if (fixedSizeContainerPos < storage.size()) {
-                storage[fixedSizeContainerPos] = c;
-                fixedSizeContainerPos ++;
-                return true;
+            if (parsedSize < storage.size()) {
+                storage[parsedSize] = c;
             } else {
+               ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                return false;
             }
         }  else {
             storage.push_back(c);
-            return true;
         }
+        parsedSize++;
+        if constexpr (Opts::template has_option<options::detail::max_length_tag>) {
+            using MaxLengthOpt = typename Opts::template get_option<options::detail::max_length_tag>;
+            if(parsedSize > MaxLengthOpt::value) {
+                ctx.setError(ErrorT::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                return false;
+            }
+
+        }
+        return true;
     };
 
     if(parseString(inserter, currentPos, end, ctx)) {
         if constexpr (!DynamicContainerTypeConcept<T>) {
-            if(fixedSizeContainerPos < storage.size())
-                storage[fixedSizeContainerPos] = 0;
+            if(parsedSize < storage.size())
+                storage[parsedSize] = 0;
+        }
+        if constexpr (Opts::template has_option<options::detail::min_length_tag>) {
+            using MinLengthOpt = typename Opts::template get_option<options::detail::min_length_tag>;
+            if(parsedSize < MinLengthOpt::value) {
+                ctx.setError(ErrorT::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                return false;
+            }
+
         }
         return true;
     } else {
@@ -634,6 +488,9 @@ template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It
     requires static_schema::JsonArray<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
+
+    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
+
     auto& storage = get_storage(obj);
     if(*currentPos != '[') {
         ctx.setError(ErrorT::ILLFORMED_ARRAY, currentPos);
@@ -643,7 +500,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
         return false;
     }
-    std::size_t static_container_index = 0;
+    std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
     while(true) {
         if(currentPos == end) [[unlikely]] {
@@ -658,6 +515,14 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 ctx.setError(ErrorT::ILLFORMED_ARRAY, currentPos);
                 return false;
             }
+            if constexpr (Opts::template has_option<options::detail::min_items_tag>) {
+                using MinItems = Opts::template get_option<options::detail::min_items_tag>;
+                if (parsed_items_count < MinItems::value) {
+                    ctx.setError(ErrorT::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
+                    return false;
+                }
+            }
+
             currentPos ++;
             return true;
         }
@@ -667,17 +532,26 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 return false;
             }
         } else {
-            if(static_container_index < storage.size()) {
-                if(!ParseValue<flags>(storage[static_container_index], currentPos, end, ctx)) {
+            if(parsed_items_count < storage.size()) {
+                if(!ParseValue<flags>(storage[parsed_items_count], currentPos, end, ctx)) {
                     return false;
                 }
-                static_container_index ++;
+
             } else {
                 ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                 return false;
             }
             //TODO handle different size policies via opts
         }
+        parsed_items_count ++;
+        if constexpr (Opts::template has_option<options::detail::max_items_tag>) {
+            using MaxItems = Opts::template get_option<options::detail::max_items_tag>;
+            if (parsed_items_count > MaxItems::value) {
+                ctx.setError(ErrorT::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
+                return false;
+            }
+        }
+
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
         }
@@ -950,7 +824,7 @@ struct FieldsHelper {
     template<std::size_t I>
     static constexpr std::string_view fieldName() {
         using Field   = decltype(pfr::get<I>(std::declval<T&>()));
-        using Meta    = parser_details::field_meta_decayed<Field>;
+        using Meta    = options::detail::field_meta_decayed<Field>;
         using Opts    = typename Meta::options;
 
         if constexpr (Opts::template has_option<options::detail::key_tag>) {
@@ -958,6 +832,18 @@ struct FieldsHelper {
             return KeyOpt::desc.toStringView();
         } else {
             return pfr::get_name<I, T>();
+        }
+    }
+    template<std::size_t I>
+    static constexpr bool fieldNotRequired() {
+        using Field   = decltype(pfr::get<I>(std::declval<T&>()));
+        using Meta    = options::detail::field_meta_decayed<Field>;
+        using Opts    = typename Meta::options;
+
+        if constexpr (Opts::template has_option<options::detail::not_required_tag>) {
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -985,6 +871,8 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         return false;
     }
     bool has_trailing_comma = false;
+    using FH = FieldsHelper<T>;
+    std::array<bool, FH::fieldsCount> parsedFieldsByIndex{};
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
@@ -1001,12 +889,20 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             }
             currentPos ++;
 
-            //TODO Do final checks here for required or excess fields
+            bool presense_check_result = [&parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
+                return (
+                    (parsedFieldsByIndex[I] == true || FH:: template fieldNotRequired<I>()) && ...);
+
+            }(std::make_index_sequence<FH::fieldsCount>{});
+            if(!presense_check_result) {
+                ctx.setError(ErrorT::OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR, currentPos);
+                return false;
+            }
             return true;
         }
 
         IncrementalFieldSearch searcher{
-            FieldsHelper<T>::fieldIndexesSortedByFieldName.data(), FieldsHelper<T>::fieldIndexesSortedByFieldName.data() + FieldsHelper<T>::fieldIndexesSortedByFieldName.size()
+            FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
         if(!parseString([&searcher](char c){
@@ -1032,7 +928,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             return false;
         }
 
-        if(res == FieldsHelper<T>::fieldIndexesSortedByFieldName.end()) {
+        if(res == FH::fieldIndexesSortedByFieldName.end()) {
             if constexpr (!has_flag_v<flags, ParseFlags::FORBID_EXCESS_FIELDS>) {
                 if(!SkipValue(currentPos, end, ctx)) {
                     return false;
@@ -1042,11 +938,11 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 return false;
             }
         } else {
-            bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage]<std::size_t... I>(std::index_sequence<I...>) {
+            bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage, &parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
                 return (
-                    (I==res->originalIndex && ParseValue<flags>(pfr::get<I>(storage), currentPos, end, ctx)) || ...);
+                    (I==res->originalIndex && ParseValue<flags>(pfr::get<I>(storage), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
 
-            }(std::make_index_sequence<pfr::tuple_size_v<T>>{});
+            }(std::make_index_sequence<FH::fieldsCount>{});
             if(!field_parse_result) {
                 return false;
             }

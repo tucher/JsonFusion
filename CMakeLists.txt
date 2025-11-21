@@ -14,6 +14,8 @@ add_executable(cpp_struct_serialisation
     static_schema.hpp
     parser.hpp
     string_ops.hpp
+    annotated.hpp
+    options.hpp
     # canada_json_perf_test.cpp
     # twitter_json_perf_test.cpp
 )

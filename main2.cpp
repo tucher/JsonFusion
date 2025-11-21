@@ -11,7 +11,7 @@ void schema_tests() {
     struct Module2 {
         // JSONReflection2::Annotated<string, "path"> path;
         Annotated<int, key<"name">,
-                  required,
+                  not_required,
                   range<0, 100>,
                   description<"Velocity in m/s">
                   > count;
@@ -139,7 +139,7 @@ void schema_tests() {
         using namespace JSONReflection2::options;
 
 
-        using opts = parser_details::field_meta_decayed<Annotated<int, required, key<"fuu">, range<2,3>>>::options;
+        using opts = options::detail::field_meta_decayed<Annotated<int, not_required, key<"fuu">, range<2,3>>>::options;
         static_assert(opts::has_option<options::detail::key_tag>
                       && opts::get_option<options::detail::key_tag>::desc.toStringView() == "fuu");
 
@@ -147,7 +147,7 @@ void schema_tests() {
                       && opts::get_option<options::detail::range_tag>::min == 2
                       && opts::get_option<options::detail::range_tag>::max == 3);
 
-        static_assert(opts::has_option<options::detail::required_tag>);
+        static_assert(opts::has_option<options::detail::not_required_tag>);
         static_assert(!opts::has_option<options::detail::description_tag>);
     }
 }
@@ -159,7 +159,7 @@ void test() {
     struct Module2 {
         // JSONReflection2::Annotated<string, "path"> path;
         Annotated<int, key<"name">,
-                  required,
+                  not_required,
                   range<0, 100>,
                   description<"Velocity in m/s">
                   > count;
@@ -204,9 +204,20 @@ void test() {
         std::array<char, 20> fs;
         assert(JSONReflection2::Parse(fs, std::string_view("\"100\"")) && std::string(fs.data()) == "100");
 
-
+        Annotated<string, min_length<5>, max_length<10>> as;
+        assert(!JSONReflection2::Parse(as, std::string_view("\"100\"")));
+        assert(!JSONReflection2::Parse(as, std::string_view("\"123456789012345\"")));
+        assert(JSONReflection2::Parse(as, std::string_view("\"hellowrld\"")));
     }
 
+    {
+        using JSONReflection2::options::range, JSONReflection2::Annotated;
+        Annotated<std::optional<int8_t>,  range<0, 100>> minValue;
+
+        assert(JSONReflection2::Parse(minValue, std::string_view("99")));
+        assert(!JSONReflection2::Parse(minValue, std::string_view("128")));
+        assert(!JSONReflection2::Parse(minValue, std::string_view("-1")));
+    }
     {
         std::vector<int> ds;
         std::vector<int> expected = {1, 2, 3};
@@ -219,32 +230,37 @@ void test() {
         std::array<int, 5> fs2{};
         std::array<int, 5> expectedfs2 = {1, 2, 3};
         assert(JSONReflection2::Parse(fs2, std::string_view("[1, 2, 3]")) && fs2 == expectedfs2);
+
+        Annotated<list<int>, min_items<3>, max_items<6>> arr_with_limits;
+        assert(!JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2]")));
+        assert(!JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2, 3, 4, 5, 6, 7]")));
+        assert(JSONReflection2::Parse(arr_with_limits, std::string_view("[1, 2, 3, 4]")));
+
     }
     {
         struct A {
             Annotated<int, options::key<"f">> field;
-            string opt;
+            Annotated<string> opt;
             vector<std::optional<std::int64_t>> vect;
+            Annotated<bool, not_required> may_be_missing;
         };
         A a;
-        std::cout << "Here" << std::endl;
         assert(JSONReflection2::Parse(a, std::string_view(R"(
             {
                 "opt": "213",
                 "f": 123,
                 "vect": [12, -100, null  ]
             }
-        )")) && a.field == 123
-               && a.opt == "213" && a.vect.size()==3 && *a.vect[0]==12 && *a.vect[1]==-100 && !a.vect[2]
+        )")));
+        Annotated<string> tst;
+        string s;
+        assert(s == "");
+        assert(tst == "");
+        assert(a.opt[1]=='1');
+        assert(a.field == 123
+               && a.opt.value == "213" && a.vect.size()==3 && *a.vect[0]==12 && *a.vect[1]==-100 && !a.vect[2]
                );
-        if(JSONReflection2::Parse(a, std::string_view(R"(
-            {
-                "opt": "213",
-                "field": 123,
-                "vect": [12, -100, null]
-            }
-        )")))
-            std::cout << "Res " << a.opt << std::endl;
+
 
         {
             using std::array;
@@ -445,14 +461,6 @@ void test() {
 
     }
 
-    {
-        using JSONReflection2::options::range, JSONReflection2::Annotated;
-        Annotated<std::optional<int8_t>,  range<0, 100>> minValue;
-
-        assert(JSONReflection2::Parse(minValue, std::string_view("99")));
-        assert(!JSONReflection2::Parse(minValue, std::string_view("128")));
-        assert(!JSONReflection2::Parse(minValue, std::string_view("-1")));
-    }
 }
 
 int main()
