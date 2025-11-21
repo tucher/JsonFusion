@@ -213,7 +213,7 @@ void test() {
             {
                 "opt": "213",
                 "field": 123,
-                "vect": [12, -100, null]
+                "vect": [12, -100, null  ]
             }
         )")) && a.field == 123
                && a.opt == "213" && a.vect.size()==3 && *a.vect[0]==12 && *a.vect[1]==-100 && !a.vect[2]
@@ -428,10 +428,10 @@ void test() {
 
     {
         using JSONReflection2::options::range, JSONReflection2::Annotated;
-        Annotated<std::optional<int>,  range<0, 100>> minValue;
+        Annotated<std::optional<int8_t>,  range<0, 100>> minValue;
 
         assert(JSONReflection2::Parse(minValue, std::string_view("99")));
-        assert(!JSONReflection2::Parse(minValue, std::string_view("101")));
+        assert(!JSONReflection2::Parse(minValue, std::string_view("128")));
         assert(!JSONReflection2::Parse(minValue, std::string_view("-1")));
     }
 }

@@ -11,6 +11,8 @@
 #include <pfr.hpp>
 #include "static_schema.hpp"
 #include <fast_double_parser.h>
+#include <charconv>  // std::from_chars
+#include <algorithm>
 
 namespace JSONReflection2 {
 
@@ -226,13 +228,18 @@ public:
 
 enum class ParseFlags: std::uint32_t {
     DEFAULT = 0,
-    EXCESS_FIELDS_PROHIBITED = std::underlying_type_t<ParseFlags>(1) << 1,
-    ALL_FIELDS_REQUIRED =      std::underlying_type_t<ParseFlags>(1) << 2,
+    FORBID_EXCESS_FIELDS = std::underlying_type_t<ParseFlags>(1) << 1,
 };
 
 inline constexpr ParseFlags operator| (const ParseFlags &l, const ParseFlags &r) {
-    return ParseFlags(static_cast<std::underlying_type_t<ParseFlags>>(l) | static_cast<std::underlying_type_t<ParseFlags>>(r));
+    using U = std::underlying_type_t<ParseFlags>;
+    return static_cast<ParseFlags>(static_cast<U>(l) | static_cast<U>(r));
 }
+
+template<ParseFlags F, ParseFlags Bit>
+inline constexpr bool has_flag_v =
+    (static_cast<std::underlying_type_t<ParseFlags>>(F) &
+     static_cast<std::underlying_type_t<ParseFlags>>(Bit)) != 0;
 
 namespace  parser_details {
 
@@ -348,7 +355,7 @@ struct decay_optional<std::optional<U>> {
 template <class T>
 using decay_optional_t = typename decay_optional<T>::type;
 
-bool match_literal(auto& it, const auto& end, std::string_view lit) {
+bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
     for (char c : lit) {
         if (it == end || *it != c) {
             return false;
@@ -385,32 +392,74 @@ template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     auto& storage = get_storage(obj);
     using Opts    = field_meta<parser_details::decay_optional_t<ObjT>>::options;
+    using Under = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
     constexpr std::size_t NumberBufSize = 40;
     char buf[NumberBufSize];
     std::size_t index = 0;
+    bool   seenDot = false;
+    bool   seenExp = false;
+
     while(currentPos != end && !isPlainEnd(*currentPos)) {
-        buf[index] = *currentPos;
-        currentPos ++;
-        index ++;
-        if(index > NumberBufSize - 1) [[unlikely]] {
+        char c = *currentPos;
+        if (c == '.') {
+            seenDot = true;
+        } else if (c == 'e' || c == 'E') {
+            seenExp = true;
+        }
+
+        if (index >= NumberBufSize - 1) [[unlikely]] {
             ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
             return false;
         }
+
+        buf[index++] = c;
+        ++currentPos;
     }
     buf[index] = 0;
-    double x;
-    if(fast_double_parser::parse_number(buf, &x) != nullptr) {
-        //TODO checks and options
+    if constexpr (std::is_integral_v<Under>) {
+        // Reject decimals/exponents for integer fields
+        if (seenDot || seenExp) {
+            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            return false;
+        }
+
+        Under value{};
+        auto [ptr, ec] = std::from_chars(buf, buf + index, value);
+
+        if (ec != std::errc{} || ptr != buf + index) {
+            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            return false;
+        }
         if constexpr (Opts::has_range) {
-            if (x < Opts::min || x > Opts::max) {
+            if (value < Opts::min || value > Opts::max) {
                 ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
                 return false;
             }
         }
-
-        storage = x;
+        storage = value;
         return true;
+    } else if constexpr (std::is_floating_point_v<Under>) {
+
+        double x;
+        if(fast_double_parser::parse_number(buf, &x) != nullptr) {
+            //TODO checks and options
+            if constexpr (Opts::has_range) {
+                if (x < Opts::min || x > Opts::max) {
+                    ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+                    return false;
+                }
+            }
+
+            storage = x;
+            return true;
+        } else {
+            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            return false;
+        }
     } else {
+        // Should never happen if JsonNumber is correct
+        static_assert(std::is_integral_v<Under> || std::is_floating_point_v<Under>,
+                      "JsonNumber underlying type must be integral or floating");
         ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
         return false;
     }
@@ -597,7 +646,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         return false;
     }
     std::size_t static_container_index = 0;
-    bool has_traling_comma = false;
+    bool has_trailing_comma = false;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
@@ -607,7 +656,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             return false;
         }
         if(*currentPos == ']') {
-            if(has_traling_comma) {
+            if(has_trailing_comma) {
                 ctx.setError(ErrorT::ILLFORMED_ARRAY, currentPos);
                 return false;
             }
@@ -634,15 +683,198 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
         }
-        has_traling_comma = false;
+        has_trailing_comma = false;
         if(*currentPos == ',') {
-            has_traling_comma = true;
+            has_trailing_comma = true;
             currentPos ++;
         }
 
     }
     return false;
 }
+constexpr int MAX_SKIP_NESTING = 64;
+
+template <CharInputIterator It, CharSentinelFor<It> Sent>
+bool matchLiteralTail(It& currentPos, const Sent& end,
+                      const char* tail, std::size_t len,
+                      ErrorT err, DeserializationContext<It>& ctx)
+{
+    for (std::size_t i = 0; i < len; ++i) {
+        if (currentPos == end || *currentPos != tail[i]) {
+            ctx.setError(err, currentPos);
+            return false;
+        }
+        ++currentPos;
+    }
+    return true;
+}
+
+
+template <CharInputIterator It, CharSentinelFor<It> Sent>
+bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    if (!skipWhiteSpace(currentPos, end, ctx)) {
+        return false;
+    }
+    if (currentPos == end) {
+        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        return false;
+    }
+
+    auto noopInserter = [](char) -> bool { return true; };
+
+    char c = *currentPos;
+
+    // 1) Simple values we can skip without nesting
+    if (c == '"') {
+        // string
+        return parseString(noopInserter, currentPos, end, ctx);
+    }
+
+    if (c == 't') {
+        // 't' seen; match "rue"
+        ++currentPos;
+        return matchLiteralTail(currentPos, end, "rue", 3,
+                                ErrorT::ILLFORMED_BOOL, ctx);
+    }
+    if (c == 'f') {
+        // 'f' seen; match "alse"
+        ++currentPos;
+        return matchLiteralTail(currentPos, end, "alse", 4,
+                                ErrorT::ILLFORMED_BOOL, ctx);
+    }
+    if (c == 'n') {
+        // 'n' seen; match "ull"
+        ++currentPos;
+        return matchLiteralTail(currentPos, end, "ull", 3,
+                                ErrorT::ILLFORMED_NULL, ctx);
+    }
+
+    // number-like: skip until a plain end (whitespace, ',', ']', '}', etc.)
+    auto skipNumberLike = [&]() {
+        while (currentPos != end && !isPlainEnd(*currentPos)) {
+            ++currentPos;
+        }
+        return true;
+    };
+
+    if (c != '{' && c != '[') {
+        // neither object nor array → treat as number-like token
+        return skipNumberLike();
+    }
+
+    // 2) Compound value: object or array with possible nesting.
+    // We use an explicit stack of expected closing delimiters to avoid recursion.
+
+    char stack[MAX_SKIP_NESTING];
+    int  depth = 0;
+
+    auto push_close = [&](char open) -> bool {
+        if (depth >= MAX_SKIP_NESTING) {
+            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            return false;
+        }
+        stack[depth++] = (open == '{') ? '}' : ']';
+        return true;
+    };
+
+    auto pop_close = [&](char close) -> bool {
+        if (depth == 0) {
+            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            return false;
+        }
+        if (stack[depth - 1] != close) {
+            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            return false;
+        }
+        --depth;
+        return true;
+    };
+
+    // Initialize with the first '{' or '['
+    if (!push_close(c)) {
+        return false;
+    }
+    ++currentPos; // skip first '{' or '['
+
+    while (currentPos != end && depth > 0) {
+        char ch = *currentPos;
+
+        // Skip whitespace cheaply
+        if (isSpace(ch)) {
+            ++currentPos;
+            continue;
+        }
+
+        switch (ch) {
+        case '"': {
+            if (!parseString(noopInserter, currentPos, end, ctx)) {
+                return false;
+            }
+            break;
+        }
+        case '{':
+        case '[': {
+            if (!push_close(ch)) {
+                return false;
+            }
+            ++currentPos;
+            break;
+        }
+        case '}':
+        case ']': {
+            if (!pop_close(ch)) {
+                return false;
+            }
+            ++currentPos;
+            break;
+        }
+        case 't': {
+            ++currentPos;
+            if (!matchLiteralTail(currentPos, end, "rue", 3,
+                                  ErrorT::ILLFORMED_BOOL, ctx)) {
+                return false;
+            }
+            break;
+        }
+        case 'f': {
+            ++currentPos;
+            if (!matchLiteralTail(currentPos, end, "alse", 4,
+                                  ErrorT::ILLFORMED_BOOL, ctx)) {
+                return false;
+            }
+            break;
+        }
+        case 'n': {
+            ++currentPos;
+            if (!matchLiteralTail(currentPos, end, "ull", 3,
+                                  ErrorT::ILLFORMED_NULL, ctx)) {
+                return false;
+            }
+            break;
+        }
+        default: {
+            // number-like or punctuation (':', ',', etc.)
+            if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+') {
+                if (!skipNumberLike()) {
+                    return false;
+                }
+            } else {
+                ++currentPos; // colon, comma, etc. – don't affect nesting
+            }
+            break;
+        }
+        }
+    }
+
+    if (depth != 0) {
+        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        return false;
+    }
+
+    return true;
+}
+
+
 
 struct FieldDescr {
     std::string_view name;
@@ -725,6 +957,7 @@ struct FieldsHelper {
     }(std::make_index_sequence<fieldsCount>{});
 };
 
+
 template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonObject<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
@@ -739,7 +972,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
         return false;
     }
-
+    bool has_trailing_comma = false;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
@@ -750,6 +983,10 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
 
         if(*currentPos == '}') {
+            if(has_trailing_comma) {
+                ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+                return false;
+            }
             currentPos ++;
 
             //TODO Do final checks here for required or excess fields
@@ -767,11 +1004,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             return false;
         }
         auto res = searcher.result();
-        if(res == FieldsHelper<T>::fieldIndexesSortedByFieldName.end()) {
-            //TODO handle excess fields
-            ctx.setError(ErrorT::EXCESS_FIELD, currentPos);
-            return false;
-        }
+
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
@@ -787,17 +1020,32 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             return false;
         }
 
+        if(res == FieldsHelper<T>::fieldIndexesSortedByFieldName.end()) {
+            if constexpr (!has_flag_v<flags, ParseFlags::FORBID_EXCESS_FIELDS>) {
+                if(!SkipValue(currentPos, end, ctx)) {
+                    return false;
+                }
+            } else {
+                ctx.setError(ErrorT::EXCESS_FIELD, currentPos);
+                return false;
+            }
+        } else {
+            bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage]<std::size_t... I>(std::index_sequence<I...>) {
+                return (
+                    (I==res->originalIndex && ParseValue<flags>(pfr::get<I>(storage), currentPos, end, ctx)) || ...);
 
-        bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage]<std::size_t... I>(std::index_sequence<I...>) {
-            return (
-                (I==res->originalIndex && ParseValue<flags>(pfr::get<I>(storage), currentPos, end, ctx)) || ...);
-
-        }(std::make_index_sequence<pfr::tuple_size_v<T>>{});
+            }(std::make_index_sequence<pfr::tuple_size_v<T>>{});
+            if(!field_parse_result) {
+                return false;
+            }
+        }
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
         }
+        has_trailing_comma = false;
         if(*currentPos == ',') {
+            has_trailing_comma = true;
             currentPos ++;
         }
 
@@ -865,5 +1113,36 @@ auto Parse(InputObjectT & obj, const ContainterT & c) {
     return Parse<flags>(obj, c.begin(), c.end());
 }
 
+
+// Pointer + length front-end
+template<ParseFlags flags = ParseFlags::DEFAULT, static_schema::JsonValue InputObjectT>
+ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t size) {
+    const char* begin = data;
+    const char* end   = data + size;
+
+    InputObjectT copy = obj;
+    parser_details::DeserializationContext<const char*> ctx(begin);
+
+    const char* cur = begin;
+    parser_details::ParseValue<flags>(obj, cur, end, ctx);
+
+    auto res = ctx.result();
+    if(!res) {
+        obj = copy;
+    } else {
+        if(parser_details::skipWhiteSpace(begin, end, ctx)) {
+            ctx.setError(ErrorT::EXCESS_DATA, begin);
+        } else {
+            ctx.setError(ErrorT::NO_ERROR, begin);
+        }
+    }
+    return res;
+}
+
+// string_view front-end
+template<ParseFlags flags = ParseFlags::DEFAULT, static_schema::JsonValue InputObjectT>
+ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
+    return Parse<flags>(obj, sv.data(), sv.size());
+}
 
 } // namespace JSONReflection2
