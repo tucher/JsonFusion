@@ -131,9 +131,28 @@ void schema_tests() {
         static_assert( JsonValue<optional<C>>);
         static_assert( JsonNullableValue<optional<C>>);
 
+
+
+    }
+    {
+        using namespace JSONReflection2;
+        using namespace JSONReflection2::options;
+
+
+        using opts = parser_details::field_meta_decayed<Annotated<int, required, key<"fuu">, range<2,3>>>::options;
+        static_assert(opts::has_option<options::detail::key_tag>
+                      && opts::get_option<options::detail::key_tag>::desc.toStringView() == "fuu");
+
+        static_assert(opts::has_option<options::detail::range_tag>
+                      && opts::get_option<options::detail::range_tag>::min == 2
+                      && opts::get_option<options::detail::range_tag>::max == 3);
+
+        static_assert(opts::has_option<options::detail::required_tag>);
+        static_assert(!opts::has_option<options::detail::description_tag>);
     }
 }
 void test() {
+    schema_tests();
     using std::string, std::list, std::vector, std::array, std::optional;
     using namespace JSONReflection2;
     using namespace JSONReflection2::options;
@@ -203,7 +222,7 @@ void test() {
     }
     {
         struct A {
-            int field;
+            Annotated<int, options::key<"f">> field;
             string opt;
             vector<std::optional<std::int64_t>> vect;
         };
@@ -212,7 +231,7 @@ void test() {
         assert(JSONReflection2::Parse(a, std::string_view(R"(
             {
                 "opt": "213",
-                "field": 123,
+                "f": 123,
                 "vect": [12, -100, null  ]
             }
         )")) && a.field == 123

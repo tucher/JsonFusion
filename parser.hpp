@@ -41,113 +41,100 @@ ConstString(const CharT (&str)[N])->ConstString<CharT, N-1>;
 
 namespace options {
 
+namespace detail {
+
+struct key_tag{};
+struct required_tag{};
+struct range_tag{};
+struct description_tag{};
+
+}
 template<ConstString Desc>
 struct key {
+    using tag = detail::key_tag;
     static constexpr auto desc = Desc;
 };
 
-struct required {};
+struct required {
+    using tag = detail::required_tag;
+};
 
 template<auto Min, auto Max>
 struct range {
+    using tag = detail::range_tag;
     static constexpr auto min = Min;
     static constexpr auto max = Max;
 };
 
 template<ConstString Desc>
 struct description {
+    using tag = detail::description_tag;
     static constexpr auto desc = Desc;
 };
-
-template<typename... Opts>
-inline constexpr bool is_required_v =
-    (std::is_same_v<std::remove_cv_t<Opts>, required> || ...);
-
-// Generic "find specialization of Template in a pack"
-template<template<auto...> class Template, typename... Opts>
-struct find_specialization;
-
-// Base case: not found
-template<template<auto...> class Template>
-struct find_specialization<Template> {
-    using type = void;   // sentinel for "not found"
-};
-
-// Skip non-matching head
-template<template<auto...> class Template, typename Head, typename... Tail>
-struct find_specialization<Template, Head, Tail...>
-    : find_specialization<Template, Tail...> {};
-
-// Match Template<Args...>
-template<template<auto...> class Template, auto... Args, typename... Tail>
-struct find_specialization<Template, Template<Args...>, Tail...> {
-    using type = Template<Args...>;
-};
-
-template<template<auto...> class Template, typename... Opts>
-using find_specialization_t = typename find_specialization<Template, Opts...>::type;
 
 
 namespace detail {
 
-// pack_contains<T, Ts...>
-template<class T, class... Ts>
-struct pack_contains : std::bool_constant<(std::is_same_v<T, Ts> || ...)> {};
 
-template<class T, class... Ts>
-inline constexpr bool pack_contains_v = pack_contains<T, Ts...>::value;
+template<class Tag, class... Opts>
+struct find_option_by_tag;
 
-// Find range_t<Min, Max> in an options pack
-
-template<class... Opts>
-struct range_finder {
-    static constexpr bool has_range = false;
-    // min/max are intentionally *not* defined here when has_range == false
+// Base case: no options → void
+template<class Tag>
+struct find_option_by_tag<Tag> {
+    using type = void;
 };
 
-template<class First, class... Rest>
-struct range_finder<First, Rest...> : range_finder<Rest...> {};
+// Recursive case: check First::tag, or continue
+template<class Tag, class First, class... Rest>
+struct find_option_by_tag<Tag, First, Rest...> {
+private:
+    using first_tag = std::conditional_t<
+        requires { typename First::tag; },
+        typename First::tag,
+        void
+        >;
 
-// specialization when we hit a range_t
-template<auto Min, auto Max, class... Rest>
-struct range_finder<range<Min, Max>, Rest...> {
-    static constexpr bool has_range = true;
-    static constexpr auto min = Min;
-    static constexpr auto max = Max;
+    using next = typename find_option_by_tag<Tag, Rest...>::type;
+
+public:
+    using type = std::conditional_t<
+        std::is_same_v<Tag, first_tag>,
+        First,
+        next
+        >;
 };
 
 } // namespace detail
 
+
 struct no_options {
-    static constexpr bool is_required = false;
-    static constexpr bool has_range   = false;
+    template<class Tag>
+    static constexpr bool has_option = false;
+
+    template<class Tag>
+    using get_option = void;
 };
 
 
-template<typename T, typename... Opts>
+
+template<class T, class... Opts>
 struct field_options {
-    static constexpr bool is_required =
-        detail::pack_contains_v<required, Opts...>;
+    using underlying_type = T;
 
-    using range_info = detail::range_finder<Opts...>;
+    template<class Tag>
+    using option_type = typename detail::find_option_by_tag<Tag, Opts...>::type;
 
-    static constexpr bool has_range = range_info::has_range;
+    template<class Tag>
+    static constexpr bool has_option = !std::is_void_v<option_type<Tag>>;
 
-    // Only valid if has_range == true
-    static constexpr auto min = []{
-        if constexpr (range_info::has_range) return range_info::min;
-        else return T{}; // never used if !has_range
-    }();
-
-    static constexpr auto max = []{
-        if constexpr (range_info::has_range) return range_info::max;
-        else return T{};
-    }();
+    template<class Tag>
+    using get_option = option_type<Tag>;
 };
 
 
 
-}
+} //namespace options
 
 
 
@@ -244,24 +231,32 @@ inline constexpr bool has_flag_v =
 namespace  parser_details {
 
 
+template<class Field>
+struct field_meta;
 
-
+// Base: non-annotated, non-optional
 template<class Field>
 struct field_meta {
     using storage_type = std::remove_cvref_t<Field>;
-    using options      = options::no_options;
+    using options      = JSONReflection2::options::no_options;
 };
 
-// Annotated<T, Options...> specialization
+// Annotated<T, Opts...>
 template<class T, class... Opts>
 struct field_meta<Annotated<T, Opts...>> {
     using storage_type = T;
-    using options      = options::field_options<T, Opts...>;
+    using options      = JSONReflection2::options::field_options<T, Opts...>;
 };
 
-// optional<...> – just strip optional, options come from inside
+// optional<U> – delegate to U
 template<class U>
 struct field_meta<std::optional<U>> : field_meta<U> {};
+
+// Entry point with decay
+template<class Field>
+struct field_meta_decayed : field_meta<std::remove_cvref_t<Field>> {};
+
+
 
 template<class ObjT>
 decltype(auto) get_storage(ObjT& obj) {
@@ -391,7 +386,7 @@ template <ParseFlags flags, class ObjT, CharInputIterator It, CharSentinelFor<It
     requires static_schema::JsonNumber<decay_optional_t<ObjT>>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     auto& storage = get_storage(obj);
-    using Opts    = field_meta<parser_details::decay_optional_t<ObjT>>::options;
+    using Opts    = field_meta_decayed<ObjT>::options;
     using Under = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
     constexpr std::size_t NumberBufSize = 40;
     char buf[NumberBufSize];
@@ -430,21 +425,24 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
             return false;
         }
-        if constexpr (Opts::has_range) {
-            if (value < Opts::min || value > Opts::max) {
+        if constexpr (Opts::template has_option<options::detail::range_tag>) {
+            using Range = Opts::template get_option<options::detail::range_tag>;
+            if (value < Range::min || value > Range::max) {
                 ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
                 return false;
             }
         }
+
         storage = value;
         return true;
     } else if constexpr (std::is_floating_point_v<Under>) {
 
         double x;
         if(fast_double_parser::parse_number(buf, &x) != nullptr) {
-            //TODO checks and options
-            if constexpr (Opts::has_range) {
-                if (x < Opts::min || x > Opts::max) {
+
+            if constexpr (Opts::template has_option<options::detail::range_tag>) {
+                using Range = typename Opts::template get_option<options::detail::range_tag>;
+                if (x < Range::min || x > Range::max) {
                     ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
                     return false;
                 }
@@ -949,9 +947,23 @@ template<class T>
 struct FieldsHelper {
     static constexpr std::size_t fieldsCount = pfr::tuple_size_v<T>;
 
+    template<std::size_t I>
+    static constexpr std::string_view fieldName() {
+        using Field   = decltype(pfr::get<I>(std::declval<T&>()));
+        using Meta    = parser_details::field_meta_decayed<Field>;
+        using Opts    = typename Meta::options;
+
+        if constexpr (Opts::template has_option<options::detail::key_tag>) {
+            using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
+            return KeyOpt::desc.toStringView();
+        } else {
+            return pfr::get_name<I, T>();
+        }
+    }
+
     static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesSortedByFieldName = []<std::size_t... I>(std::index_sequence<I...>) {
         //TODO get name from options, if presented
-        std::array<FieldDescr, fieldsCount> arr = {FieldDescr{pfr::get_name<I, T>(), I} ...};
+        std::array<FieldDescr, fieldsCount> arr = {FieldDescr{fieldName<I>(), I} ...};
         std::ranges::sort(arr, {}, &FieldDescr::name);
         return arr;
     }(std::make_index_sequence<fieldsCount>{});
