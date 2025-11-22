@@ -300,12 +300,12 @@ bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, Ser
 
     bool first = true;
     auto  outputOne = [&outputPos, &end, &ctx, &first,&obj]<std::size_t I>() -> bool {
-        using Field   = decltype(pfr::get<I>(std::declval<ObjT&>()));
-        using Meta =  options::detail::field_meta_getter<Field>;
+        using Field   = pfr::tuple_element_t<I, ObjT>;
+        using Meta =  options::detail::annotation_meta_getter<Field>;
         using FieldOpts    = typename Meta::options;
 
 
-        if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && Meta::is_optional) {
+        if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && static_schema::JsonNullableValue<Field>) {
             if (Meta::isNull(pfr::get<I>(obj))) {
                 // skip entirely
                 return true;
@@ -361,15 +361,14 @@ bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, Ser
 
 template <static_schema::JsonValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent>
 bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
-    using Meta    = options::detail::field_meta_getter<Field>;
-    if constexpr(static_schema::JsonNullableValue<decltype(obj)>) {
-        static_assert(Meta::is_optional, "Internal error");
+    using Meta    = options::detail::annotation_meta_getter<Field>;
+    if constexpr(static_schema::JsonNullableValue<Field>) {
 
-        if(Meta::isNull(obj)) {
+        if(static_schema::isNull(obj)) {
             return serialize_literal(currentPos, end, "null");
         }
     }
-    return SerializeNonNullValue<typename Meta::options>(Meta::getRef(obj), currentPos, end, ctx);
+    return SerializeNonNullValue<typename Meta::options>(static_schema::getRef(obj), currentPos, end, ctx);
 }
 
 } // namespace serializer_details

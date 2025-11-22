@@ -804,8 +804,8 @@ struct FieldsHelper {
 
     template<std::size_t I>
     static constexpr std::string_view fieldName() {
-        using Field   = decltype(pfr::get<I>(std::declval<T&>()));
-        using Opts    = options::detail::field_meta_getter<Field>::options;
+        using Field   = pfr::tuple_element_t<I, T>;
+        using Opts    = options::detail::annotation_meta_getter<Field>::options;
 
         if constexpr (Opts::template has_option<options::detail::key_tag>) {
             using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
@@ -816,8 +816,8 @@ struct FieldsHelper {
     }
     template<std::size_t I>
     static constexpr bool fieldNotRequired() {
-        using Field   = decltype(pfr::get<I>(std::declval<T&>()));
-        using Opts    = options::detail::field_meta_getter<Field>::options;
+        using Field   = pfr::tuple_element_t<I, T>;
+        using Opts    = options::detail::annotation_meta_getter<Field>::options;
 
 
         if constexpr (Opts::template has_option<options::detail::not_required_tag>) {
@@ -942,13 +942,13 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
 template <static_schema::JsonValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
 bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    using Meta    = options::detail::field_meta_getter<Field>;
+    using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
         return false;
     }
     if constexpr(static_schema::JsonNullableValue<Field>) {
-        static_assert(Meta::is_optional, "Internal error");
+
         if (currentPos == end) {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
@@ -959,7 +959,7 @@ bool ParseValue(Field & field, It &currentPos, const Sent & end, Deserialization
                 ctx.setError(ParseError::ILLFORMED_NULL, currentPos);
                 return false;
             }
-            Meta::setNull(field);
+            static_schema::setNull(field);
             return true;
         }
     } else {
@@ -968,7 +968,7 @@ bool ParseValue(Field & field, It &currentPos, const Sent & end, Deserialization
             return false;
         }
     }
-    return ParseNonNullValue<typename Meta::options>(Meta::getRef(field), currentPos, end, ctx);
+    return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), currentPos, end, ctx);
 }
 
 } // namespace parser_details

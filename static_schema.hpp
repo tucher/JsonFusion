@@ -5,65 +5,40 @@
 #include <string_view>
 #include <optional>
 
+#include "options.hpp"
 namespace JSONReflection2 {
 
-// Forward-declare Annotated
-template<typename T, typename... Options>
-class Annotated;
 
 namespace static_schema {
 
-template<class T>
-using Decay = std::remove_cvref_t<T>;
 
-// Detect Annotated<T, ...>
-template<class T>
-struct is_annotated : std::false_type {};
+using options::detail::annotation_meta_getter;
 
-template<class U, class... Opts>
-struct is_annotated<Annotated<U, Opts...>> : std::true_type {};
-
-template<class T>
-inline constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
-
-// Base case: underlying type is itself
-template<class T>
-struct json_underlying {
-    using type = Decay<T>;
-};
-
-// Unwrap Annotated<T, ...>
-template<typename T, typename... Options>
-struct json_underlying<Annotated<T, Options...>> : json_underlying<T> {};
-
-
-template<class T>
-using JsonUnderlying = typename json_underlying<T>::type;
-
+template<class Field>
+using AnnotatedValue = typename annotation_meta_getter<Field>::value_t;
 
 
 template<class T> struct is_json_value;  // primary declaration
 template<class T> struct is_json_array;  // primary declaration
 
 
-
 /* ######## Bool type detection ######## */
 template<class C>
-concept JsonBool = std::same_as<JsonUnderlying<C>, bool>;
+concept JsonBool = std::same_as<AnnotatedValue<C>, bool>;
 
 /* ######## Number type detection ######## */
 template<class C>
 concept JsonNumber =
     !JsonBool<C> &&
-    (std::is_integral_v<JsonUnderlying<C>> || std::is_floating_point_v<JsonUnderlying<C>>);
+    (std::is_integral_v<AnnotatedValue<C>> || std::is_floating_point_v<AnnotatedValue<C>>);
 
 /* ######## String type detection ######## */
 template<class C>
 concept JsonString =
-    std::same_as<JsonUnderlying<C>, std::string>      ||
-    std::same_as<JsonUnderlying<C>, std::string_view> ||
-    (std::ranges::contiguous_range<JsonUnderlying<C>> &&
-     std::same_as<std::ranges::range_value_t<JsonUnderlying<C>>, char>);
+    std::same_as<AnnotatedValue<C>, std::string>      ||
+    std::same_as<AnnotatedValue<C>, std::string_view> ||
+    (std::ranges::contiguous_range<AnnotatedValue<C>> &&
+     std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>);
 
 
 /* ######## Object type detection ######## */
@@ -71,7 +46,7 @@ concept JsonString =
 template<typename T>
 struct is_json_object {
     static constexpr bool value = [] {
-        using U = JsonUnderlying<T>;
+        using U = AnnotatedValue<T>;
         if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
             return false;
         } else if constexpr (std::ranges::range<U>) {
@@ -94,13 +69,12 @@ template<class C>
 concept JsonObject = is_json_object<C>::value;
 
 
-
 /* ######## Array type detection ######## */
 
 template<class T>
 struct is_json_array {
     static constexpr bool value = []{
-        using U = JsonUnderlying<T>;
+        using U = AnnotatedValue<T>;
         if constexpr (!std::ranges::range<U>)
             return false;
         else if constexpr (JsonString<T>)
@@ -129,23 +103,34 @@ struct is_non_null_json_value {
         is_json_array<T>::value;
 };
 
+// helper: detect specializations
+template<class T, template<class...> class Template>
+struct is_specialization_of : std::false_type {};
 
-template<class T>
-struct is_nullable_json_value_impl : std::false_type {};
+template<template<class...> class Template, class... Args>
+struct is_specialization_of<Template<Args...>, Template> : std::true_type {};
 
-template<class U>
-struct is_nullable_json_value_impl<std::optional<U>>
-    : std::bool_constant<
-          !is_annotated_v<U> && is_non_null_json_value<U>::value
-          > {};
 
-template<class U, class... Opts>
-struct is_nullable_json_value_impl<Annotated<std::optional<U>, Opts...>>
-    : std::bool_constant<is_non_null_json_value<U>::value> {};
+template<class Field>
+struct is_nullable_json_value {
+    using AV  = AnnotatedValue<Field>; // unwrap Annotated only
+    static constexpr bool value = []{
+        if constexpr (is_specialization_of<AV, std::optional>::value) {
+            using Inner = typename AV::value_type;
+            // Inner must itself be a non-null JSON value type
+            return is_non_null_json_value<Inner>::value;
+        } else {
+            return false;
+        }
+    }();
+};
 
-template<class T>
-struct is_nullable_json_value
-    : is_nullable_json_value_impl<Decay<T>> {};
+template<class Field>
+concept JsonNullableValue = is_nullable_json_value<Field>::value;
+
+template<class Field>
+concept JsonNonNullableValue = is_non_null_json_value<Field>::value;
+
 
 template<class T>
 struct is_json_value {
@@ -153,12 +138,48 @@ struct is_json_value {
                                || is_nullable_json_value<T>::value;
 };
 
-template<class C>
-concept JsonNullableValue = is_nullable_json_value<C>::value;
-
 
 template<class C>
 concept JsonValue = is_json_value<C>::value;
+
+
+/* ######## Generic data access ######## */
+
+
+template <JsonNullableValue Field>
+void setNull(Field &f) {
+    annotation_meta_getter<Field>::getRef(f).reset();
+}
+
+template <JsonNullableValue Field>
+static bool isNull(const Field &f) {
+    return !annotation_meta_getter<Field>::getRef(f).has_value();
+}
+
+template<JsonNullableValue Field>
+decltype(auto) getRef(Field & f) {
+    using S = annotation_meta_getter<Field>;
+    if (!S::getRef(f)) return (S::getRef(f).emplace());
+    else return (*S::getRef(f));
+}
+
+template<JsonNullableValue Field>
+decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
+    using S = annotation_meta_getter<Field>;
+    return (*S::getRef(f));
+}
+
+template<JsonNonNullableValue Field>
+decltype(auto) getRef(Field & f) {
+    using S = annotation_meta_getter<Field>;
+    return (S::getRef(f));
+}
+
+template<JsonNonNullableValue Field>
+decltype(auto) getRef(const Field & f) {
+    using S = annotation_meta_getter<Field>;
+    return (S::getRef(f));
+}
 
 
 

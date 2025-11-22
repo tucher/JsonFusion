@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "annotated.hpp"
-#include "static_schema.hpp"
+
 namespace JSONReflection2 {
 
 template <typename CharT, std::size_t N> struct ConstString
@@ -148,7 +148,6 @@ struct no_options {
 };
 
 
-
 template<class T, class... Opts>
 struct field_options {
     using underlying_type = T;
@@ -164,101 +163,62 @@ struct field_options {
 };
 
 
+// Detect Annotated<T, ...>
+template<class T>
+struct is_annotated : std::false_type {};
+
+template<class U, class... Opts>
+struct is_annotated<Annotated<U, Opts...>> : std::true_type {};
+
+template<class T>
+inline constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
+
+
+
 template<class Field>
-struct field_meta;
+struct annotation_meta;
 
 // Base: non-annotated, non-optional
 template<class T>
-struct field_meta {
+struct annotation_meta {
     using value_t = T;
     using options      = no_options;
-    static constexpr bool is_optional = false;
-    static T & getRef(T&f) {
+    static decltype(auto) getRef(T & f) {
         return (f);
     }
-    static const T & getRef(const T&f) {
+    static decltype(auto) getRef(const T & f) {
         return (f);
     }
 };
 
 // Optional, non-annotated
-template<class T>
-struct field_meta<std::optional<T>> {
-    static_assert(!static_schema::is_annotated_v<std::remove_cvref_t<T>>,
-                  "Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
-
-    using value_t = T;
-    using options = no_options;
-    static constexpr bool is_optional = true;
-
-    static T & getRef(std::optional<T>&f) {
-        if (!f) return (f.emplace());
-        else return (*f);
-    }
-
-    static const T & getRef(const std::optional<T>&f) {
-        // if (!f) return (f.emplace()); //WE SHOULD NOT EMPLACE HERE, caller must ensure, that object has value
-        return (*f);
-    }
-    static void setNull(std::optional<T> &f) {
-        f.reset();
-    }
-    static bool isNull(const std::optional<T> &f) {
-        return !f.has_value();
-    }
+template<class T, class... Opts>
+struct annotation_meta<std::optional<Annotated<T, Opts...>>> {
+    static_assert(!sizeof(T), "Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
 };
-
 
 // Annotated<T, Opts...>
 template<class T, class... Opts>
-struct field_meta<Annotated<T, Opts...>> {
+struct annotation_meta<Annotated<T, Opts...>> {
     using value_t = T;
     using options      = field_options<T, Opts...>;
-    static constexpr bool is_optional = false;
 
-    static T & getRef(Annotated<T, Opts...>&f) {
+    static decltype(auto) getRef(Annotated<T, Opts...> & f) {
         return (f.value);
     }
-
-    static const T & getRef(const Annotated<T, Opts...>&f) {
+    static decltype(auto) getRef(const Annotated<T, Opts...> & f) {
         return (f.value);
     }
 };
 
-// Annotated<T, Opts...> and optional
-template<class T, class... Opts>
-struct field_meta<Annotated<std::optional<T>, Opts...>> {
-    using value_t = T;
-    using options      = field_options<T, Opts...>;
-    static constexpr bool is_optional = true;
-
-    static T & getRef(Annotated<std::optional<T>, Opts...>&f) {
-        if (!f.value) return (f.value.emplace());
-        else return (*f.value);
-    }
-    static const T & getRef(const Annotated<std::optional<T>, Opts...>&f) {
-        // if (!f.value) return (f.value.emplace()); //WE SHOULD NOT EMPLACE HERE, caller must ensure, that object has value
-        return (*f.value);
-    }
-    static void setNull(Annotated<std::optional<T>, Opts...>&f) {
-        f.value.reset();
-    }
-    static bool isNull(const Annotated<std::optional<T>, Opts...>&f) {
-        return !f.value.has_value();
-    }
-};
 
 // Entry point with decay
 template<class Field>
-struct field_meta_getter : field_meta<std::remove_cvref_t<Field>> {};
+struct annotation_meta_getter : annotation_meta<std::remove_cvref_t<Field>> {};
 
 
 
 } // namespace detail
-
-
-
-
 
 
 } //namespace options
