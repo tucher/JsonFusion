@@ -1070,10 +1070,10 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
     if(!res) {
         obj = copy;
     } else {
-        if(parser_details::skipWhiteSpace(begin, end, ctx)) {
-            ctx.setError(ParseError::EXCESS_DATA, begin);
+        if(parser_details::skipWhiteSpace(cur, end, ctx)) {
+            ctx.setError(ParseError::EXCESS_DATA, cur);
         } else {
-            ctx.setError(ParseError::NO_ERROR, begin);
+            ctx.setError(ParseError::NO_ERROR, cur);
         }
     }
     return res;

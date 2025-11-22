@@ -266,6 +266,37 @@ void test() {
         assert(Parse(arr_with_limits, std::string_view("[1, 2, 3, 4]")));
 
     }
+    struct ob {
+        int b;
+        Annotated<int, key<"new_key">, range<2, 100>, not_required> c;
+        Annotated<list<bool>, min_items<3> > flags;
+
+        struct Inline {
+            int inline_field;
+        } inlined;
+    };
+    ob structure;
+
+    Parse(structure,  std::string_view(R"(
+        {
+            "b": 123,
+            "new_key": 10,
+            "flags": [false, true, false, true],
+            "inlined": {"inline_field": 42}
+        }
+    )"));
+
+    struct sink{};
+    Annotated<sink, allow_excess_fields> test_sink;
+    Parse(test_sink,  std::string_view(R"(
+        {
+            "b": 123,
+            "new_key": 10,
+            "flags": [false, true, false, true],
+            "inlined": {"inline_field": 42}
+        }
+    )"));
+
 
 
     {
