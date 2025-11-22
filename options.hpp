@@ -35,6 +35,7 @@ ConstString(const CharT (&str)[N])->ConstString<CharT, N-1>;
 namespace options {
 
 namespace detail {
+struct not_json_tag{};
 struct key_tag{};
 struct not_required_tag{};
 struct allow_excess_fields_tag{};
@@ -47,6 +48,11 @@ struct max_items_tag {};
 struct float_decimals_tag {};
 
 }
+
+struct not_json {
+    using tag = detail::not_json_tag;
+};
+
 
 template<ConstString Desc>
 struct key {

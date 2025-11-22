@@ -300,17 +300,18 @@ bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, Ser
 
     bool first = true;
     auto  outputOne = [&outputPos, &end, &ctx, &first,&obj]<std::size_t I>() -> bool {
-        using Field   = pfr::tuple_element_t<I, ObjT>;
+        const auto & f = pfr::get<I>(obj);
+        using Field   = std::remove_cvref_t<decltype(f)>;
         using Meta =  options::detail::annotation_meta_getter<Field>;
         using FieldOpts    = typename Meta::options;
 
 
-        if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && static_schema::JsonNullableValue<Field>) {
-            if (Meta::isNull(pfr::get<I>(obj))) {
-                // skip entirely
+        if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+            return true;
+        } else if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && static_schema::JsonNullableValue<Field>) {
+            if (static_schema::isNull(f)) {
                 return true;
             }
-            return true;
         }
 
         if(first) {
@@ -342,7 +343,7 @@ bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, Ser
             return false;
         }
         *outputPos ++ = ':';
-        return SerializeValue(pfr::get<I>(obj), outputPos, end, ctx);
+        return SerializeValue(f, outputPos, end, ctx);
     };
 
     bool field_parse_result = [&outputOne]<std::size_t... I>(std::index_sequence<I...>) {

@@ -732,6 +732,8 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
 struct FieldDescr {
     std::string_view name;
     std::size_t originalIndex;
+    bool not_required;
+
 };
 
 struct IncrementalFieldSearch {
@@ -800,7 +802,25 @@ struct IncrementalFieldSearch {
 
 template<class T>
 struct FieldsHelper {
-    static constexpr std::size_t fieldsCount = pfr::tuple_size_v<T>;
+    template<std::size_t I>
+    static constexpr bool fieldIsNotJSON() {
+        using Field   = pfr::tuple_element_t<I, T>;
+        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    static constexpr std::size_t rawFieldsCount = pfr::tuple_size_v<T>;
+
+    static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) {
+        //TODO get name from options, if presented
+        return (std::size_t{0} + ... + (!fieldIsNotJSON<I>() ? 1: 0));
+    }(std::make_index_sequence<rawFieldsCount>{});
+
+
 
     template<std::size_t I>
     static constexpr std::string_view fieldName() {
@@ -818,8 +838,6 @@ struct FieldsHelper {
     static constexpr bool fieldNotRequired() {
         using Field   = pfr::tuple_element_t<I, T>;
         using Opts    = options::detail::annotation_meta_getter<Field>::options;
-
-
         if constexpr (Opts::template has_option<options::detail::not_required_tag>) {
             return true;
         } else {
@@ -827,12 +845,21 @@ struct FieldsHelper {
         }
     }
 
-    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesSortedByFieldName = []<std::size_t... I>(std::index_sequence<I...>) {
-        //TODO get name from options, if presented
-        std::array<FieldDescr, fieldsCount> arr = {FieldDescr{fieldName<I>(), I} ...};
+    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesSortedByFieldName =
+        []<std::size_t... I>(std::index_sequence<I...>) consteval {
+        std::array<FieldDescr, fieldsCount> arr;
+        std::size_t index = 0;
+        auto add_one = [&](auto ic) consteval {
+            constexpr std::size_t J = decltype(ic)::value;
+            if constexpr (!fieldIsNotJSON<J>()) {
+                arr[index++] = FieldDescr{ fieldName<J>(), J, fieldNotRequired<J>() };
+            }
+        };
+        (add_one(std::integral_constant<std::size_t, I>{}), ...);
         std::ranges::sort(arr, {}, &FieldDescr::name);
         return arr;
-    }(std::make_index_sequence<fieldsCount>{});
+    }(std::make_index_sequence<rawFieldsCount>{});
+
 };
 
 
@@ -868,8 +895,15 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             currentPos ++;
 
             bool presense_check_result = [&parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
-                return (
-                    (parsedFieldsByIndex[I] == true || FH:: template fieldNotRequired<I>()) && ...);
+                auto check_one = [&](auto ic)  {
+                    constexpr std::size_t J = decltype(ic)::value;
+                    if constexpr(FH::fieldIndexesSortedByFieldName[J].not_required) {
+                        return true;
+                    } else {
+                        return parsedFieldsByIndex[J];
+                    }
+                };
+                return (check_one(std::integral_constant<std::size_t, I>{}) && ...);
 
             }(std::make_index_sequence<FH::fieldsCount>{});
             if(!presense_check_result) {
@@ -916,11 +950,31 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 return false;
             }
         } else {
-            bool field_parse_result = [&res, &currentPos, &end, &ctx, &obj, &parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
-                return (
-                    (I==res->originalIndex && ParseValue(pfr::get<I>(obj), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
+            auto try_one = [&](auto ic) {
+                constexpr std::size_t StructIndex = decltype(ic)::value;
+                if constexpr(FH::template fieldIsNotJSON<StructIndex>()) {
+                    return true;
+                } else {
+                if (!ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
+                        return false;
+                    }
+                    std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
+                    parsedFieldsByIndex[arrIndex] = true;
+                    return true;
+                }
+            };
 
-            }(std::make_index_sequence<FH::fieldsCount>{});
+            std::size_t structIndex = res->originalIndex;
+            bool field_parse_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
+                bool ok = false;
+                (
+                    (structIndex == I
+                         ? (ok = try_one(std::integral_constant<std::size_t, I>{}), 0)
+                         : 0),
+                    ...
+                    );
+                return ok;
+            } (std::make_index_sequence<FH::rawFieldsCount>{});
             if(!field_parse_result) {
                 return false;
             }

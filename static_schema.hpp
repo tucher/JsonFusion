@@ -159,8 +159,9 @@ static bool isNull(const Field &f) {
 template<JsonNullableValue Field>
 decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
-    if (!S::getRef(f)) return (S::getRef(f).emplace());
-    else return (*S::getRef(f));
+    auto& opt = S::getRef(f);
+    if(!opt) return opt.emplace();
+    else return *opt;
 }
 
 template<JsonNullableValue Field>

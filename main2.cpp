@@ -273,7 +273,9 @@ void test() {
             Annotated<int, options::key<"f">> field;
             Annotated<string> opt;
             vector<std::optional<std::int64_t>> vect;
+            Annotated<A**, not_json> fuuu2;
             Annotated<bool, not_required> may_be_missing;
+            Annotated<A*, not_json> fuuu;
         };
         A a;
         assert(Parse(a, std::string_view(R"(
