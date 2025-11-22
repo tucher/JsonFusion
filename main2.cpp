@@ -1,8 +1,11 @@
-#include "static_schema.hpp"
-#include "parser.hpp"
+
 #include <cassert>
 #include <list>
 #include <iostream>
+
+#include "static_schema.hpp"
+#include "parser.hpp"
+#include "serializer.hpp"
 
 void schema_tests() {
     using std::string, std::list, std::vector, std::array, std::optional;
@@ -54,6 +57,18 @@ void schema_tests() {
         static_assert(JsonArray<vector<optional<int>>>);
 
         static_assert(JsonValue<Annotated<bool>>);
+
+        // using A = Annotated<int>;
+        static_assert(static_schema::JsonNullableValue<std::optional<int>>);
+        static_assert(static_schema::JsonNullableValue<Annotated<std::optional<int>>>);
+
+        // This should *not* be a valid JSON value anymore:
+        using Bad = std::optional<Annotated<int>>;
+        static_assert(!static_schema::is_non_null_json_value<Bad>::value);
+
+        static_assert(JsonNullableValue<std::optional<int>>);
+        static_assert(JsonNullableValue<Annotated<std::optional<int>>>);
+        static_assert(!JsonValue<std::optional<Annotated<int>>>);
 
         struct SimpleObject {
             bool b;
@@ -139,7 +154,7 @@ void schema_tests() {
         using namespace JSONReflection2::options;
 
 
-        using opts = options::detail::field_meta_decayed<Annotated<int, not_required, key<"fuu">, range<2,3>>>::options;
+        using opts = options::detail::field_meta_getter<Annotated<int, not_required, key<"fuu">, range<2,3>>>::options;
         static_assert(opts::has_option<options::detail::key_tag>
                       && opts::get_option<options::detail::key_tag>::desc.toStringView() == "fuu");
 
@@ -479,7 +494,63 @@ void test() {
 
 }
 
+struct TrivialSentinel {};
+
+template<typename Iterator>
+bool operator==(Iterator it, TrivialSentinel) {
+    return it == Iterator{};  // or implement your end condition check here
+}
+
+template<typename Iterator>
+bool operator!=(Iterator it, TrivialSentinel s) {
+    return !(it == s);
+}
+
+void serialize_tests() {
+    using std::string, std::list, std::vector, std::array, std::optional;
+    using namespace JSONReflection2;
+    using namespace JSONReflection2::options;
+
+    string output;
+
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(true, output.data(), output.size()) && string(output.c_str()) == "true");
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(false, output.data(), output.size()) && string(output.c_str()) == "false");
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(optional<bool>{}, output.data(), output.size()) && string(output.c_str()) == "null");
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(optional<bool>{true}, output.data(), output.size()) && string(output.c_str()) == "true");
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(list<bool>{true, false, true}, output.data(), output.size()) && string(output.c_str()) == "[true,false,true]");
+
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(int(12345), output.data(), output.size()) && string(output.c_str()) == "12345");
+
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(float(3.14), output.data(), output.size()) && string(output.c_str()) == "3.140000104904175");
+
+    struct A {
+        int a = 12;
+        optional<string> b = {};
+        list<bool> flags = {false, true, false};
+    };
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(A(), output.data(), output.size()) &&
+           string(output.c_str()) == R"({"a":12,"b":null,"flags":[false,true,false]})");
+
+    struct B {
+        Annotated<int, key<"field1">> a{12};
+        optional<string> b = {};
+        list<bool> flags = {false, true, false};
+    };
+    output.clear(); output.resize(1000, 0);
+    assert(Serialize(B(), output.data(), output.size()) &&
+           string(output.c_str()) == R"({"field1":12,"b":null,"flags":[false,true,false]})");
+
+}
 int main()
 {
     test();
+    serialize_tests();
 }

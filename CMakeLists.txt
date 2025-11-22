@@ -9,8 +9,9 @@ include_directories(${PROJECT_SOURCE_DIR}/3party)
 
 add_executable(cpp_struct_serialisation
     main2.cpp
-    static_schema.hpp
     parser.hpp
+    serializer.hpp
+    static_schema.hpp
     annotated.hpp
     options.hpp
     # canada_json_perf_test.cpp

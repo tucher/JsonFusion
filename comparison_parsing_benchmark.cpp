@@ -87,6 +87,75 @@ struct ComplexConfig {
     vector<optional<Node>> nodeHistory;
 };
 
+
+namespace static_containers_variant {
+// using string = std::array<char, 100>;
+
+// template <class T>
+// using vector = std::array<T, 100>;
+
+// template <class T>
+// using list = std::array<T, 100>;
+
+struct Limits {
+    int minValue;
+    int maxValue;
+};
+
+struct FixedStrings {
+    array<char, 8>  code{};   // e.g. "CFG001"
+    array<char, 16> label{};  // e.g. "MainConfig"
+};
+
+struct Node {
+    string                     name;
+    bool                       active;
+    vector<int>                weights;
+    optional<double>           bias;
+    vector<optional<bool>>     flags;
+    vector<Node>               children;
+};
+
+struct Credentials {
+    string            user;
+    optional<string>  password;
+};
+
+struct ComplexConfig {
+    // Scalars
+    bool         enabled;
+    char         mode;             // parsed as number then cast
+    int          retryCount;
+    double       timeoutSeconds;
+
+    // Strings
+    string       title;
+    FixedStrings fixedStrings;
+
+    // Arrays
+    array<int, 3>          rgb;
+    vector<string>         tags;
+    list<int64_t>          counters;
+    vector<vector<int>>    matrix;
+
+    // Optionals
+    optional<int>          debugLevel;
+    optional<string>       optionalNote;
+    optional<vector<int>>  optionalArray;
+    optional<Limits>       optionalLimits;
+
+    // Nested objects
+    Limits                 hardLimits;
+    Credentials            creds;
+
+    // Recursive graph
+    Node                   rootNode;
+    vector<Node>           extraNodes;
+    optional<Node>         optionalNode;
+    vector<optional<Node>> nodeHistory;
+};
+}
+
 // ----------------------
 // JSON under test
 // ----------------------

@@ -17,7 +17,7 @@
 #include "options.hpp"
 namespace JSONReflection2 {
 
-enum ErrorT {
+enum class ParseError {
     NO_ERROR,
     UNEXPECTED_END_OF_DATA,
     UNEXPECTED_SYMBOL,
@@ -54,22 +54,21 @@ concept CharSentinelFor =
     std::sentinel_for<Sent, It>;
 
 
-
 template <CharInputIterator InpIter>
 class ParseResult {
-    ErrorT m_error = NO_ERROR;
+    ParseError m_error = ParseError::NO_ERROR;
     InpIter m_pos;
 public:
-    ParseResult(ErrorT err, InpIter pos):
+    ParseResult(ParseError err, InpIter pos):
         m_error(err), m_pos(pos)
     {}
     operator bool() const {
-        return m_error == NO_ERROR;
+        return m_error == ParseError::NO_ERROR;
     }
     InpIter pos() const {
         return m_pos;
     }
-    ErrorT error() const {
+    ParseError error() const {
         return m_error;
     }
 };
@@ -77,41 +76,16 @@ public:
 
 namespace  parser_details {
 
-
-
-
-template<class ObjT>
-decltype(auto) get_storage(ObjT& obj) {
-    return (obj);
-}
-
-template<class T, class... Opts>
-decltype(auto) get_storage(Annotated<T, Opts...>& a) {
-    return (a.value);
-}
-
-template<class T>
-decltype(auto) get_storage(std::optional<T>& o) {
-    if (!o) o.emplace();
-    return *o;
-}
-
-template<class T, class... Opts>
-decltype(auto) get_storage(std::optional<Annotated<T, Opts...>>& o) {
-    if (!o) o.emplace();
-    return o->value;
-}
-
 template <CharInputIterator InpIter>
 class DeserializationContext {
 
-    ErrorT error = NO_ERROR;
+    ParseError error = ParseError::NO_ERROR;
     InpIter m_pos;
 public:
     DeserializationContext(InpIter b) {
         m_pos = b;
     }
-    void setError(ErrorT err, InpIter pos) {
+    void setError(ParseError err, InpIter pos) {
         error = err;
         m_pos = pos;
     }
@@ -152,25 +126,11 @@ inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationCon
         ++currentPos;
     }
     if (currentPos == end) {
-        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
     return true;
 }
-
-template <class T>
-struct decay_optional {
-    using type = std::remove_cv_t<std::remove_reference_t<T>>;
-};
-
-// specialization for std::optional
-template <class U>
-struct decay_optional<std::optional<U>> {
-    using type = std::remove_cv_t<std::remove_reference_t<U>>;
-};
-
-template <class T>
-using decay_optional_t = typename decay_optional<T>::type;
 
 bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
     for (char c : lit) {
@@ -182,34 +142,29 @@ bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
     return true;
 }
 
-template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonBool<decay_optional_t<ObjT>>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonBool<ObjT>
 bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    auto& storage = get_storage(obj);
     if(currentPos == end) {
-        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
     if (*currentPos == 't' && match_literal(++currentPos, end, "rue")) {
-        storage = true;
+        obj = true;
         return true;
     } else if (*currentPos == 'f' && match_literal(++currentPos, end, "alse")) {
-        storage = false;
+        obj = false;
         return true;
     } else {
-        ctx.setError(ErrorT::ILLFORMED_BOOL, currentPos);
+        ctx.setError(ParseError::ILLFORMED_BOOL, currentPos);
         return false;
     }
 }
 
 
-
-template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonNumber<decay_optional_t<ObjT>>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonNumber<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    auto& storage = get_storage(obj);
-    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
-    using Under = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
     constexpr std::size_t NumberBufSize = 40;
     char buf[NumberBufSize];
     std::size_t index = 0;
@@ -225,7 +180,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
 
         if (index >= NumberBufSize - 1) [[unlikely]] {
-            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
 
@@ -233,31 +188,31 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         ++currentPos;
     }
     buf[index] = 0;
-    if constexpr (std::is_integral_v<Under>) {
+    if constexpr (std::is_integral_v<ObjT>) {
         // Reject decimals/exponents for integer fields
         if (seenDot || seenExp) {
-            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
 
-        Under value{};
+        ObjT value{};
         auto [ptr, ec] = std::from_chars(buf, buf + index, value);
 
         if (ec != std::errc{} || ptr != buf + index) {
-            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
         if constexpr (Opts::template has_option<options::detail::range_tag>) {
             using Range = Opts::template get_option<options::detail::range_tag>;
             if (value < Range::min || value > Range::max) {
-                ctx.setError(ErrorT::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                 return false;
             }
         }
 
-        storage = value;
+        obj = value;
         return true;
-    } else if constexpr (std::is_floating_point_v<Under>) {
+    } else if constexpr (std::is_floating_point_v<ObjT>) {
 
         double x;
         if(fast_double_parser::parse_number(buf, &x) != nullptr) {
@@ -265,22 +220,22 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             if constexpr (Opts::template has_option<options::detail::range_tag>) {
                 using Range = typename Opts::template get_option<options::detail::range_tag>;
                 if (x < Range::min || x > Range::max) {
-                    ctx.setError(ErrorT::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                    ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                     return false;
                 }
             }
 
-            storage = x;
+            obj = x;
             return true;
         } else {
-            ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
     } else {
         // Should never happen if JsonNumber is correct
-        static_assert(std::is_integral_v<Under> || std::is_floating_point_v<Under>,
+        static_assert(std::is_integral_v<ObjT> || std::is_floating_point_v<ObjT>,
                       "JsonNumber underlying type must be integral or floating");
-        ctx.setError(ErrorT::ILLFORMED_NUMBER, currentPos);
+        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
         return false;
     }
 }
@@ -297,7 +252,7 @@ bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, 
     out = 0;
     for (int i = 0; i < 4; ++i) {
         if (currentPos == end) [[unlikely]] {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
         char currChar = *currentPos;
@@ -309,7 +264,7 @@ bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, 
         } else if (currChar >= 'a' && currChar <= 'f') {
             v = static_cast<std::uint8_t>(currChar - 'a' + 10);
         } else {
-            ctx.setError(ErrorT::UNEXPECTED_SYMBOL, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_SYMBOL, currentPos);
             return false;
         }
         out = static_cast<std::uint16_t>((out << 4) | v);
@@ -321,14 +276,14 @@ bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, 
 template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent>
 bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if(*currentPos != '"'){
-        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
         return false;
     }
     currentPos++;
 
     while(true) {
         if(currentPos == end) {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
         auto c = *currentPos;
@@ -341,7 +296,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
         case '\\': {
             currentPos++;
             if(currentPos == end) [[unlikely]] {
-                ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+                ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
                 return false;
             }
 
@@ -370,20 +325,20 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
                 if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
                     // High surrogate -> must be followed by \uDC00..DFFF
                     if (currentPos == end) [[unlikely]] {
-                        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+                        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
                         return false;
                     }
                     if (*currentPos != '\\') {
-                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                         return false;
                     }
                     ++currentPos;
                     if (currentPos == end) [[unlikely]] {
-                        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+                        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
                         return false;
                     }
                     if (*currentPos != 'u') {
-                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                         return false;
                     }
                     ++currentPos;
@@ -394,7 +349,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
                     }
                     if (u2 < 0xDC00u || u2 > 0xDFFFu) {
                         // Low surrogate not in valid range
-                        ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                         return false;
                     }
 
@@ -403,7 +358,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
                                 + (static_cast<std::uint32_t>(u2) - 0xDC00u);
                 } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
                     // Lone low surrogate → invalid
-                    ctx.setError(ErrorT::ILLFORMED_STRING, currentPos);
+                    ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                     return false;
                 } else {
                     // Basic Multilingual Plane code point
@@ -432,7 +387,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 
                 for (int i = 0; i < len; ++i) {
                     if (!inserter(utf8[i])) {
-                        ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                        ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                         return false;
                     }
                 }
@@ -441,12 +396,12 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 
             default:
                 /* Unexpected symbol */
-                ctx.setError(ErrorT::UNEXPECTED_SYMBOL, currentPos);
+                ctx.setError(ParseError::UNEXPECTED_SYMBOL, currentPos);
                 return false;
             }
             if (out) { // only emit if we actually set a simple escape
                 if (!inserter(out)) {
-                    ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                     return false;
                 }
                 currentPos++;
@@ -457,7 +412,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 
         default:
             if(!inserter(*currentPos)) {
-                ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                 return false;
             }
             currentPos++;
@@ -466,34 +421,29 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 }
 
 
-template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonString<decay_optional_t<ObjT>>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonString<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
-    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
-
-
-    auto& storage = get_storage(obj);
     std::size_t parsedSize = 0;
-    if constexpr (DynamicContainerTypeConcept<T>) {
-        storage.clear();
+    if constexpr (DynamicContainerTypeConcept<ObjT>) {
+        obj.clear();
     }
-    auto inserter = [&storage, &parsedSize, &ctx, &currentPos] (char c) -> bool {
-        if constexpr (!DynamicContainerTypeConcept<T>) {
-            if (parsedSize < storage.size()) {
-                storage[parsedSize] = c;
+    auto inserter = [&obj, &parsedSize, &ctx, &currentPos] (char c) -> bool {
+        if constexpr (!DynamicContainerTypeConcept<ObjT>) {
+            if (parsedSize < obj.size()) {
+                obj[parsedSize] = c;
             } else {
-               ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+               ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                return false;
             }
         }  else {
-            storage.push_back(c);
+            obj.push_back(c);
         }
         parsedSize++;
         if constexpr (Opts::template has_option<options::detail::max_length_tag>) {
             using MaxLengthOpt = typename Opts::template get_option<options::detail::max_length_tag>;
             if(parsedSize > MaxLengthOpt::value) {
-                ctx.setError(ErrorT::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                 return false;
             }
 
@@ -502,14 +452,14 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     };
 
     if(parseString(inserter, currentPos, end, ctx)) {
-        if constexpr (!DynamicContainerTypeConcept<T>) {
-            if(parsedSize < storage.size())
-                storage[parsedSize] = 0;
+        if constexpr (!DynamicContainerTypeConcept<ObjT>) {
+            if(parsedSize < obj.size())
+                obj[parsedSize] = 0;
         }
         if constexpr (Opts::template has_option<options::detail::min_length_tag>) {
             using MinLengthOpt = typename Opts::template get_option<options::detail::min_length_tag>;
             if(parsedSize < MinLengthOpt::value) {
-                ctx.setError(ErrorT::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
                 return false;
             }
 
@@ -520,16 +470,11 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     }
 }
 
-template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonArray<decay_optional_t<ObjT>>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonArray<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
-
-    using Opts    = options::detail::field_meta_decayed<ObjT>::options;
-
-    auto& storage = get_storage(obj);
     if(*currentPos != '[') {
-        ctx.setError(ErrorT::ILLFORMED_ARRAY, currentPos);
+        ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
         return false;
     }
     currentPos++;
@@ -540,7 +485,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     bool has_trailing_comma = false;
     while(true) {
         if(currentPos == end) [[unlikely]] {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
@@ -548,13 +493,13 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
         if(*currentPos == ']') {
             if(has_trailing_comma) {
-                ctx.setError(ErrorT::ILLFORMED_ARRAY, currentPos);
+                ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
                 return false;
             }
             if constexpr (Opts::template has_option<options::detail::min_items_tag>) {
                 using MinItems = Opts::template get_option<options::detail::min_items_tag>;
                 if (parsed_items_count < MinItems::value) {
-                    ctx.setError(ErrorT::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
+                    ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
                     return false;
                 }
             }
@@ -562,19 +507,19 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             currentPos ++;
             return true;
         }
-        if constexpr (DynamicContainerTypeConcept<T>) {
-            auto & newItem = storage.emplace_back();
+        if constexpr (DynamicContainerTypeConcept<ObjT>) {
+            auto & newItem = obj.emplace_back();
             if(!ParseValue(newItem, currentPos, end, ctx)) {
                 return false;
             }
         } else {
-            if(parsed_items_count < storage.size()) {
-                if(!ParseValue(storage[parsed_items_count], currentPos, end, ctx)) {
+            if(parsed_items_count < obj.size()) {
+                if(!ParseValue(obj[parsed_items_count], currentPos, end, ctx)) {
                     return false;
                 }
 
             } else {
-                ctx.setError(ErrorT::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                 return false;
             }
             //TODO handle different size policies via opts
@@ -583,7 +528,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         if constexpr (Opts::template has_option<options::detail::max_items_tag>) {
             using MaxItems = Opts::template get_option<options::detail::max_items_tag>;
             if (parsed_items_count > MaxItems::value) {
-                ctx.setError(ErrorT::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
                 return false;
             }
         }
@@ -605,7 +550,7 @@ constexpr int MAX_SKIP_NESTING = 64;
 template <CharInputIterator It, CharSentinelFor<It> Sent>
 bool matchLiteralTail(It& currentPos, const Sent& end,
                       const char* tail, std::size_t len,
-                      ErrorT err, DeserializationContext<It>& ctx)
+                      ParseError err, DeserializationContext<It>& ctx)
 {
     for (std::size_t i = 0; i < len; ++i) {
         if (currentPos == end || *currentPos != tail[i]) {
@@ -624,7 +569,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
         return false;
     }
     if (currentPos == end) {
-        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
 
@@ -642,19 +587,19 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
         // 't' seen; match "rue"
         ++currentPos;
         return matchLiteralTail(currentPos, end, "rue", 3,
-                                ErrorT::ILLFORMED_BOOL, ctx);
+                                ParseError::ILLFORMED_BOOL, ctx);
     }
     if (c == 'f') {
         // 'f' seen; match "alse"
         ++currentPos;
         return matchLiteralTail(currentPos, end, "alse", 4,
-                                ErrorT::ILLFORMED_BOOL, ctx);
+                                ParseError::ILLFORMED_BOOL, ctx);
     }
     if (c == 'n') {
         // 'n' seen; match "ull"
         ++currentPos;
         return matchLiteralTail(currentPos, end, "ull", 3,
-                                ErrorT::ILLFORMED_NULL, ctx);
+                                ParseError::ILLFORMED_NULL, ctx);
     }
 
     // number-like: skip until a plain end (whitespace, ',', ']', '}', etc.)
@@ -678,7 +623,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
 
     auto push_close = [&](char open) -> bool {
         if (depth >= MAX_SKIP_NESTING) {
-            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
         stack[depth++] = (open == '{') ? '}' : ']';
@@ -687,11 +632,11 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
 
     auto pop_close = [&](char close) -> bool {
         if (depth == 0) {
-            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
         if (stack[depth - 1] != close) {
-            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
         --depth;
@@ -739,7 +684,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
         case 't': {
             ++currentPos;
             if (!matchLiteralTail(currentPos, end, "rue", 3,
-                                  ErrorT::ILLFORMED_BOOL, ctx)) {
+                                  ParseError::ILLFORMED_BOOL, ctx)) {
                 return false;
             }
             break;
@@ -747,7 +692,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
         case 'f': {
             ++currentPos;
             if (!matchLiteralTail(currentPos, end, "alse", 4,
-                                  ErrorT::ILLFORMED_BOOL, ctx)) {
+                                  ParseError::ILLFORMED_BOOL, ctx)) {
                 return false;
             }
             break;
@@ -755,7 +700,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
         case 'n': {
             ++currentPos;
             if (!matchLiteralTail(currentPos, end, "ull", 3,
-                                  ErrorT::ILLFORMED_NULL, ctx)) {
+                                  ParseError::ILLFORMED_NULL, ctx)) {
                 return false;
             }
             break;
@@ -775,7 +720,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
     }
 
     if (depth != 0) {
-        ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
 
@@ -860,8 +805,7 @@ struct FieldsHelper {
     template<std::size_t I>
     static constexpr std::string_view fieldName() {
         using Field   = decltype(pfr::get<I>(std::declval<T&>()));
-        using Meta    = options::detail::field_meta_decayed<Field>;
-        using Opts    = typename Meta::options;
+        using Opts    = options::detail::field_meta_getter<Field>::options;
 
         if constexpr (Opts::template has_option<options::detail::key_tag>) {
             using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
@@ -873,8 +817,8 @@ struct FieldsHelper {
     template<std::size_t I>
     static constexpr bool fieldNotRequired() {
         using Field   = decltype(pfr::get<I>(std::declval<T&>()));
-        using Meta    = options::detail::field_meta_decayed<Field>;
-        using Opts    = typename Meta::options;
+        using Opts    = options::detail::field_meta_getter<Field>::options;
+
 
         if constexpr (Opts::template has_option<options::detail::not_required_tag>) {
             return true;
@@ -892,14 +836,12 @@ struct FieldsHelper {
 };
 
 
-template <class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonObject<decay_optional_t<ObjT>>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonObject<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    using T = static_schema::JsonUnderlying<decay_optional_t<ObjT>>;
-    auto& storage = get_storage(obj);
 
     if(*currentPos != '{') {
-        ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+        ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
         return false;
     }
     currentPos++;
@@ -907,11 +849,11 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         return false;
     }
     bool has_trailing_comma = false;
-    using FH = FieldsHelper<T>;
+    using FH = FieldsHelper<ObjT>;
     std::array<bool, FH::fieldsCount> parsedFieldsByIndex{};
     while(true) {
         if(currentPos == end) [[unlikely]] {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
@@ -920,7 +862,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
         if(*currentPos == '}') {
             if(has_trailing_comma) {
-                ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+                ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
                 return false;
             }
             currentPos ++;
@@ -931,7 +873,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
             }(std::make_index_sequence<FH::fieldsCount>{});
             if(!presense_check_result) {
-                ctx.setError(ErrorT::OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR, currentPos);
                 return false;
             }
             return true;
@@ -951,34 +893,32 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
         if(*currentPos != ':') {
-            ctx.setError(ErrorT::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
         currentPos ++;
         if(currentPos == end) [[unlikely]] {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
 
         if(res == FH::fieldIndexesSortedByFieldName.end()) {
-            using Opts    = options::detail::field_meta_decayed<ObjT>::options;
-
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
                 if(!SkipValue(currentPos, end, ctx)) {
                     return false;
                 }
             } else {
-                ctx.setError(ErrorT::EXCESS_FIELD, currentPos);
+                ctx.setError(ParseError::EXCESS_FIELD, currentPos);
                 return false;
             }
         } else {
-            bool field_parse_result = [&res, &currentPos, &end, &ctx, &storage, &parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
+            bool field_parse_result = [&res, &currentPos, &end, &ctx, &obj, &parsedFieldsByIndex]<std::size_t... I>(std::index_sequence<I...>) {
                 return (
-                    (I==res->originalIndex && ParseValue(pfr::get<I>(storage), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
+                    (I==res->originalIndex && ParseValue(pfr::get<I>(obj), currentPos, end, ctx) && (parsedFieldsByIndex[I] = true)) || ...);
 
             }(std::make_index_sequence<FH::fieldsCount>{});
             if(!field_parse_result) {
@@ -1000,35 +940,35 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 }
 
 
-
-template <CharInputIterator It, CharSentinelFor<It> Sent>
-bool ParseValue(static_schema::JsonValue auto & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+template <static_schema::JsonValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
+bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    using Meta    = options::detail::field_meta_getter<Field>;
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
         return false;
     }
-    if constexpr(static_schema::JsonNullableValue<decltype(obj)>) {
+    if constexpr(static_schema::JsonNullableValue<Field>) {
+        static_assert(Meta::is_optional, "Internal error");
         if (currentPos == end) {
-            ctx.setError(ErrorT::UNEXPECTED_END_OF_DATA, currentPos);
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
             return false;
         }
         if(*currentPos == 'n') {
             currentPos++;
-            if(match_literal(currentPos, end, "ull")) {
-                obj.reset();
-                return true;
-            } else {
-                ctx.setError(ErrorT::ILLFORMED_NULL, currentPos);
+            if(!match_literal(currentPos, end, "ull")) {
+                ctx.setError(ParseError::ILLFORMED_NULL, currentPos);
                 return false;
             }
+            Meta::setNull(field);
+            return true;
         }
     } else {
         if (currentPos != end && *currentPos == 'n') {
-            ctx.setError(ErrorT::NULL_IN_NON_OPTIONAL, currentPos);
+            ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, currentPos);
             return false;
         }
     }
-    return ParseNonNullValue(obj, currentPos, end, ctx);
+    return ParseNonNullValue<typename Meta::options>(Meta::getRef(field), currentPos, end, ctx);
 }
 
 } // namespace parser_details
@@ -1046,9 +986,9 @@ ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
         obj = copy;
     } else {
         if(parser_details::skipWhiteSpace(begin, end, ctx)) {
-            ctx.setError(ErrorT::EXCESS_DATA, begin);
+            ctx.setError(ParseError::EXCESS_DATA, begin);
         } else {
-            ctx.setError(ErrorT::NO_ERROR, begin);
+            ctx.setError(ParseError::NO_ERROR, begin);
         }
     }
     return res;
@@ -1077,9 +1017,9 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
         obj = copy;
     } else {
         if(parser_details::skipWhiteSpace(begin, end, ctx)) {
-            ctx.setError(ErrorT::EXCESS_DATA, begin);
+            ctx.setError(ParseError::EXCESS_DATA, begin);
         } else {
-            ctx.setError(ErrorT::NO_ERROR, begin);
+            ctx.setError(ParseError::NO_ERROR, begin);
         }
     }
     return res;

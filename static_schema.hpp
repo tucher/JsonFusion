@@ -16,6 +16,15 @@ namespace static_schema {
 template<class T>
 using Decay = std::remove_cvref_t<T>;
 
+// Detect Annotated<T, ...>
+template<class T>
+struct is_annotated : std::false_type {};
+
+template<class U, class... Opts>
+struct is_annotated<Annotated<U, Opts...>> : std::true_type {};
+
+template<class T>
+inline constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
 
 // Base case: underlying type is itself
 template<class T>
@@ -26,11 +35,6 @@ struct json_underlying {
 // Unwrap Annotated<T, ...>
 template<typename T, typename... Options>
 struct json_underlying<Annotated<T, Options...>> : json_underlying<T> {};
-
-// Unwrap Annotated<T, ...>
-template<typename T>
-struct json_underlying<std::optional<T>> : json_underlying<T> {};
-
 
 
 template<class T>
@@ -131,6 +135,12 @@ struct is_nullable_json_value_impl : std::false_type {};
 
 template<class U>
 struct is_nullable_json_value_impl<std::optional<U>>
+    : std::bool_constant<
+          !is_annotated_v<U> && is_non_null_json_value<U>::value
+          > {};
+
+template<class U, class... Opts>
+struct is_nullable_json_value_impl<Annotated<std::optional<U>, Opts...>>
     : std::bool_constant<is_non_null_json_value<U>::value> {};
 
 template<class T>

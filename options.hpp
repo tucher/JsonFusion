@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "annotated.hpp"
-
+#include "static_schema.hpp"
 namespace JSONReflection2 {
 
 template <typename CharT, std::size_t N> struct ConstString
@@ -44,6 +44,8 @@ struct min_length_tag {};
 struct max_length_tag {};
 struct min_items_tag {};
 struct max_items_tag {};
+struct float_decimals_tag {};
+
 }
 
 template<ConstString Desc>
@@ -99,6 +101,11 @@ struct max_items {
     static constexpr std::size_t value = N;
 };
 
+template<std::size_t N>
+struct float_decimals {
+    using tag = detail::float_decimals_tag;
+    static constexpr std::size_t value = N;
+};
 
 namespace detail {
 
@@ -161,26 +168,89 @@ template<class Field>
 struct field_meta;
 
 // Base: non-annotated, non-optional
-template<class Field>
+template<class T>
 struct field_meta {
-    using storage_type = std::remove_cvref_t<Field>;
+    using value_t = T;
     using options      = no_options;
+    static constexpr bool is_optional = false;
+    static T & getRef(T&f) {
+        return (f);
+    }
+    static const T & getRef(const T&f) {
+        return (f);
+    }
 };
+
+// Optional, non-annotated
+template<class T>
+struct field_meta<std::optional<T>> {
+    static_assert(!static_schema::is_annotated_v<std::remove_cvref_t<T>>,
+                  "Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
+
+    using value_t = T;
+    using options = no_options;
+    static constexpr bool is_optional = true;
+
+    static T & getRef(std::optional<T>&f) {
+        if (!f) return (f.emplace());
+        else return (*f);
+    }
+
+    static const T & getRef(const std::optional<T>&f) {
+        // if (!f) return (f.emplace()); //WE SHOULD NOT EMPLACE HERE, caller must ensure, that object has value
+        return (*f);
+    }
+    static void setNull(std::optional<T> &f) {
+        f.reset();
+    }
+    static bool isNull(const std::optional<T> &f) {
+        return !f.has_value();
+    }
+};
+
 
 // Annotated<T, Opts...>
 template<class T, class... Opts>
 struct field_meta<Annotated<T, Opts...>> {
-    using storage_type = T;
+    using value_t = T;
     using options      = field_options<T, Opts...>;
+    static constexpr bool is_optional = false;
+
+    static T & getRef(Annotated<T, Opts...>&f) {
+        return (f.value);
+    }
+
+    static const T & getRef(const Annotated<T, Opts...>&f) {
+        return (f.value);
+    }
 };
 
-// optional<U> – delegate to U
-template<class U>
-struct field_meta<std::optional<U>> : field_meta<U> {};
+// Annotated<T, Opts...> and optional
+template<class T, class... Opts>
+struct field_meta<Annotated<std::optional<T>, Opts...>> {
+    using value_t = T;
+    using options      = field_options<T, Opts...>;
+    static constexpr bool is_optional = true;
+
+    static T & getRef(Annotated<std::optional<T>, Opts...>&f) {
+        if (!f.value) return (f.value.emplace());
+        else return (*f.value);
+    }
+    static const T & getRef(const Annotated<std::optional<T>, Opts...>&f) {
+        // if (!f.value) return (f.value.emplace()); //WE SHOULD NOT EMPLACE HERE, caller must ensure, that object has value
+        return (*f.value);
+    }
+    static void setNull(Annotated<std::optional<T>, Opts...>&f) {
+        f.value.reset();
+    }
+    static bool isNull(const Annotated<std::optional<T>, Opts...>&f) {
+        return !f.value.has_value();
+    }
+};
 
 // Entry point with decay
 template<class Field>
-struct field_meta_decayed : field_meta<std::remove_cvref_t<Field>> {};
+struct field_meta_getter : field_meta<std::remove_cvref_t<Field>> {};
 
 
 
