@@ -285,8 +285,8 @@ void test() {
 
         string output;
 
-        output.clear(); output.resize(1000, 0);
-        assert(Serialize(ob, output.data(), output.size()) );
+
+        assert(Serialize(ob, output) );
         int a = 1;
     }
     struct ob {
@@ -569,30 +569,30 @@ void serialize_tests() {
 
     string output;
 
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(true, output.data(), output.size()) && string(output.c_str()) == "true");
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(false, output.data(), output.size()) && string(output.c_str()) == "false");
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(optional<bool>{}, output.data(), output.size()) && string(output.c_str()) == "null");
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(optional<bool>{true}, output.data(), output.size()) && string(output.c_str()) == "true");
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(list<bool>{true, false, true}, output.data(), output.size()) && string(output.c_str()) == "[true,false,true]");
 
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(int(12345), output.data(), output.size()) && string(output.c_str()) == "12345");
+    assert(Serialize(true, output) && string(output.c_str()) == "true");
 
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(float(3.14), output.data(), output.size()) && string(output.c_str()) == "3.140000104904175");
+    assert(Serialize(false, output) && string(output.c_str()) == "false");
+
+    assert(Serialize(optional<bool>{}, output) && string(output.c_str()) == "null");
+
+    assert(Serialize(optional<bool>{true}, output) && string(output.c_str()) == "true");
+
+    assert(Serialize(list<bool>{true, false, true}, output) && string(output.c_str()) == "[true,false,true]");
+
+
+    assert(Serialize(int(12345), output) && string(output.c_str()) == "12345");
+
+
+    assert(Serialize(float(3.14), output) && string(output.c_str()) == "3.140000104904175");
 
     struct A {
         int a = 12;
         optional<string> b = {};
         list<bool> flags = {false, true, false};
     };
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(A(), output.data(), output.size()) &&
+
+    assert(Serialize(A(), output) &&
            string(output.c_str()) == R"({"a":12,"b":null,"flags":[false,true,false]})");
 
     struct B {
@@ -600,8 +600,8 @@ void serialize_tests() {
         optional<string> b = {};
         list<bool> flags = {false, true, false};
     };
-    output.clear(); output.resize(1000, 0);
-    assert(Serialize(B(), output.data(), output.size()) &&
+
+    assert(Serialize(B(), output) &&
            string(output.c_str()) == R"({"field1":12,"b":null,"flags":[false,true,false]})");
 
 }

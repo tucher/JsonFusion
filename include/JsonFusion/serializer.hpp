@@ -35,7 +35,7 @@ concept CharOutputIterator =
 
 // 2) Matching "end" type you can:
 //    - compare as it == end / it != end
-template <class It, class Sent>
+template <class Sent, class It>
 concept CharSentinelForOut =
     std::sentinel_for<Sent, It>;
 
@@ -70,8 +70,8 @@ class SerializationContext {
     SerializeError error = SerializeError::NO_ERROR;
     OutIter m_pos;
 public:
-    SerializationContext(OutIter b) {
-        m_pos = b;
+    SerializationContext(OutIter b): m_pos(b) {
+
     }
     void setError(SerializeError err, OutIter pos) {
         error = err;
@@ -482,6 +482,42 @@ SerializeResult<char*> Serialize(const InputObjectT& obj, char* data, std::size_
     return ctx.result(begin);
 }
 
+namespace serializer_details {
+struct limitless_sentinel {};
+
+inline bool operator==(const std::back_insert_iterator<std::string>&,
+                       const limitless_sentinel&) noexcept {
+    return false;
+}
+
+inline bool operator==(const limitless_sentinel&,
+                       const std::back_insert_iterator<std::string>&) noexcept {
+    return false;
+}
+
+inline bool operator!=(const std::back_insert_iterator<std::string>& it,
+                       const limitless_sentinel& s) noexcept {
+    return !(it == s);
+}
+
+inline bool operator!=(const limitless_sentinel& s,
+                       const std::back_insert_iterator<std::string>& it) noexcept {
+    return !(it == s);
+}
+}
+
+template<static_schema::JsonValue InputObjectT>
+auto Serialize(const InputObjectT& obj, std::string& out)
+{
+    using serializer_details::limitless_sentinel;
+
+    out.clear();
+
+    auto it  = std::back_inserter(out);
+    limitless_sentinel end{};
+
+    return Serialize(obj, it, end);  // calls the iterator-based core
+}
 
 
 } // namespace JsonFusion
