@@ -31,10 +31,10 @@ struct Network {
 
 // Motor channel configuration
 struct Motor {
-    int         id;
+    int64_t         id;
     SmallStr       name;
     Annotated<std::array<
-        Annotated<float, range<-1000, 1000>>,3>, min_items<3>>      position;        // [x,y,z]
+        Annotated<double, range<-1000, 1000>>,3>, min_items<3>>      position;        // [x,y,z]
     Annotated<std::array<
         Annotated<float, range<-1000, 1000>>,3>, min_items<3>>    vel_limits;      // [vx,vy,vz]
     bool     inverted;
@@ -45,7 +45,7 @@ struct Sensor {
     SmallStr    type;    
     MediumStr   model;
     Annotated<float, range<-100, 100000> >  range_min;
-    float      range_max;
+    double      range_max;
     bool       active;
 };
 
@@ -61,15 +61,16 @@ struct Controller {
 struct Logging {
     bool        enabled;
     LargeStr    path;
-    int         max_files;
+    uint32_t       max_files;
 };
 
 // Top-level config
 struct ComplexConfig {
     MediumStr         app_name;
-    int               version_major;
+    uint16_t               version_major;
     int               version_minor;
     Network     network;
+    std::optional<Network> fallback_network_conf;
     Controller  controller;
     Logging     logging;
 };
@@ -99,10 +100,10 @@ struct Network {
 
 // Motor channel configuration
 struct Motor {
-    int             id;
+    int64_t             id;
     string          name;
     Annotated<vector<
-            Annotated<float, range<-1000, 1000>>
+            Annotated<double, range<-1000, 1000>>
         >,  max_items<3>, min_items<3>>      position;  
     Annotated<vector<
             Annotated<float, range<-1000, 1000>>
@@ -115,7 +116,7 @@ struct Sensor {
     string  type;       // "lidar", "imu", ...
     string  model;
     Annotated<float, range<-100, 100000> >  range_min;
-    float   range_max;
+    double   range_max;
     bool    active;
 };
 
@@ -131,15 +132,16 @@ struct Controller {
 struct Logging {
     bool      enabled;
     string    path;
-    int       max_files;
+    uint32_t       max_files;
 };
 
 // Top-level config
 struct ComplexConfig {
     string             app_name;
-    int                version_major;
+    uint16_t               version_major;
     int                version_minor;
     Network     network;
+    optional<Network> fallback_network_conf;
     Controller  controller;
     Logging     logging;
 };
@@ -223,12 +225,13 @@ static constexpr std::string_view kJsonStatic = R"JSON(
           }
         ]
       },
-    
+      "fallback_network_conf": null,
       "logging": {
         "enabled": true,
         "path": "/var/log/static_bench",
         "max_files": 8
       }
+      
     }
     )JSON";
 }

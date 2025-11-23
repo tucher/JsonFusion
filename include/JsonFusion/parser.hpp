@@ -9,7 +9,6 @@
 #include <ranges>
 #include <type_traits>
 #include <pfr.hpp>
-#include <charconv>  // std::from_chars
 #include <algorithm>
 #include <limits>
 
@@ -167,32 +166,193 @@ bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, Deserializa
 }
 
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonNumber<ObjT>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    constexpr std::size_t NumberBufSize = fp_to_str_detail::NumberBufSize;
-    char buf[NumberBufSize];
-    std::size_t index = 0;
-    bool   seenDot = false;
-    bool   seenExp = false;
+template <CharInputIterator It, CharSentinelFor<It> Sent>
+bool read_number_token(It& currentPos,
+                       const Sent& end,
+                       DeserializationContext<It>& ctx,
+                       char (&buf)[fp_to_str_detail::NumberBufSize],
+                       std::size_t& index,
+                       bool& seenDot,
+                       bool& seenExp)
+{
+    index   = 0;
+    seenDot = false;
+    seenExp = false;
 
-    while(currentPos != end && !isPlainEnd(*currentPos)) {
+    bool inExp            = false;
+    bool seenDigitBeforeExp = false;
+    bool seenDigitAfterExp  = false;
+
+    if (currentPos == end) {
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        return false;
+    }
+
+    // Optional leading '-'
+    {
         char c = *currentPos;
-        if (c == '.') {
-            seenDot = true;
-        } else if (c == 'e' || c == 'E') {
-            seenExp = true;
+        if (c == '-') {
+            if (index >= fp_to_str_detail::NumberBufSize - 1) {
+                ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+                return false;
+            }
+            buf[index++] = c;
+            ++currentPos;
         }
+    }
 
-        if (index >= NumberBufSize - 1) [[unlikely]] {
+    if (currentPos == end) {
+        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        return false;
+    }
+
+    auto push_char = [&](char c) -> bool {
+        if (index >= fp_to_str_detail::NumberBufSize - 1) {
             ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
-
         buf[index++] = c;
-        ++currentPos;
+        return true;
+    };
+
+    while (currentPos != end && !isPlainEnd(*currentPos)) {
+        char c = *currentPos;
+
+        if (c >= '0' && c <= '9') {
+            if (!inExp) {
+                seenDigitBeforeExp = true;
+            } else {
+                seenDigitAfterExp = true;
+            }
+            if (!push_char(c)) return false;
+            ++currentPos;
+            continue;
+        }
+
+        if (c == '.' && !seenDot && !inExp) {
+            seenDot = true;
+            if (!push_char(c)) return false;
+            ++currentPos;
+            continue;
+        }
+
+        if ((c == 'e' || c == 'E') && !inExp) {
+            inExp  = true;
+            seenExp = true;
+            if (!push_char(c)) return false;
+            ++currentPos;
+
+            // Optional sign immediately after exponent
+            if (currentPos != end && (*currentPos == '+' || *currentPos == '-')) {
+                if (!push_char(*currentPos)) return false;
+                ++currentPos;
+            }
+            continue;
+        }
+
+        // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
+        // Anything else is invalid inside a JSON number
+        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+        return false;
     }
-    buf[index] = 0;
+
+    buf[index] = '\0';
+
+    // Basic sanity: must have at least one digit before exponent,
+    // and if exponent present, at least one digit after it.
+    if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
+        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+        return false;
+    }
+
+    return true;
+}
+
+// -------------------------
+//  Parse decimal integer
+// -------------------------
+// buf: null-terminated ASCII, optional leading '+'/'-' then digits.
+// Assumes characters are already known to be digits (no extra validation).
+// Returns false on overflow or invalid '-' for unsigned types.
+template <class Int>
+inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
+    static_assert(std::is_integral_v<Int>, "Int must be an integral type");
+
+    using Limits   = std::numeric_limits<Int>;
+    using Unsigned = std::make_unsigned_t<Int>;
+
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
+
+    bool negative = false;
+
+    if constexpr (std::is_signed_v<Int>) {
+        if (*p == '+' || *p == '-') {
+            negative = (*p == '-');
+            ++p;
+        }
+    } else {
+        // Unsigned: allow leading '+' but reject '-'
+        if (*p == '+') {
+            ++p;
+        } else if (*p == '-') {
+            return false; // negative value for unsigned -> overflow/error
+        }
+    }
+
+    Unsigned value = 0;
+
+    // Absolute-value limit we must not exceed while parsing
+    Unsigned limit;
+    if constexpr (std::is_signed_v<Int>) {
+        // For negative numbers we allow up to |min()| = max()+1
+        limit = negative ? Unsigned(Limits::max()) + 1u
+                         : Unsigned(Limits::max());
+    } else {
+        limit = std::numeric_limits<Unsigned>::max();
+    }
+
+    for (; *p != 0; ++p) {
+        // We assume *p is '0'..'9'
+        unsigned digit = static_cast<unsigned>(*p - '0');
+
+        // Check overflow: value*10 + digit <= limit
+        if (value > (limit - digit) / 10u) {
+            return false; // overflow
+        }
+        value = value * 10u + static_cast<Unsigned>(digit);
+    }
+
+    if constexpr (std::is_signed_v<Int>) {
+        if (negative) {
+            // Special-case: most-negative value
+            if (value == Unsigned(Limits::max()) + 1u) {
+                out = Limits::min();
+            } else {
+                out = static_cast<Int>(-static_cast<Int>(value));
+            }
+        } else {
+            out = static_cast<Int>(value);
+        }
+    } else {
+        out = static_cast<Int>(value);
+    }
+
+    return true;
+}
+
+// Strategy: custom integer parsing (no deps), delegated float parsing (configurable)
+
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonNumber<ObjT>
+bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    char buf[fp_to_str_detail::NumberBufSize];
+    std::size_t index = 0;
+    bool seenDot = false;
+    bool seenExp = false;
+
+    if (!read_number_token(currentPos, end, ctx, buf, index, seenDot, seenExp)) {
+        return false;
+    }
     if constexpr (std::is_integral_v<ObjT>) {
         // Reject decimals/exponents for integer fields
         if (seenDot || seenExp) {
@@ -201,9 +361,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         }
 
         ObjT value{};
-        auto [ptr, ec] = std::from_chars(buf, buf + index, value);
-
-        if (ec != std::errc{} || ptr != buf + index) {
+        if(!parse_decimal_integer<ObjT>(buf, value)) {
             ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
@@ -218,7 +376,25 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         obj = value;
         return true;
     } else if constexpr (std::is_floating_point_v<ObjT>) {
+        if constexpr (false) { // better to postpone this until actual becnhmarks data comes
+            if (!seenDot && !seenExp) {
+                long long tmp{};
+                if (!parse_decimal_integer(buf, tmp)) {
+                    ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+                    return false;
+                }
+                if constexpr (Opts::template has_option<options::detail::range_tag>) {
+                    using Range = typename Opts::template get_option<options::detail::range_tag>;
+                    if (tmp < Range::min || tmp > Range::max) {
+                        ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
+                        return false;
+                    }
+                }
 
+                obj = static_cast<ObjT>(tmp);
+                return true;
+            }
+        }
         double x;
         if(fp_to_str_detail::parse_number_to_double(buf, x)) {
             if constexpr (Opts::template has_option<options::detail::range_tag>) {
@@ -556,7 +732,13 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     }
     return false;
 }
+
+#ifndef JSONFUSION_MAX_SKIP_NESTING
 constexpr int MAX_SKIP_NESTING = 64;
+#else
+constexpr int MAX_SKIP_NESTING = JSONFUSION_MAX_SKIP_NESTING;
+#endif
+
 
 template <CharInputIterator It, CharSentinelFor<It> Sent>
 bool matchLiteralTail(It& currentPos, const Sent& end,

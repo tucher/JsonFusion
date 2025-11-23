@@ -9,11 +9,16 @@
 #include "3party/simdjson/to_chars.hpp"
 #else
 #include <cstdlib>
-#include <charconv>
 #endif
 
 namespace JsonFusion::fp_to_str_detail {
-constexpr std::size_t NumberBufSize = 64;
+
+#ifndef JSONFUSION_NUMBER_BUF_SIZE
+inline constexpr std::size_t NumberBufSize = 64;
+#else
+inline constexpr std::size_t NumberBufSize = JSONFUSION_NUMBER_BUF_SIZE;
+#endif
+
 
 bool parse_number_to_double(const char * buf, double& out) {
 #if JSONFUSION_USE_FAST_FLOAT
@@ -59,14 +64,51 @@ inline char* format_double_to_chars(char* first, char* last, double value, std::
     return simdjson::internal::dtoa_impl::format_buffer(first, len, decimal_exponent,
                                                         kMinExp, kMaxExp);
 #else
-    // portable fallback: std::to_chars if available
-    auto result = std::to_chars(first, last, value, std::chars_format::general, decimals);
-    if (result.ec != std::errc{}) {
-        // worst-case fallback: clamp or write "0"
-        if (first != last) *first++ = '0';
+    // Caller must ensure first <= last and buffer is at least 1 char
+    if (first == last) {
         return first;
     }
-    return result.ptr;
+
+    // Clamp precision to something reasonable for double
+    // (std::to_chars for general usually uses "significant digits").
+    int prec;
+    if (decimals == 0) {
+        prec = 1;
+    } else if (decimals > 17) {
+        prec = 17;  // more than 17 significant digits is pointless for double
+    } else {
+        prec = static_cast<int>(decimals);
+    }
+
+    std::size_t bufSize = static_cast<std::size_t>(last - first);
+    if (bufSize == 0) {
+        return first;
+    }
+
+    // Use %.*g to approximate std::chars_format::general with `prec` significant digits.
+    // snprintf writes a null terminator; we just ignore it and return a pointer
+    // to the last non-null character.
+    int n = std::snprintf(first,
+                          bufSize,
+                          "%.*g",
+                          prec,
+                          value);
+
+    if (n <= 0) {
+        // Fallback: write "0"
+        *first++ = '0';
+        return first;
+    }
+
+    // If the result was truncated, snprintf returns the number of chars
+    // that WOULD have been written (excluding '\0').
+    std::size_t written = static_cast<std::size_t>(n);
+    if (written >= bufSize) {
+        // We only have bufSize-1 chars + NUL, so clamp to bufSize-1.
+        written = bufSize - 1;
+    }
+
+    return first + written;
 #endif
 }
 

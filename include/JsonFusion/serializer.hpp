@@ -7,12 +7,13 @@
 #include <utility>  // std::declval
 #include <ranges>
 #include <type_traits>
+#include <limits>
+#include <cmath>
+#include <cstring>
 #include <pfr.hpp>
 #include "static_schema.hpp"
 #include "fp_to_str.hpp"
-#include <charconv>
-#include <limits>
-#include <cmath>
+
 
 #include "options.hpp"
 namespace JsonFusion {
@@ -151,17 +152,76 @@ bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, S
     return true;
 }
 
+// -------------------------
+//  Format decimal integer
+// -------------------------
+// Writes base-10 representation of value into [first, last).
+// Returns pointer one past last written char.
+// Caller guarantees buffer is large enough (e.g. NumberBufSize).
+template <class Int>
+inline char* format_decimal_integer(Int value,
+                                    char* first,
+                                    char* last) noexcept {
+    static_assert(std::is_integral_v<Int>, "Int must be an integral type");
+
+    // We'll generate digits into the end of the buffer, then memmove forward.
+    char* p = last;
+
+    using Unsigned = std::make_unsigned_t<Int>;
+    Unsigned u;
+    bool negative = false;
+
+    if constexpr (std::is_signed_v<Int>) {
+        if (value < 0) {
+            negative = true;
+            // Compute absolute value safely:
+            // for min() this avoids UB by doing it in unsigned domain.
+            u = Unsigned(-(value + 1)) + 1u;
+        } else {
+            u = static_cast<Unsigned>(value);
+        }
+    } else {
+        u = static_cast<Unsigned>(value);
+    }
+
+    // Generate digits in reverse order
+    do {
+        if (p == first) {
+            // Not enough space; best-effort: just stop
+            break;
+        }
+        unsigned digit = static_cast<unsigned>(u % 10u);
+        u /= 10u;
+        *--p = static_cast<char>('0' + digit);
+    } while (u != 0);
+
+    if (negative) {
+        if (p != first) {
+            *--p = '-';
+        } else {
+            // No room for '-', we just overwrite first char
+            *p = '-';
+        }
+    }
+
+    // Now we have the result in [p, last). Move it to start at 'first'.
+    std::size_t len = static_cast<std::size_t>(last - p);
+    // Assume caller provided a big enough buffer (e.g. NumberBufSize),
+    // but clamp just in case.
+    if (static_cast<std::size_t>(last - first) < len) {
+        len = static_cast<std::size_t>(last - first);
+    }
+
+    std::memmove(first, p, len);
+    return first + len;
+}
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
     requires static_schema::JsonNumber<ObjT>
 bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
     char buf[fp_to_str_detail::NumberBufSize];
     if constexpr (std::is_integral_v<ObjT>) {
-        auto [p, ec] = std::to_chars(buf, buf + sizeof(buf), obj);
-        if (ec != std::errc{}) {
-            ctx.setError(SerializeError::ILLFORMED_NUMBER, currentPos);
-            return false;
-        }
+        char* p = format_decimal_integer<ObjT>(obj, buf, buf + sizeof(buf));
         for (char* it = buf; it != p; ++it) {
             if (currentPos == end) {
                 ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
