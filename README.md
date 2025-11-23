@@ -344,7 +344,7 @@ doc.Parse(kJsonStatic.data(), kJsonStatic.size());
 ```
 2.42 - 2.49 us
 
-*RapidJSON is only parsing into Document while JSONReflection parses and fills the struct, doing validations on process*
+*RapidJSON is only parsing into Document while JSONReflection parses and fills the struct, doing validation in process*
 
 ```
 StaticComplexConfig cfg;
