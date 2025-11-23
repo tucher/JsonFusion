@@ -19,6 +19,7 @@ add_executable(misc_tests
 
 add_executable(rapidjson_comparison_parsing_benchmark
     benchmarks/comparison_parsing_benchmark.cpp
+    tests/test_model.hpp
     ${JSON_FUSION}
 
 )

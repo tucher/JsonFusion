@@ -227,7 +227,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                     return false;
                 }
             }
-            if(static_cast<double>(std::numeric_limits<ObjT>::min()) > x 
+            if(static_cast<double>(std::numeric_limits<ObjT>::lowest()) > x
                 || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
                 ctx.setError(ParseError::VALUE_OUT_OF_RANGE, currentPos);
                 return false;
