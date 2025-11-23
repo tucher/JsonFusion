@@ -30,6 +30,17 @@ if(auto result = Parse(config, input); !result) {
 ```
 *No macros, no registration, no JSON DOM, no inheritance or wrapping*
 
+## Table of Contents
+
+- [Main Features](#main-features)
+- [Performance](#performance)
+- [Positioning](#positioning)
+  - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-same-performance)
+  - [Embedded-Friendliness](#embedded-friendliness)
+- [Compile-Time Schema with Runtime Validation](#one-more-thing-compile-time-schema-runtime-validation-in-the-same-parsing-single-pass)
+  - [Supported Options](#supported-options-include)
+- [Limitations](#limitations)
+- [Benchmarks](#benchmarks)
 
 ## Main features
 
@@ -333,28 +344,32 @@ struct DynamicComplexConfig {
 ```
 
 
-This library shows about the same speed as Rapid JSON for static containers(sometimes slightly faster) and 25-30% slower for dynamic containers.
+This library shows about the same speed as RapidJSON for static containers (sometimes slightly faster) and 25-30% slower for dynamic containers — **but with full mapping and validation in both cases**.
+
+**Important:** RapidJSON below is only parsing into a Document DOM, while JSONReflection parses directly into the final struct with validation.
+
+### RapidJSON DOM parsing
 
 ```
 rj::Document doc;
 doc.Parse(kJsonStatic.data(), kJsonStatic.size());
 ```
-2.42 - 2.49 us
+**2.42 - 2.49 µs**
 
-**
+### JSONReflection with static containers + validation
 
 ```
 StaticComplexConfig cfg;
 Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 ```
-2.40 - 2.44 us
+**2.40 - 2.44 µs** ✨ (faster than RapidJSON DOM, with validation!)
+
+### JSONReflection with dynamic containers + validation
 
 ```
 DynamicComplexConfig cfg;
 Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 ```
-2.97 - 3.07 us
+**2.97 - 3.07 µs** (still competitive!)
 
-GCC 13.2, arm64 Apple M1 Max, Ubuntu linux on Parallels VM
-
-## RapidJSON is only parsing into Document while JSONReflection fills the final struct, doing validation in process
+*GCC 13.2, arm64 Apple M1 Max, Ubuntu Linux on Parallels VM*
