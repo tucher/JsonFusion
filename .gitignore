@@ -2,5 +2,6 @@ build
 ubuntu_bld
 examples/basic_usage
 examples/validation_example
+examples/c_interop/c_interop_test
 *.o
 settings.json
