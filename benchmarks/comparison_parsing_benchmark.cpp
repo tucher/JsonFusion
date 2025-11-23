@@ -30,8 +30,10 @@ int main() {
 
     auto printErr = [](auto res) {
         int pos = res.pos() - json_fusion_test_models::kJsonStatic.data();
-        std::string bad_text(json_fusion_test_models::kJsonStatic.substr(pos-5, pos+5));
-        std::cerr << std::format("JsonFusion parse failed: error {} at {}: '...{}...'", int(res.error()), pos, bad_text)<< std::endl;
+        int wnd = 20;
+        std::string before(json_fusion_test_models::kJsonStatic.substr(pos+1 >= wnd ? pos+1-wnd:0, pos+1 >= wnd ? wnd:0));
+        std::string after(json_fusion_test_models::kJsonStatic.substr(pos+1, wnd));
+        std::cerr << std::format("JsonFusion parse failed: error {} at {}: '...{}😖{}...'", int(res.error()), pos, before, after)<< std::endl;
     };
 
     std::cout << std::format("iterations: {}",  iterations) << std::endl;

@@ -134,7 +134,11 @@ No dynamic allocations inside the library. You choose your storage: `std::array`
 
 Works with forward-only input iterators; you can parse from a stream or byte-by-byte without building a big buffer first.
 
-Plays well with -fno-exceptions / -fno-rtti style builds
+Plays well with -fno-exceptions / -fno-rtti style builds.
+
+**Configurable dependencies**: By default uses state-of-the-art float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to depend only on PFR + stdlib (`std::strtod`/`std::to_chars`), reducing binary size for embedded builds.
+
+**Tested on real embedded platforms**: Proof-of-concept builds confirmed working on RP2040 (Raspberry Pi Pico), ARM Cortex-M7, and ESP32 toolchains with recent GCC versions. Static containers with annotations compile successfully.
 
 ### C Interoperability
 

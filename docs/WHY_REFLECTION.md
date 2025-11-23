@@ -169,6 +169,8 @@ Template errors are notoriously cryptic. When something goes wrong:
 
 JsonFusion works best for:
 - **Modern embedded** (Cortex-M4+, ESP32, etc.) with decent toolchains
+  - *Confirmed compiling*: RP2040 (Raspberry Pi Pico), ARM Cortex-M7, ESP32 with recent GCC versions
+  - Note: These are proof-of-concept tests, not production-validated deployments
 - **Desktop/server** applications where binary size isn't measured in KB
 - **Teams comfortable with C++20** who value reduced boilerplate
 - **Projects where type safety** and validation justify the abstraction cost

@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <pfr.hpp>
 #include "static_schema.hpp"
-#include "3party/simdjson/to_chars.hpp"
+#include "fp_to_str.hpp"
 #include <charconv>
 #include <limits>
 #include <cmath>
@@ -151,39 +151,11 @@ bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, S
     return true;
 }
 
-char *to_chars(char *first, const char *last, double value) {
-    static_cast<void>(last); // maybe unused - fix warning
-    bool negative = std::signbit(value);
-    if (negative) {
-        value = -value;
-        *first++ = '-';
-    }
-
-    if (value == 0) // +-0
-    {
-        *first++ = '0';
-        if(negative) {
-            *first++ = '.';
-            *first++ = '0';
-        }
-        return first;
-    }
-
-    int len = 0;
-    int decimal_exponent = 0;
-    simdjson::internal::dtoa_impl::grisu2(first, len, decimal_exponent, value);
-    // Format the buffer like printf("%.*g", prec, value)
-    constexpr int kMinExp = -4;
-    constexpr int kMaxExp = std::numeric_limits<double>::digits10;
-
-    return simdjson::internal::dtoa_impl::format_buffer(first, len, decimal_exponent, kMinExp,
-                                                        kMaxExp);
-}
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
     requires static_schema::JsonNumber<ObjT>
 bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
-    char buf[64];
+    char buf[fp_to_str_detail::NumberBufSize];
     if constexpr (std::is_integral_v<ObjT>) {
         auto [p, ec] = std::to_chars(buf, buf + sizeof(buf), obj);
         if (ec != std::errc{}) {
@@ -215,8 +187,7 @@ bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, Se
                 using decimals = typename Opts::template get_option<options::detail::float_decimals_tag>;
                 decimals_value = decimals::value;
             }
-            char buf[50];
-            char * endChar = to_chars(buf, buf + sizeof (buf), content);
+            char * endChar = fp_to_str_detail::format_double_to_chars(buf, buf + sizeof (buf), content, decimals_value);
             auto s = endChar-buf;
             if(endChar-buf == sizeof (buf))  [[unlikely]] {
                 return false;

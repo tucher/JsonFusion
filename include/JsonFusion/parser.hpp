@@ -9,12 +9,14 @@
 #include <ranges>
 #include <type_traits>
 #include <pfr.hpp>
-#include "static_schema.hpp"
-#include "3party/fast_double_parser.h"
 #include <charconv>  // std::from_chars
 #include <algorithm>
 #include <limits>
+
+#include "static_schema.hpp"
 #include "options.hpp"
+#include "fp_to_str.hpp"
+
 namespace JsonFusion {
 
 enum class ParseError {
@@ -168,7 +170,7 @@ bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, Deserializa
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonNumber<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    constexpr std::size_t NumberBufSize = 40;
+    constexpr std::size_t NumberBufSize = fp_to_str_detail::NumberBufSize;
     char buf[NumberBufSize];
     std::size_t index = 0;
     bool   seenDot = false;
@@ -218,8 +220,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     } else if constexpr (std::is_floating_point_v<ObjT>) {
 
         double x;
-        if(fast_double_parser::parse_number(buf, &x) != nullptr) {
-
+        if(fp_to_str_detail::parse_number_to_double(buf, x)) {
             if constexpr (Opts::template has_option<options::detail::range_tag>) {
                 using Range = typename Opts::template get_option<options::detail::range_tag>;
                 if (x < Range::min || x > Range::max) {
