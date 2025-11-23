@@ -32,6 +32,7 @@ if(auto result = Parse(config, input); !result) {
 
 ## Table of Contents
 
+- [Installation](#installation)
 - [Main Features](#main-features)
 - [Performance](#performance)
 - [Positioning](#positioning)
@@ -41,6 +42,47 @@ if(auto result = Parse(config, input); !result) {
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)
 - [Benchmarks](#benchmarks)
+
+## Installation
+
+JsonFusion is a **header-only library**. Simply copy the headers to your project's include directory:
+
+```bash
+# Copy to your project
+cp -r include/JsonFusion /path/to/your/project/include/
+cp -r include/pfr* /path/to/your/project/include/
+```
+
+Or if you're installing system-wide:
+
+```bash
+# System-wide installation (Linux/macOS)
+sudo cp -r include/JsonFusion /usr/local/include/
+sudo cp -r include/pfr* /usr/local/include/
+```
+
+### Using in Your Code
+
+```cpp
+#include <JsonFusion/parser.hpp>
+#include <JsonFusion/serializer.hpp>
+
+// That's it! No linking required.
+```
+
+### CMake Integration
+
+If using CMake, add the include directory:
+
+```cmake
+include_directories(/path/to/JsonFusion/include)
+```
+
+### Requirements
+
+- **C++20** or later
+- Compiler: GCC 10+, Clang 13+, MSVC 2019+
+- **Boost.PFR** (bundled, no separate installation needed)
 
 ## Main features
 

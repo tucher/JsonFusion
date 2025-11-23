@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <pfr.hpp>
 #include "static_schema.hpp"
-#include <simdjson/to_chars.hpp>
+#include "3party/simdjson/to_chars.hpp"
 #include <charconv>
 #include <limits>
 #include <cmath>

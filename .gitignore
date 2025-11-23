@@ -1,0 +1,6 @@
+build
+ubuntu_bld
+examples/basic_usage
+examples/validation_example
+*.o
+settings.json

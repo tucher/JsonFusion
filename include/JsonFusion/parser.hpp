@@ -8,9 +8,9 @@
 #include <utility>  // std::declval
 #include <ranges>
 #include <type_traits>
-#include "3party/pfr.hpp"
+#include <pfr.hpp>
 #include "static_schema.hpp"
-#include <fast_double_parser.h>
+#include "3party/fast_double_parser.h"
 #include <charconv>  // std::from_chars
 #include <algorithm>
 
