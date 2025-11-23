@@ -34,6 +34,7 @@ if(auto result = Parse(config, input); !result) {
 
 - [Installation](#installation)
 - [Main Features](#main-features)
+- [Why Compile-Time Reflection?](#why-compile-time-reflection) 📖 [Full Article](docs/WHY_REFLECTION.md)
 - [Performance](#performance)
 - [Positioning](#positioning)
   - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-same-performance)
@@ -94,6 +95,25 @@ include_directories(/path/to/JsonFusion/include)
 - Default values via usual C++ defaults
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 
+## Why Compile-Time Reflection?
+
+JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime. This isn't a hack – **C++26 (late 2025) is standardizing native reflection**, making this approach the future of C++.
+
+### Key Benefits
+
+- **Everything known at compile time** – memory layout, field types, sizes all determined before first run
+- **Zero runtime overhead** – no dynamic dispatch, no type lookups, no metadata tables
+- **Aggressive optimization** – compiler can inline, eliminate dead code, constant-fold everything
+- **Predictable resources** – critical for embedded: stack usage calculable, no malloc surprises
+- **Less code, more correctness** – your struct IS the schema, no boilerplate duplication
+
+```cpp
+Parse(config, json);  // The type tells the compiler how to parse. That's it.
+```
+
+**Why this matters for embedded**: With fixed-size containers (`std::array`) + compile-time reflection, you get deterministic timing, zero heap fragmentation, and memory requirements known at link time.
+
+📖 **[Read the full philosophy →](docs/WHY_REFLECTION.md)** – includes C++26 context, detailed technical benefits, and embedded systems discussion.
 
 ## Performance
 
