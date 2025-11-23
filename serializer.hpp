@@ -360,6 +360,56 @@ bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, Ser
     return true;
 }
 
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+    requires static_schema::JsonObject<ObjT>
+        && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
+bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+    if(outputPos == end) {
+        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+        return false;
+    }
+    *outputPos ++ = '[';
+    bool first = true;
+
+
+    auto try_one = [&](auto ic) {
+        constexpr std::size_t StructIndex = decltype(ic)::value;
+        using Field   = pfr::tuple_element_t<StructIndex, ObjT>;
+        using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+        if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+            return true;
+        } else {
+            if(first) {
+                first = false;
+            } else {
+                if(outputPos == end) {
+                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                    return false;
+                }
+                *outputPos ++ = ',';
+            }
+
+            if(SerializeValue(pfr::get<StructIndex>(obj), outputPos, end, ctx)) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+    };
+    bool ser_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
+        return (try_one(std::integral_constant<std::size_t, I>{}) && ...);
+    } (std::make_index_sequence<pfr::tuple_size_v<ObjT>>{});
+
+
+    if(outputPos == end) {
+        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+        return false;
+    }
+    *outputPos ++ = ']';
+    return true;
+}
+
 template <static_schema::JsonValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent>
 bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
     using Meta    = options::detail::annotation_meta_getter<Field>;

@@ -31,10 +31,12 @@ enum class ParseError {
     ILLFORMED_ARRAY,
     ILLFORMED_OBJECT,
     EXCESS_DATA,
+    SKIPPING_STACK_OVERFLOW,
     NUMBER_OUT_OF_RANGE_SCHEMA_ERROR,
     STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR,
     OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR,
-    ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR
+    ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR,
+    ARRAY_DESTRUCRING_SCHEMA_ERROR
 };
 
 
@@ -473,6 +475,9 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonArray<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    if constexpr (DynamicContainerTypeConcept<ObjT>) {
+        obj.clear();
+    }
     if(*currentPos != '[') {
         ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
         return false;
@@ -623,7 +628,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
 
     auto push_close = [&](char open) -> bool {
         if (depth >= MAX_SKIP_NESTING) {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+            ctx.setError(ParseError::SKIPPING_STACK_OVERFLOW, currentPos);
             return false;
         }
         stack[depth++] = (open == '{') ? '}' : ']';
@@ -863,6 +868,9 @@ struct FieldsHelper {
 };
 
 
+
+
+
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonObject<ObjT>
 bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
@@ -994,6 +1002,128 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 }
 
 
+/* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */ //TODO may be better to implement with additional helper, to precalculate holes somehow?
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonObject<ObjT>
+             &&
+             Opts::template has_option<options::detail::as_array_tag>
+bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    if(*currentPos != '[') {
+        ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+        return false;
+    }
+    currentPos++;
+    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        return false;
+    }
+    std::size_t parsed_items_count = 0;
+    bool has_trailing_comma = false;
+    std::size_t field_offset = 0;
+    static constexpr std::size_t totalFieldsCount = pfr::tuple_size_v<ObjT>;
+    while(true) {
+        if(currentPos == end) [[unlikely]] {
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+            return false;
+        }
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            return false;
+        }
+        if(*currentPos == ']') {
+            if(has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+                return false;
+            }
+            std::size_t final_fields_offest = field_offset;
+            auto skip_checker = [&](auto ic) {
+                constexpr std::size_t StructIndex = decltype(ic)::value;
+                using Field   = pfr::tuple_element_t<StructIndex, ObjT>;
+                using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+                if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+                    final_fields_offest ++;
+                    return true;
+
+                } else {
+                    return false;
+                }
+            };
+
+            bool skip_rest_result = true;
+            if(parsed_items_count + field_offset != totalFieldsCount) {
+                skip_rest_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
+                    bool ok = false;
+                    (
+                        ((parsed_items_count + field_offset) <= I
+                             ? (ok = skip_checker(std::integral_constant<std::size_t, I>{}), 0)
+                             : 0),
+                        ...
+                        );
+
+                    return ok;
+                } (std::make_index_sequence<totalFieldsCount>{});
+            }
+
+            if(!skip_rest_result || parsed_items_count + final_fields_offest != totalFieldsCount) {
+                ctx.setError(ParseError::ARRAY_DESTRUCRING_SCHEMA_ERROR, currentPos);
+                return false;
+            }
+
+            currentPos ++;
+            return true;
+        }
+        bool skipped = false;
+        auto try_one = [&](auto ic) {
+            constexpr std::size_t StructIndex = decltype(ic)::value;
+            using Field   = pfr::tuple_element_t<StructIndex, ObjT>;
+            using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+            if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+                skipped = true;
+                return false;
+            } else {
+                if(ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
+
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        };
+        bool field_parse_result = false;
+        do {
+            skipped = false;
+            field_parse_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
+                bool ok = false;
+                (
+                    ((parsed_items_count + field_offset) == I
+                         ? (ok = try_one(std::integral_constant<std::size_t, I>{}), 0)
+                         : 0),
+                    ...
+                    );
+
+                return ok;
+            } (std::make_index_sequence<totalFieldsCount>{});
+            if(skipped) {
+                field_offset ++;
+            }
+        } while(skipped);
+        if(!field_parse_result) {
+            return false;
+        }
+        parsed_items_count ++;
+
+
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            return false;
+        }
+        has_trailing_comma = false;
+        if(*currentPos == ',') {
+            has_trailing_comma = true;
+            currentPos ++;
+        }
+
+    }
+    return false;
+}
+
 template <static_schema::JsonValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
 bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
@@ -1029,7 +1159,6 @@ bool ParseValue(Field & field, It &currentPos, const Sent & end, Deserialization
 
 template <static_schema::JsonValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
 ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
-    InputObjectT copy = obj;
     parser_details::DeserializationContext<decltype(begin)> ctx(begin);
 
 
@@ -1037,7 +1166,6 @@ ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
 
     auto res = ctx.result();
     if(!res) {
-        obj = copy;
     } else {
         if(parser_details::skipWhiteSpace(begin, end, ctx)) {
             ctx.setError(ParseError::EXCESS_DATA, begin);
@@ -1060,7 +1188,6 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
     const char* begin = data;
     const char* end   = data + size;
 
-    InputObjectT copy = obj;
     parser_details::DeserializationContext<const char*> ctx(begin);
 
     const char* cur = begin;
@@ -1068,7 +1195,6 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
 
     auto res = ctx.result();
     if(!res) {
-        obj = copy;
     } else {
         if(parser_details::skipWhiteSpace(cur, end, ctx)) {
             ctx.setError(ParseError::EXCESS_DATA, cur);

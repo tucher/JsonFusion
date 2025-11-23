@@ -266,6 +266,30 @@ void test() {
         assert(Parse(arr_with_limits, std::string_view("[1, 2, 3, 4]")));
 
     }
+
+    {
+        struct Point {
+            Annotated<bool, not_json> skip_me;
+            float x;
+            Annotated<bool, not_json> skip_me2;
+            float y, z;
+            Annotated<bool, not_json> skip_me_too;
+        };
+        list<Annotated<Point, as_array>> ob;
+        assert(Parse(ob,  std::string_view(R"(
+[
+[1, 2, 3],
+[5, 6, 7],
+[8, 9, 10]
+]
+)")));
+
+        string output;
+
+        output.clear(); output.resize(1000, 0);
+        assert(Serialize(ob, output.data(), output.size()) );
+        int a = 1;
+    }
     struct ob {
         int b;
         Annotated<int, key<"new_key">, range<2, 100>, not_required> c;

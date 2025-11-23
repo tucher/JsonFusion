@@ -46,6 +46,7 @@ struct max_length_tag {};
 struct min_items_tag {};
 struct max_items_tag {};
 struct float_decimals_tag {};
+struct as_array_tag {};
 
 }
 
@@ -111,6 +112,10 @@ template<std::size_t N>
 struct float_decimals {
     using tag = detail::float_decimals_tag;
     static constexpr std::size_t value = N;
+};
+
+struct as_array {
+    using tag = detail::as_array_tag;
 };
 
 namespace detail {
