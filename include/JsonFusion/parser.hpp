@@ -13,7 +13,7 @@
 #include "3party/fast_double_parser.h"
 #include <charconv>  // std::from_chars
 #include <algorithm>
-
+#include <limits>
 #include "options.hpp"
 namespace JsonFusion {
 
@@ -36,7 +36,8 @@ enum class ParseError {
     STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR,
     OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR,
     ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR,
-    ARRAY_DESTRUCRING_SCHEMA_ERROR
+    ARRAY_DESTRUCRING_SCHEMA_ERROR,
+    VALUE_OUT_OF_RANGE
 };
 
 
@@ -226,8 +227,12 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                     return false;
                 }
             }
-
-            obj = x;
+            if(static_cast<double>(std::numeric_limits<ObjT>::min()) > x 
+                || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
+                ctx.setError(ParseError::VALUE_OUT_OF_RANGE, currentPos);
+                return false;
+            }
+            obj = static_cast<ObjT>(x);
             return true;
         } else {
             ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
