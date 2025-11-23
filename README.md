@@ -207,8 +207,9 @@ Input data, some hardware config
     
 
 And such models:
-Note, that first one uses static containers only and second one uses dynamic containers.
-Both declares some typechecks on several fields.
+
+*Note, that first one uses static containers only and second one uses dynamic containers.
+Both declare some typechecks on several fields.*
 
 ```cpp
 namespace static_model {
