@@ -3,13 +3,12 @@
 #include <list>
 #include <iostream>
 
-#include "static_schema.hpp"
-#include "parser.hpp"
-#include "serializer.hpp"
+#include <JsonFusion/parser.hpp>
+#include <JsonFusion/serializer.hpp>
 
 void schema_tests() {
     using std::string, std::list, std::vector, std::array, std::optional;
-    using namespace JSONReflection2;
+    using namespace JsonFusion;
     using namespace options;
     struct Module2 {
         // Annotated<string, "path"> path;
@@ -29,7 +28,7 @@ void schema_tests() {
 
     static_assert(static_schema::JsonValue<Root2>);
     {
-        using namespace JSONReflection2::static_schema;
+        using namespace JsonFusion::static_schema;
         static_assert(JsonValue<bool>);
         static_assert(!JsonNullableValue<bool>);
         static_assert(is_non_null_json_value<bool>::value);
@@ -150,8 +149,8 @@ void schema_tests() {
 
     }
     {
-        using namespace JSONReflection2;
-        using namespace JSONReflection2::options;
+        using namespace JsonFusion;
+        using namespace JsonFusion::options;
 
 
         using opts = options::detail::annotation_meta_getter<Annotated<int, not_required, key<"fuu">, range<2,3>>>::options;
@@ -169,10 +168,10 @@ void schema_tests() {
 void test() {
     schema_tests();
     using std::string, std::list, std::vector, std::array, std::optional;
-    using namespace JSONReflection2;
-    using namespace JSONReflection2::options;
+    using namespace JsonFusion;
+    using namespace JsonFusion::options;
     struct Module2 {
-        // JSONReflection2::Annotated<string, "path"> path;
+        // JsonFusion::Annotated<string, "path"> path;
         Annotated<int, key<"name">,
                   not_required,
                   range<0, 100>,
@@ -565,8 +564,8 @@ bool operator!=(Iterator it, TrivialSentinel s) {
 
 void serialize_tests() {
     using std::string, std::list, std::vector, std::array, std::optional;
-    using namespace JSONReflection2;
-    using namespace JSONReflection2::options;
+    using namespace JsonFusion;
+    using namespace JsonFusion::options;
 
     string output;
 

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-#include "parser.hpp"
+#include <JsonFusion/parser.hpp>
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
@@ -30,8 +30,8 @@ using std::vector;
 namespace rj = rapidjson;
 
 
-using namespace JSONReflection2::options;
-using JSONReflection2::Annotated;
+using namespace JsonFusion::options;
+using JsonFusion::Annotated;
 
 namespace static_model {
 
@@ -239,8 +239,8 @@ static constexpr std::string_view kJsonStatic = R"JSON(
 }
 )JSON";
 
-bool ParseWithJSONReflection2_Static(static_model::StaticComplexConfig & cfg) {
-    auto res = JSONReflection2::Parse(cfg, kJsonStatic);
+bool ParseWithJsonFusion_Static(static_model::StaticComplexConfig & cfg) {
+    auto res = JsonFusion::Parse(cfg, kJsonStatic);
     if (!res) {
         // If you need debugging:
         // auto err = res.error();
@@ -250,8 +250,8 @@ bool ParseWithJSONReflection2_Static(static_model::StaticComplexConfig & cfg) {
     return true;
 }
 
-bool ParseWithJSONReflection2_Dynamic(dynamic_model::DynamicComplexConfig& cfg) {
-    auto res = JSONReflection2::Parse(cfg, kJsonStatic);
+bool ParseWithJsonFusion_Dynamic(dynamic_model::DynamicComplexConfig& cfg) {
+    auto res = JsonFusion::Parse(cfg, kJsonStatic);
     if (!res) {
         // If you need debugging:
         // auto err = res.error();
@@ -295,8 +295,8 @@ int main() {
         static_model::StaticComplexConfig cfg{};
         auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < iterations; ++i) {
-            if (!ParseWithJSONReflection2_Static(cfg)) {
-                std::cerr << "JSONReflection2 static parse failed\n";
+            if (!ParseWithJsonFusion_Static(cfg)) {
+                std::cerr << "JsonFusion static parse failed\n";
                 return 1;
             }
         }
@@ -304,7 +304,7 @@ int main() {
         
         auto end   = std::chrono::steady_clock::now();
         auto total = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        std::cout << "JSONReflection2 (static containers): total "
+        std::cout << "JsonFusion (static containers): total "
                   << total << " us, avg " << double(total) / iterations << " us/parse\n";
     }
 
@@ -312,15 +312,15 @@ int main() {
         dynamic_model::DynamicComplexConfig cfg{};
         auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < iterations; ++i) {
-            if (!ParseWithJSONReflection2_Dynamic(cfg)) {
-                std::cerr << "JSONReflection2 dynamic parse failed\n";
+            if (!ParseWithJsonFusion_Dynamic(cfg)) {
+                std::cerr << "JsonFusion dynamic parse failed\n";
                 return 1;
             }
         }
         cfg.app_name == "fuuu";
         auto end   = std::chrono::steady_clock::now();
         auto total = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-        std::cout << "JSONReflection2 (dynamic containers): total "
+        std::cout << "JsonFusion (dynamic containers): total "
                   << total << " us, avg " << double(total) / iterations << " us/parse\n";
     }
 

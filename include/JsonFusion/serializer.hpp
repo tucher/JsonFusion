@@ -15,7 +15,7 @@
 #include <cmath>
 
 #include "options.hpp"
-namespace JSONReflection2 {
+namespace JsonFusion {
 
 enum class SerializeError {
     NO_ERROR,
@@ -453,4 +453,4 @@ SerializeResult<char*> Serialize(const InputObjectT& obj, char* data, std::size_
 
 
 
-} // namespace JSONReflection2
+} // namespace JsonFusion

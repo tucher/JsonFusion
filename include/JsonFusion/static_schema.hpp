@@ -6,7 +6,7 @@
 #include <optional>
 
 #include "options.hpp"
-namespace JSONReflection2 {
+namespace JsonFusion {
 
 
 namespace static_schema {
@@ -186,5 +186,5 @@ decltype(auto) getRef(const Field & f) {
 
 } // namespace static_schema
 
-} // namespace JSONReflection2
+} // namespace JsonFusion
 

@@ -8,14 +8,14 @@
 #include <utility>  // std::declval
 #include <ranges>
 #include <type_traits>
-#include <pfr.hpp>
+#include "3party/pfr.hpp"
 #include "static_schema.hpp"
 #include <fast_double_parser.h>
 #include <charconv>  // std::from_chars
 #include <algorithm>
 
 #include "options.hpp"
-namespace JSONReflection2 {
+namespace JsonFusion {
 
 enum class ParseError {
     NO_ERROR,
@@ -1211,4 +1211,4 @@ ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
     return Parse(obj, sv.data(), sv.size());
 }
 
-} // namespace JSONReflection2
+} // namespace JsonFusion

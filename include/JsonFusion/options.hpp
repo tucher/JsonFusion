@@ -7,7 +7,7 @@
 
 #include "annotated.hpp"
 
-namespace JSONReflection2 {
+namespace JsonFusion {
 
 template <typename CharT, std::size_t N> struct ConstString
 {
@@ -235,4 +235,4 @@ struct annotation_meta_getter : annotation_meta<std::remove_cvref_t<Field>> {};
 } //namespace options
 
 
-} // namespace JSONReflection2
+} // namespace JsonFusion

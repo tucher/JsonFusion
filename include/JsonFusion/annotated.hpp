@@ -5,7 +5,7 @@
 #include <utility>
 #include <cstddef>
 
-namespace JSONReflection2 {
+namespace JsonFusion {
 
 
 template <class T, typename... Options>
@@ -157,4 +157,4 @@ bool operator!=(const U& lhs,
     return lhs != rhs.value;
 }
 
-} // namespace JSONReflection2
+} // namespace JsonFusion

@@ -1,4 +1,4 @@
-# JSONReflection, yet another JSON library
+# JsonFusion, yet another JSON library
 
 ### Strongly typed, macro-free, codegen-free, with no allocations inside, zero-recursion on fixed-sized containers, single-pass high-performance JSON parser/serializer with declarative models and validation
 
@@ -55,13 +55,13 @@ if(auto result = Parse(config, input); !result) {
 ## Performance
 
 ### Competitive with hand-written RapidJSON code
-Benchmarks on realistic configs show JSONReflection within the same range as RapidJSON + manual mapping, and sometimes faster, while avoiding the DOM and hand-written conversion code.
+Benchmarks on realistic configs show JsonFusion within the same range as RapidJSON + manual mapping, and sometimes faster, while avoiding the DOM and hand-written conversion code.
 
 ## Positioning
 
 ### No extra “mapping” and validation handwritten layer, with same performance
 
-Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JSONReflection fuses parsing, mapping and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
+Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JsonFusion fuses parsing, mapping and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
 
 ### Embedded-friendliness
 
@@ -346,7 +346,7 @@ struct DynamicComplexConfig {
 
 This library shows about the same speed as RapidJSON for static containers (sometimes slightly faster) and 25-30% slower for dynamic containers — **but with full mapping and validation in both cases**.
 
-**Important:** RapidJSON below is only parsing into a Document DOM, while JSONReflection parses directly into the final struct with validation.
+**Important:** RapidJSON below is only parsing into a Document DOM, while JsonFusion parses directly into the final struct with validation.
 
 ### RapidJSON DOM parsing
 
@@ -356,7 +356,7 @@ doc.Parse(kJsonStatic.data(), kJsonStatic.size());
 ```
 **2.42 - 2.49 µs**
 
-### JSONReflection with static containers + validation
+### JsonFusion with static containers + validation
 
 ```
 StaticComplexConfig cfg;
@@ -364,7 +364,7 @@ Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 ```
 **2.40 - 2.44 µs** ✨ (faster than RapidJSON DOM, with validation!)
 
-### JSONReflection with dynamic containers + validation
+### JsonFusion with dynamic containers + validation
 
 ```
 DynamicComplexConfig cfg;
