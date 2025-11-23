@@ -38,6 +38,7 @@ if(auto result = Parse(config, input); !result) {
 - [Positioning](#positioning)
   - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-same-performance)
   - [Embedded-Friendliness](#embedded-friendliness)
+  - [C Interoperability](#c-interoperability)
 - [Compile-Time Schema with Runtime Validation](#one-more-thing-compile-time-schema-runtime-validation-in-the-same-parsing-single-pass)
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)
@@ -114,6 +115,42 @@ No dynamic allocations inside the library. You choose your storage: `std::array`
 Works with forward-only input iterators; you can parse from a stream or byte-by-byte without building a big buffer first.
 
 Plays well with -fno-exceptions / -fno-rtti style builds
+
+### C Interoperability
+
+Add JSON parsing to legacy C codebases **without modifying your C headers**. JsonFusion works with plain C structs through a simple C++ wrapper:
+
+```c
+// structures.h - Pure C header, unchanged
+typedef struct {
+    int device_id;
+    float temperature;
+    SensorConfig sensor;  // Nested structs work!
+} DeviceConfig;
+```
+
+```cpp
+// parser.cpp - C++ wrapper with C API
+extern "C" int ParseDeviceConfig(DeviceConfig* config, 
+                                 const char* json_data, 
+                                 size_t json_size) {
+    auto result = JsonFusion::Parse(*config, json_data, json_data + json_size);
+    return result ? 0 : static_cast<int>(result.error());
+}
+```
+
+```c
+// main.c - Pure C usage
+DeviceConfig config;
+int error = ParseDeviceConfig(&config, json, strlen(json));
+```
+
+Perfect for:
+- **Legacy firmware** - Add JSON without touching existing C code
+- **FFI boundaries** - Python/Rust → C with typed JSON
+- **Embedded C projects** - Modern JSON parsing with zero C code changes
+
+**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work perfectly. See `examples/c_interop/` for a complete working example.
 
 ## One more thing: compile-time schema, runtime validation in the same parsing single pass
 
