@@ -85,14 +85,14 @@ struct Motor {
 
 ### Supported options include:
 
-- key<"..."> – JSON field name (decouples schema from C++ member name)
-- range<min,max> – numeric range checks
-- min_length / max_length – string length
-- min_items / max_items – array size
-- not_required – optional field without having to use std::optional<T>
-- not_json – internal/derived fields that are invisible to JSON
-- allow_excess_fields – per-object policy for unknown JSON fields (only with this one objects will tolerate excess fields and require skipping machinery with compile-time limited stack)
-- as_array – array destructuring for objects (treat struct as JSON tuple)
+- `key<"...">` – JSON field name (decouples schema from C++ member name)
+- `range<min,max>` – numeric range checks
+- `min_length<N>` / `max_length<N>` – string length
+- `min_items<N>` / `max_items<N>` – array size
+- `not_required` – optional field without having to use std::optional<T>
+- `not_json` – internal/derived fields that are invisible to JSON
+- `allow_excess_fields` – per-object policy for unknown JSON fields (only with this one objects will tolerate excess fields and require skipping machinery with compile-time limited stack)
+- `as_array` – array destructuring for objects (treat struct as JSON tuple)
 
 ```cpp
 struct Point {
