@@ -120,7 +120,7 @@ Parse(ob,  std::string_view(R"(
 ## Benchmarks
 
 Input data, some hardware config
-    ```JSON
+    
     {
         "app_name": "StaticBenchApp",
         "version_major": 1,
@@ -204,7 +204,7 @@ Input data, some hardware config
             "max_files": 8
         }
     }
-    ```
+    
 
 And such models:
 Note, that first one uses static containers only and second one uses dynamic containers.
