@@ -4,7 +4,7 @@
 #define JSONFUSION_USE_FAST_FLOAT 1  // desktop default
 #endif
 
-#ifdef JSONFUSION_USE_FAST_FLOAT
+#if JSONFUSION_USE_FAST_FLOAT
 #include "3party/fast_double_parser.h"
 #include "3party/simdjson/to_chars.hpp"
 #else
