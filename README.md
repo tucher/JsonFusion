@@ -28,7 +28,7 @@ if(auto result = Parse(config, input); !result) {
     std::cout << std::format("Error {} at pos {}", result.error(), result.pos()) << std::endl;
 }
 ```
-*No macros, no registration, no JSON DOM, no custom objects*
+*No macros, no registration, no JSON DOM, no inheritance or wrapping*
 
 
 ## Main features
@@ -37,8 +37,6 @@ if(auto result = Parse(config, input); !result) {
 - No macros, no codegen, no registration – relies on PFR and aggregates
 - Header-only
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
-- Custom mappers (TODO)
-- Raw JSON extraction/insertion for subparsing/subserializing (TODO)
 - Default values via usual C++ defaults
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 
@@ -56,7 +54,7 @@ Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a
 
 ### Embedded-friendliness
 
-No recursion in the parser core — depth is bounded and explicit.
+No data-driven recursion in the parser core — depth is bounded by user-defined types and explicit.
 
 No dynamic allocations inside the library. You choose your storage: `std::array`, fixed-size char buffers, or dynamic containers.
 
@@ -64,7 +62,7 @@ Works with forward-only input iterators; you can parse from a stream or byte-by-
 
 Plays well with -fno-exceptions / -fno-rtti style builds
 
-## One more thing: compile time schema, runtime validation in the same parsing single pass
+## One more thing: compile-time schema, runtime validation in the same parsing single pass
 
 Turn your C++ structs into a static schema by annotating fields:
 ```cpp
@@ -91,7 +89,7 @@ struct Motor {
 - `min_items<N>` / `max_items<N>` – array size
 - `not_required` – optional field without having to use std::optional<T>
 - `not_json` – internal/derived fields that are invisible to JSON
-- `allow_excess_fields` – per-object policy for unknown JSON fields (only with this one objects will tolerate excess fields and require skipping machinery with compile-time limited stack)
+- `allow_excess_fields` – per-object policy for unknown JSON fields 
 - `as_array` – array destructuring for objects (treat struct as JSON tuple)
 
 ```cpp
@@ -111,7 +109,7 @@ Parse(ob,  std::string_view(R"(
 ```
             
 
-## *Limitations
+## Limitations
 
 - Designed for C++20 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
@@ -208,12 +206,13 @@ Input data, some hardware config
 
 And such models:
 
-*Note, that first one uses static containers only and second one uses dynamic containers.
+*Note, that first one uses static containers (std::array) and second one uses dynamic containers(`std::vector`, `std::string` and `std::list`).
 Both declare some typechecks on several fields.*
 
 ```cpp
 namespace static_model {
 
+//std::array<char, N> is treted like null-terminated C string
 using SmallStr  = std::array<char, 16>;
 using MediumStr = std::array<char, 32>;
 using LargeStr  = std::array<char, 64>;
@@ -336,16 +335,13 @@ struct DynamicComplexConfig {
 
 This library shows about the same speed as Rapid JSON for static containers(sometimes slightly faster) and 25-30% slower for dynamic containers.
 
-But with full mapping and user-defined validation in both cases
-
-
 ```
 rj::Document doc;
 doc.Parse(kJsonStatic.data(), kJsonStatic.size());
 ```
 2.42 - 2.49 us
 
-*RapidJSON is only parsing into Document while JSONReflection parses and fills the struct, doing validation in process*
+**
 
 ```
 StaticComplexConfig cfg;
@@ -360,3 +356,5 @@ Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 2.97 - 3.07 us
 
 GCC 13.2, arm64 Apple M1 Max, Ubuntu linux on Parallels VM
+
+## RapidJSON is only parsing into Document while JSONReflection fills the final struct, doing validation in process
