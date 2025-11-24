@@ -1,6 +1,9 @@
-# JsonFusion, yet another JSON library
+# JsonFusion, yet another C++ JSON library
 
-### Strongly typed, macro-free, codegen-free, with no allocations inside, zero-recursion on fixed-sized containers, single-pass high-performance JSON parser/serializer with declarative models and validation
+Parse JSON directly into your structs with validation and no glue code.
+
+
+#### Strongly typed, macro-free, codegen-free, with no allocations inside the library, zero-recursion on fixed-size containers, single-pass, high-performance JSON parser/serializer with declarative models and validation
 
 ## Motivating example
 
@@ -17,18 +20,19 @@ struct Config {
 
     Network network;
 
-    struct Drives {
+    struct Drive {
         int   id;
         float max_speed = 0;
         bool active = false;
     };
-    std::vector<Drives> drives;
+    std::vector<Drive> drives;
 };
 
 Config conf;
 
 std::string input = R"({"drives":[{"id":0,"max_speed":4.1,"active":true}],"network":{"name":"1","address":"0.0.0.0","port":8081}})";
-JsonFusion::Parse(conf, input);
+auto parseResult = JsonFusion::Parse(conf, input);
+// error checking omitted for brevity
 
 std::string output;
 JsonFusion::Serialize(conf, output);
@@ -51,10 +55,10 @@ JsonFusion::Serialize(conf, output);
 
 - [Installation](#installation)
 - [Main Features](#main-features)
-- [Why Compile-Time Reflection?](#why-compile-time-reflection) 📖 [Full Article](docs/WHY_REFLECTION.md)
 - [Performance](#performance)
 - [Positioning](#positioning)
   - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-same-performance)
+  - [You Own Your Containers](#you-own-your-containers)
   - [Embedded-Friendliness](#embedded-friendliness)
   - [C Interoperability](#c-interoperability)
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
@@ -64,32 +68,25 @@ JsonFusion::Serialize(conf, output);
 
 ## Installation
 
-JsonFusion is a **header-only library**. Simply copy the /include to your project's include directory.
+JsonFusion is a **header-only library**. Simply copy the include/ directory into your project’s include path (e.g. so `#include <JsonFusion/parser.hpp>` works and `pfr.hpp` is visible).
 
 
 ### Requirements
 
 - **C++20** or later
 - Compiler: GCC 12+, Clang 13+, MSVC 2019+
-- **Boost.PFR** (bundled, no separate installation needed)
+- **Boost.PFR** (bundled into `/include`, no separate installation needed)
 
 ## Main features
 
-- Good performance
-- The implementation conforms to the standard (specifically, arbitrary order of fields inside objects is supported)
-- Validation of JSON shape and structure, field types compatibility and schema, all done in the same single parsing pass
+- High performance, comparable to RapidJSON + manual mapping
+- The implementation conforms to the JSON standard (including arbitrary field order in objects)
+- Validation of JSON shape and structure, field types compatibility and schema, all done in s single parsing pass
 - No macros, no codegen, no registration – relies on PFR and aggregates
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
-- Error handling via convertible to bool result object with access to error code and offset. C++ exceptions are not used.
+- Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
 
-## Why Compile-Time Reflection?
-
-JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't a hack – **C++26 (late 2025) is standardizing native reflection**, making this approach the future of C++.
-
-📖 **[Read the philosophy →](docs/WHY_REFLECTION.md)** – includes C++26 context,  technical benefits, and embedded systems discussion.
-
-It is all about avoiding doing the same work multiple times.
 
 ## Performance
 
@@ -98,38 +95,55 @@ Benchmarks on realistic configs show JsonFusion within the same range as RapidJS
 
 ## Positioning
 
-### No extra “mapping” and validation handwritten layer, with same performance
+### No extra handwritten mapping/validation layer, with the same performance
 
-Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JsonFusion fuses parsing, mapping and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
+Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JsonFusion fuses parsing, mapping, and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
 
-You would have to do this work anyway, JsonFusion just help to automate. So it optimizes not the raw strings parsing, it optimizes development effort, debugging time and lowers maintainance burden of endless boilerplate lines of code that just move some bytes around.
+You would have to do this work anyway; JsonFusion just helps automate it. So it doesn’t just optimize raw string parsing; it optimizes development effort, debugging time, and lowers the maintenance burden of endless boilerplate that just moves bytes around.
 
-You may see it as codegenerator, which automatically produce good parser/serializer just for your models.
+You can think of it as a code generator that automatically produces a good parser/serializer tailored to your models.
+
+### You own your containers
+
+JsonFusion never dictates what containers or strings you must use. It works with any type that behaves like a standard C++ container:
+
+- strings: `std::string`, `std::array<char, N>`, your own fixed buffers…
+- arrays/lists: `std::vector<T>`, `std::list<T>`, `std::array<T, N>`, etc.
+
+JsonFusion does **not** install custom allocators, memory pools, or arenas. It simply reads JSON and writes into the storage you provide.
+
+This has a few consequences:
+
+- You keep full control over memory behavior (heap vs stack, fixed-size vs dynamic).
+- Integration with existing C++ and even C structs is straightforward.
+- There are no hidden allocation tricks inside the library.
+
+It also explains part of the performance story: libraries like RapidJSON use highly tuned internal DOM structures and custom allocators, which can squeeze out more speed for dynamic, DOM-heavy workloads. JsonFusion chooses instead to be a thin, strongly typed layer over *your* containers, while still staying competitive in raw parsing speed.
 
 ### Embedded-friendliness
 
-No data-driven recursion in the parser core — depth is bounded by user-defined types and explicit.
+No data-driven recursion in the parser core — depth is bounded by your user-defined types and is explicit.
 
-No dynamic allocations inside the library. You choose your storage: `std::array`, fixed-size char buffers, or dynamic containers.
+No dynamic allocations inside the library. You choose your storage: `std::array`, fixed-size char buffers, or dynamic containers (`std`-compatible).
 
-Works with forward-only input/output iterators; you can parse from a stream or byte-by-byte without building a big buffer first and serialize the result byte-by-byte with full control, without intermediate buffers anywhere.
+Works with forward-only input/output iterators: you can parse from a stream or byte-by-byte without building a big buffer first, and serialize byte-by-byte with full control and no intermediate buffers.
 
 Plays well with -fno-exceptions / -fno-rtti style builds.
 
 **Configurable dependencies**: By default uses state-of-the-art float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to depend only on PFR + C stdlib for floats handling, reducing binary size for embedded builds.
 
-**Your struct defines everything**: On tiny uC without floating point support just don't use the unavailable `float`/`double` in your structures definitions. Float parsing code is never instantiated or compiled into the binary in this case, there is no special global configuration. Same story for dynamic lists/strings.
+**Your structs define everything**: On tiny microcontrollers without floating-point support, just don’t use float/double in your struct definitions. In that case the float parsing code is never instantiated or compiled into the binary; there is no special global configuration needed. The same applies to dynamic lists/strings.
 
 ### C Interoperability
 
-Add JSON parsing to legacy C codebases **with very small or without modifying your C headers**. JsonFusion parsing can be placed into separate unit and will work with plain C structs just fine:
+Add JSON parsing to legacy C codebases **with very small or without modifying your C headers**. JsonFusion parsing can live in a separate C++ translation unit and will work with plain C structs just fine:
 
 ```c
 // structures.h - Pure C header, unchanged
 typedef struct {
     int device_id;
     float temperature;
-    SensorConfig sensor;  // Nested structs work!
+    SensorConfig sensor; // SensorConfig is another C struct
 } DeviceConfig;
 ```
 
@@ -148,22 +162,23 @@ extern "C" int ParseDeviceConfig(DeviceConfig* config,
 DeviceConfig config;
 int error = ParseDeviceConfig(&config, json, strlen(json));
 ```
-If you define custom input/output iterators, you will be able to plug in the JSON into any C code base.
-Fits for:
+If you define custom input/output iterators, you can integrate JSON parsing into virtually any C code base.
+A good fit for:
 - **Legacy firmware** - Add JSON without touching existing C code too much
 - **Embedded C projects** - Modern JSON parsing with zero C code changes
 
-**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work perfectly. See `examples/c_interop/` for a complete working example. But see the [philosophy](docs/WHY_REFLECTION.md), that will change very soon most likely.
+**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work perfectly. See `examples/c_interop/` for a complete working example. See the [philosophy](docs/WHY_REFLECTION.md) - standard C++ reflection will likely change this story in the near future.
 
 
 ## Declarative Schema and Runtime Validation
 
 Declarative compile-time schema and options, runtime validation in the same parsing single pass.
-Turn your C++ structs into a static schema, decouple variable's names from JSON keys, add parsing rules by annotating fields:
+Turn your C++ structs into a static schema, decouple variable names from JSON keys, and add parsing rules by annotating fields:
 
 ```cpp
 using JsonFusion::Annotated;
-
+using namespace JsonFusion::options;
+using std::string; using std::vector, std::optional;
 struct GPSTrack {
     Annotated<int,
         key<"id">,
@@ -213,8 +228,8 @@ Tiny wrapper around your types, without inheritance, but with some glue to make 
 auto handlePoint = [](const GPSTrack::Point & p){};
 for (const auto & track: tracks) {
     if(!track) continue;
-    for (const auto & point: track->points) { // automatic implicit casts
-        handlePoint(point);                   // and operators forwarding inside
+    for (const auto & point: track->points) { // implicit conversions & operator forwarding
+        handlePoint(point);
     }
 }
 ```
@@ -224,7 +239,7 @@ for (const auto & track: tracks) {
 
 - Designed for C++20 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
-- **THIS IS NOT A JSON DOM LIBRARY.** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic tree & ad-hoc editing, it is not what you need.
+- **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
 
 ## Benchmarks
 
@@ -234,10 +249,14 @@ JsonFusion targets two distinct scenarios with different priorities:
 - **High-performance systems** – where throughput is critical (measured in µs)
 
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
-*eliminating unnecessary work* rather than through manual micro-optimizations. 
+*eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
 With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack is fully portable C stdlib. 
 Less work means both faster execution *and* smaller binaries.
+
+It is all about avoiding doing the same work multiple times.
+
+JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn’t a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
 
 ### Binary Size (Embedded Focus)
 
@@ -256,7 +275,8 @@ Benchmarked on realistic hardware config: nested structs, arrays of floats/ints,
 
 **What matters here**: Time to parse JSON into fully-populated, validated C++ structs.
 
-**Important:** RapidJSON below is only parsing into a Document DOM, while JsonFusion parses directly into the final struct with validation. JsonFusion shows about the same speed as RapidJSON for static containers (sometimes slightly faster) and 25-30% slower for dynamic containers — **but with full mapping and validation in both cases**.
+**Important:** RapidJSON below is only parsing into a Document DOM, while JsonFusion parses directly into the final struct with validation. JsonFusion shows about the same speed as RapidJSON for static containers (sometimes slightly faster) and 25-30% slower for **`std`** dynamic containers — **but with full mapping and validation in both cases**.
+(As always, benchmarks depend on the model and compiler; see the benchmark sources for details.)
 
 #### RapidJSON DOM parsing
 
