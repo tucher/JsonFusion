@@ -86,7 +86,8 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 - Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
-
+- Constexpr parsing & serialization – For models using fixed-size containers (std::array, char buffers) and primitive types, both Parse and Serialize are usable in constexpr contexts. This enables compile-time JSON validation, “baked-in” embedded configs, and gives extra confidence that there are no hidden allocations or runtime dependencies on the library side. See [`tests/consteval_tests.cpp`](tests/consteval_tests.cpp) for examples with nested structs, arrays, and optionals.
+ 
 
 ## Performance
 
