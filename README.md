@@ -42,11 +42,11 @@ JsonFusion::Serialize(conf, output);
 
 | JSON Type | C++ Type                                        |
 |-----------|-------------------------------------------------|
-| object    | `struct`  *is_aggregate_v*                      |
+| object    | `struct`  *is_aggregate_v, all kinds*           |
 | array     | `list<...>`, `vector<...>`, `array<...>`, ...   |
 | null      | `optional<...>`                                 |
 | string    | `string`, `vector<char>`, `array<char, N>`, ... |
-| number    | `int`, `float`, `double`                        |
+| number    | `int`*(all kinds)*, `float`, `double`                        |
 | bool      | `bool`                                          |
 
 
