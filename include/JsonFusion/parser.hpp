@@ -694,6 +694,10 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             currentPos ++;
             return true;
         }
+        if(parsed_items_count > 0 && !has_trailing_comma) {
+            ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+            return false;
+        }
         if constexpr (DynamicContainerTypeConcept<ObjT>) {
             auto & newItem = obj.emplace_back();
             if(!ParseValue(newItem, currentPos, end, ctx)) {
@@ -1072,6 +1076,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         return false;
     }
     bool has_trailing_comma = false;
+    bool isFirst = true;
     using FH = FieldsHelper<ObjT>;
     std::array<bool, FH::fieldsCount> parsedFieldsByIndex{};
     while(true) {
@@ -1107,6 +1112,11 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 return false;
             }
             return true;
+        }
+
+        if(!isFirst && !has_trailing_comma) {
+            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+            return false;
         }
 
         IncrementalFieldSearch searcher{
@@ -1179,6 +1189,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
         }
+        isFirst = false;
         has_trailing_comma = false;
         if(*currentPos == ',') {
             has_trailing_comma = true;
@@ -1257,6 +1268,11 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
             currentPos ++;
             return true;
+        }
+
+        if(parsed_items_count > 0 && !has_trailing_comma) {
+            ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+            return false;
         }
         bool skipped = false;
         auto try_one = [&](auto ic) {
