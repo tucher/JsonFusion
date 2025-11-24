@@ -32,12 +32,12 @@ struct Network {
 // Motor channel configuration
 struct Motor {
     int64_t         id;
-    SmallStr       name;
+    SmallStr        name;
     Annotated<std::array<
         Annotated<double, range<-1000, 1000>>,3>, min_items<3>>      position;        // [x,y,z]
     Annotated<std::array<
-        Annotated<float, range<-1000, 1000>>,3>, min_items<3>>    vel_limits;      // [vx,vy,vz]
-    bool     inverted;
+        Annotated<float,  range<-1000, 1000>>,3>, min_items<3>>    vel_limits;      // [vx,vy,vz]
+    bool           inverted;
 };
 
 // Sensor configuration
@@ -46,7 +46,7 @@ struct Sensor {
     MediumStr   model;
     Annotated<float, range<-100, 100000> >  range_min;
     double      range_max;
-    bool       active;
+    bool        active;
 };
 
 // Controller-level configuration
@@ -61,22 +61,23 @@ struct Controller {
 struct Logging {
     bool        enabled;
     LargeStr    path;
-    uint32_t       max_files;
+    uint32_t    max_files;
 };
 
 // Top-level config
 struct ComplexConfig {
     MediumStr         app_name;
-    uint16_t               version_major;
+    uint16_t          version_major;
     int               version_minor;
-    Network     network;
+    Network           network;
     std::optional<Network> fallback_network_conf;
-    Controller  controller;
-    Logging     logging;
+    Controller        controller;
+    Logging           logging;
 };
 }
 
 namespace dynamic_model {
+
 using std::array;
 using std::int64_t;
 using std::list;
@@ -85,11 +86,8 @@ using std::string;
 using std::string_view;
 using std::vector;
 
-
-
 using namespace JsonFusion::options;
 using JsonFusion::Annotated;
-
 
 struct Network {
     string    name;
@@ -101,49 +99,49 @@ struct Network {
 // Motor channel configuration
 struct Motor {
     int64_t             id;
-    string          name;
+    string              name;
     Annotated<vector<
             Annotated<double, range<-1000, 1000>>
         >,  max_items<3>, min_items<3>>      position;  
     Annotated<vector<
             Annotated<float, range<-1000, 1000>>
-        >,  max_items<3>, min_items<3>>    vel_limits; 
-    bool        inverted;
+        >,  max_items<3>, min_items<3>>      vel_limits; 
+    bool                                     inverted;
 };
 
 // Sensor configuration
 struct Sensor {
-    string  type;       // "lidar", "imu", ...
-    string  model;
+    string    type;       // "lidar", "imu", ...
+    string    model;
     Annotated<float, range<-100, 100000> >  range_min;
-    double   range_max;
-    bool    active;
+    double    range_max;
+    bool      active;
 };
 
 // Controller-level configuration
 struct Controller {
-    string                     name;
-    Annotated<int, range<200, 10000>>     loop_hz;
+    string                                                  name;
+    Annotated<int, range<200, 10000>>                       loop_hz;
     Annotated<list<Motor>,  min_items<1>,  max_items<4>>    motors;
-    Annotated<list<Sensor>, max_items<4>>   sensors;
+    Annotated<list<Sensor>, max_items<4>>                   sensors;
 };
 
 // Logging configuration
 struct Logging {
     bool      enabled;
     string    path;
-    uint32_t       max_files;
+    uint32_t  max_files;
 };
 
 // Top-level config
 struct ComplexConfig {
-    string             app_name;
+    string                 app_name;
     uint16_t               version_major;
-    int                version_minor;
-    Network     network;
-    optional<Network> fallback_network_conf;
-    Controller  controller;
-    Logging     logging;
+    int                    version_minor;
+    Network                network;
+    optional<Network>      fallback_network_conf;
+    Controller             controller;
+    Logging                logging;
 };
 
 

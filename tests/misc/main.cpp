@@ -548,6 +548,7 @@ void test() {
 
     }
 
+
 }
 
 struct TrivialSentinel {};
@@ -603,6 +604,73 @@ void serialize_tests() {
 
     assert(Serialize(B(), output) &&
            string(output.c_str()) == R"({"field1":12,"b":null,"flags":[false,true,false]})");
+
+    {
+        struct Config {
+            struct Network {
+                std::string name;
+                std::string address;
+                int port = 8080;
+            };
+
+            Network network;
+
+            struct Motor {
+                int   id;
+                float max_speed = 0;
+                bool active = false;
+            };
+            std::vector<Motor> motors;
+        };
+
+        Config config;
+
+        std::string input = R"({"motors":[{"id":0,"max_speed":0.5,"active":true}],"network":{"name":"1","address":"0.0.0.0","port":8081}})";
+
+        JsonFusion::Parse(config, input);
+        std::string output;
+        JsonFusion::Serialize(config, output);
+
+    }
+    {
+        struct GPSTrack {
+            Annotated<int,
+                      key<"id">,
+                      range<1, 8>>             more_convenient_descriptive_id;
+
+            Annotated<string,
+                      min_length<1>,
+                      max_length<32>>          name;
+
+            Annotated<bool, not_json>    m_is_handled;
+
+            struct Point {
+                float x;
+                float y;
+                float z;
+            };
+            Annotated<std::vector<
+                          Annotated<Point, as_array>>,
+                      max_items<4096>>         points;
+        };
+
+        list<optional<GPSTrack>> tracks;
+        assert(JsonFusion::Parse(tracks, std::string_view(R"JSON(
+    [
+        null,
+        {"name": "track1", "id": 1, "points": [[1,2,3], [4,5,6], [7,8,9]]},
+        null
+    ]
+)JSON")));
+        assert(!tracks.back());
+        auto handlePoint = [](const GPSTrack::Point & p){};
+        for (const auto & track: tracks) {
+            if(!track) continue;
+            for (const auto & point: track->points) {
+                handlePoint(point);
+            }
+        }
+    }
 
 }
 int main()
