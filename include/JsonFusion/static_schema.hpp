@@ -127,7 +127,7 @@ concept ArrayWritable = requires(C& c) {
     typename array_write_cursor<C>::element_type;
     { array_write_cursor<C>{c}.allocate_slot() } -> std::same_as<stream_write_result>;
     { array_write_cursor<C>{c}.get_slot() } -> std::same_as<typename array_write_cursor<C>::element_type&>;
-    { array_write_cursor<C>{c}.finalize() } -> std::same_as<stream_write_result>;
+    { array_write_cursor<C>{c}.finalize(std::declval<bool>()) } -> std::same_as<stream_write_result>;
     array_write_cursor<C>{c}.reset();
 
 };
@@ -150,7 +150,7 @@ struct array_write_cursor<C> {
     element_type & get_slot() {
         return c.emplace_back();
     }
-    constexpr stream_write_result finalize() {
+    constexpr stream_write_result finalize(bool) {
         return  stream_write_result::value_processed;
     }
     constexpr void reset(){
@@ -181,7 +181,7 @@ struct array_write_cursor<std::array<T, N>> {
     constexpr element_type & get_slot() {
         return c[index];
     }
-    constexpr stream_write_result finalize() {
+    constexpr stream_write_result finalize(bool) {
         return  stream_write_result::value_processed;
     }
     constexpr void reset(){
@@ -197,7 +197,7 @@ concept ConsumerStreamerLike = requires(S& s) {
     // if returns true, continue
     typename S::value_type;
     { s.consume(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
-    { s.finalize(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
+    { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
     { s.reset() } -> std::same_as<void>;
 };
 
@@ -226,8 +226,11 @@ struct array_write_cursor<Streamer> {
         return buffer;
     }
 
-    constexpr stream_write_result finalize() {
-        if(!streamer.finalize(buffer)) {
+    constexpr stream_write_result finalize(bool res) {
+        if(!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        }
+        if(!streamer.finalize(res)) {
             return stream_write_result::error;
         } else {
             return stream_write_result::value_processed;

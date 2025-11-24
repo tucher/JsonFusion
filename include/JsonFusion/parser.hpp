@@ -677,33 +677,35 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-            cursor.finalize();
+            cursor.finalize(false);
             return false;
         }
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            cursor.finalize();
+            cursor.finalize(false);
             return false;
         }
         if(*currentPos == ']') {
-            cursor.finalize();
+
             if(has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+                cursor.finalize(false);
                 return false;
             }
             if constexpr (Opts::template has_option<options::detail::min_items_tag>) {
                 using MinItems = Opts::template get_option<options::detail::min_items_tag>;
                 if (parsed_items_count < MinItems::value) {
                     ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
+                    cursor.finalize(false);
                     return false;
                 }
             }
-
+            cursor.finalize(true);
             currentPos ++;
             return true;
         }
         if(parsed_items_count > 0 && !has_trailing_comma) {
             ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
-            cursor.finalize();
+            cursor.finalize(false);
             return false;
         }
 
@@ -720,7 +722,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
         auto & newItem = cursor.get_slot();
         if(!ParseValue(newItem, currentPos, end, ctx)) {
-            cursor.finalize();
+            cursor.finalize(false);
             return false;
         }
 
@@ -728,14 +730,14 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         if constexpr (Opts::template has_option<options::detail::max_items_tag>) {
             using MaxItems = Opts::template get_option<options::detail::max_items_tag>;
             if (parsed_items_count > MaxItems::value) {
-                cursor.finalize();
+                cursor.finalize(false);
                 ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
                 return false;
             }
         }
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            cursor.finalize();
+            cursor.finalize(false);
             return false;
         }
         has_trailing_comma = false;
@@ -745,7 +747,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
 
     }
-    cursor.finalize();
+    cursor.finalize(false);
     return false;
 }
 
