@@ -22,7 +22,8 @@ enum class SerializeError {
     NO_ERROR,
     FIXED_SIZE_CONTAINER_OVERFLOW,
     ILLFORMED_NUMBER,
-    STRING_CONTENT_ERROR
+    STRING_CONTENT_ERROR,
+    INPUT_STREAM_ERROR
 };
 
 
@@ -294,7 +295,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
 }
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
-    requires static_schema::JsonArray<ObjT>
+    requires static_schema::JsonSerializableArray<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -302,7 +303,19 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     }
     *outputPos ++ = '[';
     bool first = true;
-    for (const auto &ch: obj) {
+
+    using FH   = static_schema::array_read_cursor<ObjT>;
+    FH cursor{ obj };
+    while(true) {
+        stream_read_result res = cursor.read_more();
+        if(res == stream_read_result::end) {
+            break;
+        } else if(res == stream_read_result::error) {
+            ctx.setError(SerializeError::INPUT_STREAM_ERROR, outputPos);
+            return false;
+        }
+
+        const auto &ch = cursor.get();
         if(first) {
             first = false;
         } else {
@@ -450,10 +463,10 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <static_schema::JsonValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent>
 constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
     using Meta    = options::detail::annotation_meta_getter<Field>;
-    if constexpr(static_schema::JsonNullableValue<Field>) {
+    if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
 
         if(static_schema::isNull(obj)) {
             return serialize_literal(currentPos, end, "null");
@@ -464,7 +477,7 @@ constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & e
 
 } // namespace serializer_details
 
-template <static_schema::JsonValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent>
 constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, const Sent & end) {
     serializer_details::SerializationContext<It> ctx(begin);
     serializer_details::SerializeValue(obj, begin, end, ctx);
@@ -478,7 +491,7 @@ constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, con
 
 
 // Pointer + length front-end
-template<static_schema::JsonValue InputObjectT>
+template<static_schema::JsonSerializableValue InputObjectT>
 constexpr SerializeResult<char*> Serialize(const InputObjectT& obj, char* data, std::size_t size) {
     char* begin = data;
     char* end   = data + size;
@@ -515,7 +528,7 @@ constexpr inline bool operator!=(const limitless_sentinel& s,
 }
 }
 
-template<static_schema::JsonValue InputObjectT>
+template<static_schema::JsonSerializableValue InputObjectT>
 constexpr auto Serialize(const InputObjectT& obj, std::string& out)
 {
     using serializer_details::limitless_sentinel;
