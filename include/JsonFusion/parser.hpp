@@ -1125,13 +1125,18 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
 
         if(!parseString([&](char c){
-                if(!searcher.step(c)) {
-                    if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
-                        ctx.setError(ParseError::EXCESS_FIELD, currentPos);
-                        return false;
+                if constexpr(false) {//early skip. Cool, but actually really harmful: this will happen extremely rare
+                    if(!searcher.step(c)) {
+                        if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
+                            ctx.setError(ParseError::EXCESS_FIELD, currentPos);
+                            return false;
+                        }
                     }
+                    return true;
+                } else {
+                    searcher.step(c);
+                    return true;
                 }
-                return true;
             }, currentPos, end, ctx)) {
             // field not found or bad string
             return false;
