@@ -194,10 +194,10 @@ template<class T>
 struct annotation_meta {
     using value_t = T;
     using options      = no_options;
-    static decltype(auto) getRef(T & f) {
+    static constexpr decltype(auto) getRef(T & f) {
         return (f);
     }
-    static decltype(auto) getRef(const T & f) {
+    static constexpr decltype(auto) getRef(const T & f) {
         return (f);
     }
 };
@@ -214,10 +214,10 @@ struct annotation_meta<Annotated<T, Opts...>> {
     using value_t = T;
     using options      = field_options<T, Opts...>;
 
-    static decltype(auto) getRef(Annotated<T, Opts...> & f) {
+    static constexpr decltype(auto) getRef(Annotated<T, Opts...> & f) {
         return (f.value);
     }
-    static decltype(auto) getRef(const Annotated<T, Opts...> & f) {
+    static constexpr decltype(auto) getRef(const Annotated<T, Opts...> & f) {
         return (f.value);
     }
 };

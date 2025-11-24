@@ -147,17 +147,17 @@ concept JsonValue = is_json_value<C>::value;
 
 
 template <JsonNullableValue Field>
-void setNull(Field &f) {
+constexpr void setNull(Field &f) {
     annotation_meta_getter<Field>::getRef(f).reset();
 }
 
 template <JsonNullableValue Field>
-static bool isNull(const Field &f) {
+constexpr bool isNull(const Field &f) {
     return !annotation_meta_getter<Field>::getRef(f).has_value();
 }
 
 template<JsonNullableValue Field>
-decltype(auto) getRef(Field & f) {
+constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     auto& opt = S::getRef(f);
     if(!opt) return opt.emplace();
@@ -165,19 +165,19 @@ decltype(auto) getRef(Field & f) {
 }
 
 template<JsonNullableValue Field>
-decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
+constexpr decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
     using S = annotation_meta_getter<Field>;
     return (*S::getRef(f));
 }
 
 template<JsonNonNullableValue Field>
-decltype(auto) getRef(Field & f) {
+constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }
 
 template<JsonNonNullableValue Field>
-decltype(auto) getRef(const Field & f) {
+constexpr decltype(auto) getRef(const Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }

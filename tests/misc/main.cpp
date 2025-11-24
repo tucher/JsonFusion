@@ -672,6 +672,32 @@ void serialize_tests() {
         }
     }
 
+    {
+        struct A {
+            std::array<char, 5> a;
+            std::array<char, 5> a2;
+        };
+        A a{};
+        assert(JsonFusion::Parse(a, std::string_view(R"JSON(
+   {"a": "12", "a2": "34"}
+)JSON")));
+
+        std::string out;
+        assert(JsonFusion::Serialize(a, out));
+
+        // assert(out == "12");
+    }
+    {
+        struct A {
+            Annotated<int, key<"qkey">> f1;
+            Annotated<int, key<"key2">> f2;
+        };
+        A a{};
+        assert(JsonFusion::Parse(a, std::string_view(R"JSON(
+   {"key2": 12, "qkey": 34}
+)JSON")));
+    }
+
 }
 int main()
 {

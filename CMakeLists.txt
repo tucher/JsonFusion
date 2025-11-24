@@ -35,3 +35,9 @@ target_compile_options(rapidjson_comparison_parsing_benchmark PRIVATE
 target_link_options(rapidjson_comparison_parsing_benchmark PRIVATE
   $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto>
 )
+
+add_executable(consteval_tests
+    tests/consteval_tests.cpp
+    ${JSON_FUSION}
+
+)

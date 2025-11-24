@@ -63,10 +63,10 @@ class ParseResult {
     ParseError m_error = ParseError::NO_ERROR;
     InpIter m_pos;
 public:
-    ParseResult(ParseError err, InpIter pos):
+    constexpr ParseResult(ParseError err, InpIter pos):
         m_error(err), m_pos(pos)
     {}
-    operator bool() const {
+    constexpr operator bool() const {
         return m_error == ParseError::NO_ERROR;
     }
     InpIter pos() const {
@@ -86,20 +86,20 @@ class DeserializationContext {
     ParseError error = ParseError::NO_ERROR;
     InpIter m_pos;
 public:
-    DeserializationContext(InpIter b) {
+    constexpr DeserializationContext(InpIter b) {
         m_pos = b;
     }
-    void setError(ParseError err, InpIter pos) {
+    constexpr void setError(ParseError err, InpIter pos) {
         error = err;
         m_pos = pos;
     }
 
-    ParseResult<InpIter> result() {
+    constexpr ParseResult<InpIter> result() {
         return ParseResult<InpIter>(error, m_pos);
     }
 };
 
-inline bool isSpace(char a) {
+constexpr inline bool isSpace(char a) {
     switch(a) {
     case 0x20:
     case 0x0A:
@@ -110,7 +110,7 @@ inline bool isSpace(char a) {
     return false;
 }
 
-inline bool isPlainEnd(char a) {
+constexpr inline bool isPlainEnd(char a) {
     switch(a) {
     case ']':
     case ',':
@@ -125,7 +125,7 @@ inline bool isPlainEnd(char a) {
 }
 
 template <CharInputIterator It, CharSentinelFor<It> Sent>
-inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It> & ctx) {
+constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It> & ctx) {
     while (currentPos != end && isSpace(*currentPos)) {
         ++currentPos;
     }
@@ -136,7 +136,7 @@ inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationCon
     return true;
 }
 
-bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
+constexpr bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
     for (char c : lit) {
         if (it == end || *it != c) {
             return false;
@@ -148,7 +148,7 @@ bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonBool<ObjT>
-bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if(currentPos == end) {
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
@@ -167,7 +167,7 @@ bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, Deserializa
 
 
 template <CharInputIterator It, CharSentinelFor<It> Sent>
-bool read_number_token(It& currentPos,
+constexpr bool read_number_token(It& currentPos,
                        const Sent& end,
                        DeserializationContext<It>& ctx,
                        char (&buf)[fp_to_str_detail::NumberBufSize],
@@ -275,14 +275,14 @@ bool read_number_token(It& currentPos,
 // Assumes characters are already known to be digits (no extra validation).
 // Returns false on overflow or invalid '-' for unsigned types.
 template <class Int>
-inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
+constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
     static_assert(std::is_integral_v<Int>, "Int must be an integral type");
 
     using Limits   = std::numeric_limits<Int>;
     using Unsigned = std::make_unsigned_t<Int>;
 
-    const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
-
+    // const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
+    const char *p = buf;
     bool negative = false;
 
     if constexpr (std::is_signed_v<Int>) {
@@ -344,7 +344,7 @@ inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonNumber<ObjT>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     char buf[fp_to_str_detail::NumberBufSize];
     std::size_t index = 0;
     bool seenDot = false;
@@ -458,7 +458,7 @@ bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, 
 }
 
 template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent>
-bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if(*currentPos != '"'){
         ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
         return false;
@@ -596,7 +596,6 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 
         default:
             if(!inserter(*currentPos)) {
-                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                 return false;
             }
             currentPos++;
@@ -607,7 +606,7 @@ bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, Deseriali
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonString<ObjT>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     std::size_t parsedSize = 0;
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -656,7 +655,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonArray<ObjT>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
@@ -941,12 +940,12 @@ struct IncrementalFieldSearch {
     It original_end;  // original end, used as "empty result"
     std::size_t depth = 0; // how many characters have been fed
 
-    IncrementalFieldSearch(It begin, It end)
+    constexpr IncrementalFieldSearch(It begin, It end)
         : first(begin), last(end), original_end(end), depth(0) {}
 
     // Feed next character; narrows [first, last) by character at position `depth`.
     // Returns true if any candidates remain after this step.
-    bool step(char ch) {
+    constexpr bool step(char ch) {
         if (first == last)
             return false;
 
@@ -977,20 +976,16 @@ struct IncrementalFieldSearch {
     //   - pointer to unique FieldDescr if exactly one matches AND
     //     fully typed (depth >= name.size())
     //   - original_end if 0 matches OR >1 matches OR undertyped.
-    It result() const {
+    constexpr It result() const {
         if (first == last)
             return original_end; // 0 matches
 
-        It it = first;
-        ++it;
-        if (it != last)
-            return original_end; // >1 match => ambiguous
 
         // exactly one candidate
         const FieldDescr& candidate = *first;
 
         // undertyping: not all characters of the name have been given
-        if (depth < candidate.name.size())
+        if (depth != candidate.name.size())
             return original_end;
 
         return first;
@@ -1000,7 +995,7 @@ struct IncrementalFieldSearch {
 template<class T>
 struct FieldsHelper {
     template<std::size_t I>
-    static constexpr bool fieldIsNotJSON() {
+    static consteval bool fieldIsNotJSON() {
         using Field   = pfr::tuple_element_t<I, T>;
         using Opts    = options::detail::annotation_meta_getter<Field>::options;
         if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
@@ -1012,7 +1007,7 @@ struct FieldsHelper {
 
     static constexpr std::size_t rawFieldsCount = pfr::tuple_size_v<T>;
 
-    static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) {
+    static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) consteval{
         //TODO get name from options, if presented
         return (std::size_t{0} + ... + (!fieldIsNotJSON<I>() ? 1: 0));
     }(std::make_index_sequence<rawFieldsCount>{});
@@ -1020,7 +1015,7 @@ struct FieldsHelper {
 
 
     template<std::size_t I>
-    static constexpr std::string_view fieldName() {
+    static consteval std::string_view fieldName() {
         using Field   = pfr::tuple_element_t<I, T>;
         using Opts    = options::detail::annotation_meta_getter<Field>::options;
 
@@ -1032,7 +1027,7 @@ struct FieldsHelper {
         }
     }
     template<std::size_t I>
-    static constexpr bool fieldNotRequired() {
+    static consteval bool fieldNotRequired()  {
         using Field   = pfr::tuple_element_t<I, T>;
         using Opts    = options::detail::annotation_meta_getter<Field>::options;
         if constexpr (Opts::template has_option<options::detail::not_required_tag>) {
@@ -1054,9 +1049,13 @@ struct FieldsHelper {
         };
         (add_one(std::integral_constant<std::size_t, I>{}), ...);
         std::ranges::sort(arr, {}, &FieldDescr::name);
+
         return arr;
     }(std::make_index_sequence<rawFieldsCount>{});
 
+    static constexpr bool fieldsAreUnique = [](std::array<FieldDescr, fieldsCount> sortedArr) consteval{
+        return std::ranges::adjacent_find(sortedArr, {}, &FieldDescr::name) == sortedArr.end();
+    }(fieldIndexesSortedByFieldName);
 };
 
 
@@ -1065,8 +1064,9 @@ struct FieldsHelper {
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonObject<ObjT>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    using FH = FieldsHelper<ObjT>;
+    static_assert(FH::fieldsAreUnique, "Fields are not unique");
     if(*currentPos != '{') {
         ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
         return false;
@@ -1077,7 +1077,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
     }
     bool has_trailing_comma = false;
     bool isFirst = true;
-    using FH = FieldsHelper<ObjT>;
+
     std::array<bool, FH::fieldsCount> parsedFieldsByIndex{};
     while(true) {
         if(currentPos == end) [[unlikely]] {
@@ -1123,11 +1123,19 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
-        if(!parseString([&searcher](char c){
-                searcher.step(c);
+
+        if(!parseString([&](char c){
+                if(!searcher.step(c)) {
+                    if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
+                        ctx.setError(ParseError::EXCESS_FIELD, currentPos);
+                        return false;
+                    }
+                }
                 return true;
             }, currentPos, end, ctx)) {
+            // field not found or bad string
             return false;
+
         }
         auto res = searcher.result();
 
@@ -1161,12 +1169,16 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
                 if constexpr(FH::template fieldIsNotJSON<StructIndex>()) {
                     return true;
                 } else {
-                if (!ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
-                        return false;
-                    }
                     std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
-                    parsedFieldsByIndex[arrIndex] = true;
-                    return true;
+                    if(parsedFieldsByIndex[arrIndex] == true) {
+                        ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+                        return false;
+                    } else if (!ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
+                        return false;
+                    } else {
+                        parsedFieldsByIndex[arrIndex] = true;
+                        return true;
+                    }
                 }
             };
 
@@ -1206,7 +1218,7 @@ template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if(*currentPos != '[') {
         ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
         return false;
@@ -1329,7 +1341,7 @@ bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, Deserializat
 }
 
 template <static_schema::JsonValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
-bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
@@ -1362,7 +1374,7 @@ bool ParseValue(Field & field, It &currentPos, const Sent & end, Deserialization
 } // namespace parser_details
 
 template <static_schema::JsonValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
-ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
+constexpr ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
     parser_details::DeserializationContext<decltype(begin)> ctx(begin);
 
 
@@ -1381,14 +1393,14 @@ ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
 }
 
 template<class InputObjectT, class ContainterT>
-auto Parse(InputObjectT & obj, const ContainterT & c) {
+constexpr auto Parse(InputObjectT & obj, const ContainterT & c) {
     return Parse(obj, c.begin(), c.end());
 }
 
 
 // Pointer + length front-end
 template<static_schema::JsonValue InputObjectT>
-ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t size) {
+constexpr ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t size) {
     const char* begin = data;
     const char* end   = data + size;
 
@@ -1411,8 +1423,9 @@ ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t 
 
 // string_view front-end
 template<static_schema::JsonValue InputObjectT>
-ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
+constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
     return Parse(obj, sv.data(), sv.size());
 }
+
 
 } // namespace JsonFusion
