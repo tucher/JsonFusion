@@ -233,6 +233,12 @@ JsonFusion targets two distinct scenarios with different priorities:
 - **Embedded systems** – where binary size is critical (measured in KB)
 - **High-performance systems** – where throughput is critical (measured in µs)
 
+**Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
+*eliminating unnecessary work* rather than through manual micro-optimizations. 
+The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
+With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack is fully portable C stdlib. 
+Less work means both faster execution *and* smaller binaries.
+
 ### Binary Size (Embedded Focus)
 
 *Benchmarks coming soon* – measuring stripped binary size on ARM Cortex-M platforms with minimal configs.
