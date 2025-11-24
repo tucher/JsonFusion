@@ -38,7 +38,8 @@ enum class ParseError {
     OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR,
     ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR,
     ARRAY_DESTRUCRING_SCHEMA_ERROR,
-    VALUE_OUT_OF_RANGE
+    VALUE_OUT_OF_RANGE,
+    DATA_CONSUMER_ERROR
 };
 
 
@@ -654,7 +655,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 }
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
-    requires static_schema::JsonArray<ObjT>
+    requires static_schema::JsonParsableArray<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -669,15 +670,22 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     }
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
+
+    using FH   = static_schema::array_write_cursor<ObjT>;
+    FH cursor{ obj };
+    cursor.reset();
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+            cursor.finalize();
             return false;
         }
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            cursor.finalize();
             return false;
         }
         if(*currentPos == ']') {
+            cursor.finalize();
             if(has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
                 return false;
@@ -695,35 +703,39 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
         if(parsed_items_count > 0 && !has_trailing_comma) {
             ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+            cursor.finalize();
             return false;
         }
-        if constexpr (DynamicContainerTypeConcept<ObjT>) {
-            auto & newItem = obj.emplace_back();
-            if(!ParseValue(newItem, currentPos, end, ctx)) {
-                return false;
-            }
-        } else {
-            if(parsed_items_count < obj.size()) {
-                if(!ParseValue(obj[parsed_items_count], currentPos, end, ctx)) {
-                    return false;
-                }
 
-            } else {
+        stream_write_result alloc_r = cursor.allocate_slot();
+        if(alloc_r != stream_write_result::slot_allocated) {
+            if(alloc_r == stream_write_result::overflow ) {
                 ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
                 return false;
+            } else {
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                return false;
             }
-            //TODO handle different size policies via opts
+
         }
+        auto & newItem = cursor.get_slot();
+        if(!ParseValue(newItem, currentPos, end, ctx)) {
+            cursor.finalize();
+            return false;
+        }
+
         parsed_items_count ++;
         if constexpr (Opts::template has_option<options::detail::max_items_tag>) {
             using MaxItems = Opts::template get_option<options::detail::max_items_tag>;
             if (parsed_items_count > MaxItems::value) {
+                cursor.finalize();
                 ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
                 return false;
             }
         }
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            cursor.finalize();
             return false;
         }
         has_trailing_comma = false;
@@ -733,6 +745,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
 
     }
+    cursor.finalize();
     return false;
 }
 
@@ -1345,14 +1358,14 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-template <static_schema::JsonValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
+template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
 constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
         return false;
     }
-    if constexpr(static_schema::JsonNullableValue<Field>) {
+    if constexpr(static_schema::JsonNullableParsableValue<Field>) {
 
         if (currentPos == end) {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -1378,7 +1391,7 @@ constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, Deser
 
 } // namespace parser_details
 
-template <static_schema::JsonValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <static_schema::JsonParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent>
 constexpr ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) {
     parser_details::DeserializationContext<decltype(begin)> ctx(begin);
 
@@ -1404,7 +1417,7 @@ constexpr auto Parse(InputObjectT & obj, const ContainterT & c) {
 
 
 // Pointer + length front-end
-template<static_schema::JsonValue InputObjectT>
+template<static_schema::JsonParsableValue InputObjectT>
 constexpr ParseResult<const char*> Parse(InputObjectT& obj, const char* data, std::size_t size) {
     const char* begin = data;
     const char* end   = data + size;
@@ -1427,7 +1440,7 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, const char* data, st
 }
 
 // string_view front-end
-template<static_schema::JsonValue InputObjectT>
+template<static_schema::JsonParsableValue InputObjectT>
 constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
     return Parse(obj, sv.data(), sv.size());
 }

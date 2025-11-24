@@ -361,7 +361,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
         if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
             return true;
-        } else if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && static_schema::JsonNullableValue<Field>) {
+        } else if constexpr (FieldOpts::template has_option<options::detail::not_required_tag> && static_schema::JsonNullableSerializableValue<Field>) {
             if (static_schema::isNull(f)) {
                 return true;
             }

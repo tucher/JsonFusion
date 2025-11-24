@@ -15,6 +15,13 @@ enum class stream_read_result : std::uint8_t {
     error   // unrecoverable error; abort
 };
 
+enum class stream_write_result : std::uint8_t {
+    slot_allocated,  // one value produced; keep going
+    overflow,    // normal end-of-stream
+    error,   // unrecoverable error; abort
+    value_processed, //normal state
+};
+
 namespace static_schema {
 
 
@@ -85,7 +92,9 @@ struct array_read_cursor<std::array<T, N>> {
 
 template<class S>
 concept ProducingStreamerLike = requires(S& s) {
-    //if return true, the the object was filled with data and need to continue calling "read". If false, no more data or error
+    //if returns stream_read_result::value, the object was filled and need to continue calling "read".
+    // If tream_read_result::value, no more data
+    // stream_read_result::error error happened and need to abort serialization
     typename S::value_type;
     { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
 };
@@ -116,22 +125,36 @@ struct array_write_cursor;
 template<class C>
 concept ArrayWritable = requires(C& c) {
     typename array_write_cursor<C>::element_type;
-    { array_write_cursor<C>{c}.has_space() } -> std::same_as<bool>;
-    { array_write_cursor<C>{c}.emplace() } -> std::same_as<typename array_write_cursor<C>::element_type&>;
+    { array_write_cursor<C>{c}.allocate_slot() } -> std::same_as<stream_write_result>;
+    { array_write_cursor<C>{c}.get_slot() } -> std::same_as<typename array_write_cursor<C>::element_type&>;
+    { array_write_cursor<C>{c}.finalize() } -> std::same_as<stream_write_result>;
+    array_write_cursor<C>{c}.reset();
+
 };
 
 
 
 
 template<class C>
-    requires requires(C& c, typename C::value_type v) { c.emplace_back(v); }
+    requires requires(C& c) {
+        { c.emplace_back() } -> std::same_as<typename C::value_type & >;
+        c.clear();
+    }
 struct array_write_cursor<C> {
     using element_type = typename C::value_type;
     C& c;
 
-    element_type* next_slot() {
-        auto& ref = c.emplace_back();
-        return std::addressof(ref);
+    stream_write_result allocate_slot() {
+        return stream_write_result::slot_allocated;
+    }
+    element_type & get_slot() {
+        return c.emplace_back();
+    }
+    constexpr stream_write_result finalize() {
+        return  stream_write_result::value_processed;
+    }
+    constexpr void reset(){
+        c.clear();
     }
 };
 
@@ -141,16 +164,82 @@ struct array_write_cursor<std::array<T, N>> {
     using element_type = T;
     std::array<T, N>& c;
     std::size_t index = 0;
-
-    element_type* next_slot() {
-        if (index < N) return std::addressof(c[index++]);
-        return nullptr;
+    bool first = true;
+    constexpr stream_write_result allocate_slot() {
+        if(first) {
+            index = 0;
+            first = false;
+        } else {
+            index ++;
+        }
+        if(index < N)
+            return stream_write_result::slot_allocated;
+        else {
+            return stream_write_result::overflow;
+        }
+    }
+    constexpr element_type & get_slot() {
+        return c[index];
+    }
+    constexpr stream_write_result finalize() {
+        return  stream_write_result::value_processed;
+    }
+    constexpr void reset(){
+        index = 0;
+        first = true;
     }
 };
 
 
-template<class T> struct is_json_value;  // primary declaration
-template<class T> struct is_json_array;  // primary declaration
+template<class S>
+concept ConsumerStreamerLike = requires(S& s) {
+    //if returns false, need to abort parsing
+    // if returns true, continue
+    typename S::value_type;
+    { s.consume(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
+    { s.finalize(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
+    { s.reset() } -> std::same_as<void>;
+};
+
+
+// streaming source
+template<ConsumerStreamerLike Streamer>
+struct array_write_cursor<Streamer> {
+    using element_type = Streamer::value_type;
+    Streamer & streamer;
+    element_type buffer{};
+    bool first_read = true;
+
+    constexpr stream_write_result allocate_slot() {
+        if(first_read) {
+            first_read = false;
+            return stream_write_result::slot_allocated;
+        }
+        if(!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        } else {
+            return stream_write_result::slot_allocated;
+        }
+    }
+
+    constexpr element_type& get_slot() {
+        return buffer;
+    }
+
+    constexpr stream_write_result finalize() {
+        if(!streamer.finalize(buffer)) {
+            return stream_write_result::error;
+        } else {
+            return stream_write_result::value_processed;
+        }
+    }
+
+    constexpr void reset(){
+        first_read = true;
+        streamer.reset();
+    }
+};
+
 
 
 /* ######## Bool type detection ######## */
@@ -184,6 +273,8 @@ struct is_json_object {
             return false; // arrays are handled separately
         }else if constexpr (ArrayReadable<U>) {
             return false; // arrays are handled separately
+        }else if constexpr (ArrayWritable<U>) {
+            return false; // arrays are handled separately
         }else if constexpr (!std::is_class_v<U>) {
             return false;
         } else if constexpr (!std::is_aggregate_v<U>) {
@@ -202,39 +293,7 @@ template<class C>
 concept JsonObject = is_json_object<C>::value;
 
 
-/* ######## Array type detection ######## */
 
-template<class T>
-struct is_json_array {
-    static constexpr bool value = []{
-        using U = AnnotatedValue<T>;
-        if constexpr (!std::ranges::range<U>)
-            return false;
-        else if constexpr (JsonString<T>)
-            return false; // strings are not arrays
-        else {
-            using Elem = std::ranges::range_value_t<U>;
-            return is_json_value<Elem>::value;  // recursion over element type
-        }
-    }();
-};
-
-template<class C>
-concept JsonArray = is_json_array<C>::value;
-
-
-
-/* ######## Generic JSON value detection ######## */
-
-template<class T>
-struct is_non_null_json_value {
-    static constexpr bool value =
-        JsonBool<T>   ||
-        JsonNumber<T> ||
-        JsonString<T> ||
-        is_json_object<T>::value ||
-        is_json_array<T>::value;
-};
 
 // helper: detect specializations
 template<class T, template<class...> class Template>
@@ -244,43 +303,8 @@ template<template<class...> class Template, class... Args>
 struct is_specialization_of<Template<Args...>, Template> : std::true_type {};
 
 
-template<class Field>
-struct is_nullable_json_value {
-    using AV  = AnnotatedValue<Field>; // unwrap Annotated only
-    static constexpr bool value = []{
-        if constexpr (is_specialization_of<AV, std::optional>::value) {
-            using Inner = typename AV::value_type;
-            // Inner must itself be a non-null JSON value type
-            return is_non_null_json_value<Inner>::value;
-        } else {
-            return false;
-        }
-    }();
-};
-
-template<class Field>
-concept JsonNullableValue = is_nullable_json_value<Field>::value;
-
-template<class Field>
-concept JsonNonNullableValue = is_non_null_json_value<Field>::value;
-
-
-template<class T>
-struct is_json_value {
-    static constexpr bool value = is_non_null_json_value<T>::value
-                               || is_nullable_json_value<T>::value;
-};
-
-
-template<class C>
-concept JsonValue = is_json_value<C>::value;
-
-
-
-
 
 template<class T> struct is_json_serializable_value;  // primary declaration
-
 
 
 template<class T>
@@ -328,8 +352,6 @@ struct is_nullable_json_serializable_value {
 };
 
 
-
-
 template<class Field>
 concept JsonNullableSerializableValue = is_nullable_json_serializable_value<Field>::value;
 
@@ -346,13 +368,73 @@ struct is_json_serializable_value {
 template<class C>
 concept JsonSerializableValue = is_json_serializable_value<C>::value;
 
+template<class T> struct is_json_parsable_value;  // primary declaration
 
+
+template<class T>
+struct is_json_parsable_array {
+    static constexpr bool value = []{
+        using U = AnnotatedValue<T>;
+        if constexpr (JsonString<T>||JsonBool<T> || JsonNumber<T>)
+            return false; //not arrays
+        else {
+            if constexpr(ArrayWritable<U>) {
+                return is_json_parsable_value<typename array_write_cursor<AnnotatedValue<T>>::element_type>::value;
+            } else {
+                return false;
+            }
+        }
+    }();
+};
+template<class C>
+concept JsonParsableArray = is_json_parsable_array<C>::value;
+
+template<class T>
+struct is_non_null_json_parsable_value {
+    static constexpr bool value =
+        JsonBool<T>   ||
+        JsonNumber<T> ||
+        JsonString<T> ||
+        is_json_object<T>::value ||
+        is_json_parsable_array<T>::value;
+};
+
+template<class Field>
+struct is_nullable_json_parsable_value {
+    using AV  = AnnotatedValue<Field>; // unwrap Annotated only
+    static constexpr bool value = []{
+        if constexpr (is_specialization_of<AV, std::optional>::value) {
+            using Inner = typename AV::value_type;
+            // Inner must itself be a non-null JSON value type
+            return is_non_null_json_parsable_value<Inner>::value;
+        } else {
+            return false;
+        }
+    }();
+};
+
+
+template<class Field>
+concept JsonNullableParsableValue = is_nullable_json_parsable_value<Field>::value;
+
+template<class Field>
+concept JsonNonNullableParsableValue = is_non_null_json_parsable_value<Field>::value;
+
+
+template<class T>
+struct is_json_parsable_value {
+    static constexpr bool value = is_non_null_json_parsable_value<T>::value
+                                  || is_nullable_json_parsable_value<T>::value;
+};
+
+template<class C>
+concept JsonParsableValue = is_json_parsable_value<C>::value;
 
 
 /* ######## Generic data access ######## */
 
 
-template <JsonNullableValue Field>
+template <JsonNullableParsableValue Field>
 constexpr void setNull(Field &f) {
     annotation_meta_getter<Field>::getRef(f).reset();
 }
@@ -362,7 +444,7 @@ constexpr bool isNull(const Field &f) {
     return !annotation_meta_getter<Field>::getRef(f).has_value();
 }
 
-template<JsonNullableValue Field>
+template<JsonNullableParsableValue Field>
 constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     auto& opt = S::getRef(f);
@@ -376,7 +458,7 @@ constexpr decltype(auto) getRef(const Field & f) { // This must be used only aft
     return (*S::getRef(f));
 }
 
-template<JsonNonNullableValue Field>
+template<JsonNonNullableParsableValue Field>
 constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));

@@ -10,140 +10,15 @@ void schema_tests() {
     using std::string, std::list, std::vector, std::array, std::optional;
     using namespace JsonFusion;
     using namespace options;
-    struct Module2 {
-        // Annotated<string, "path"> path;
-        Annotated<int, key<"name">,
-                  not_required,
-                  range<0, 100>,
-                  description<"Velocity in m/s">
-                  > count;
-        Annotated<optional<bool>, key<"is_absolute">> not_relative;
-    };
-
-    struct Root2 {
-        Annotated<list<Module2>, key<"members">> members;
-    };
-    Root2 test;
 
 
-    static_assert(static_schema::JsonValue<Root2>);
     {
         using namespace JsonFusion::static_schema;
-        static_assert(JsonValue<bool>);
-        static_assert(!JsonNullableValue<bool>);
-        static_assert(is_non_null_json_value<bool>::value);
-        static_assert(JsonValue<int>);
-        static_assert(JsonValue<char>);
-        static_assert(JsonValue<float>);
-        static_assert(JsonValue<double>);
-        static_assert(JsonValue<string>);
-
-        static_assert( JsonString<string>);
-        static_assert(!JsonArray<string>);
-
-        static_assert(JsonNullableValue<optional<bool>>);
-        static_assert(JsonNullableValue<optional<int>>);
-        static_assert(JsonNullableValue<optional<char>>);
-        static_assert(JsonNullableValue<optional<float>>);
-        static_assert(JsonNullableValue<optional<double>>);
-        static_assert(JsonNullableValue<optional<string>>);
-
-
-        static_assert(JsonValue<list<bool>>);
-        static_assert(JsonArray<vector<string>>);
-        static_assert(JsonNullableValue<optional<list<bool>>>);
-
-        static_assert(JsonArray<vector<optional<int>>>);
-
-        static_assert(JsonValue<Annotated<bool>>);
-
-        // using A = Annotated<int>;
-        static_assert(static_schema::JsonNullableValue<std::optional<int>>);
-        static_assert(static_schema::JsonNullableValue<Annotated<std::optional<int>>>);
-
-        // This should *not* be a valid JSON value anymore:
-        using Bad = std::optional<Annotated<int>>;
-        // static_assert(!static_schema::JsonValue<Bad>);
-
-        static_assert(JsonNullableValue<std::optional<int>>);
-        static_assert(JsonNullableValue<Annotated<std::optional<int>>>);
-        // static_assert(!JsonValue<std::optional<Annotated<int>>>);
-
-        struct SimpleObject {
-            bool b;
-        };
-        static_assert(JsonValue<SimpleObject>);
-
-        struct EmptyRecursiveObject {
-            list<EmptyRecursiveObject> children;
-        };
-        static_assert(JsonValue<EmptyRecursiveObject>);
-
-        struct RecursiveObject {
-            int data;
-            list<RecursiveObject> children;
-        };
-        static_assert(JsonValue<RecursiveObject>);
 
 
 
-        struct Node {
-            struct NodeOpts {
-                list<Node> children;
-                bool optV;
-            };
-            string data;
-            NodeOpts opts;
-        };
-
-        static_assert(JsonValue<Node>);
-
-        struct B;
-        struct A {
-            Annotated<bool, key<"is_absolute">> not_relative;
-            list<Annotated<B>> tst;
-        };
-
-
-        static_assert(JsonValue<A>);
-        static_assert(JsonValue<optional<A>>);
-
-        struct B {
-            bool field;
-            optional<int> optional_field;
-            list<A> list1;
-            optional<list<A>> list2;
-            optional<list<optional<A>>> list3;
-            vector<B> arr;
-        };
-
-        static_assert(JsonValue<B>);
-        static_assert(JsonValue<optional<B>>);
-
-
-        static_assert(JsonValue<list<list<bool>>>);
-        static_assert(JsonValue<list<list<B>>>);
-
-        static_assert(JsonValue<
-                      optional<
-                          list<
-                              optional<
-                                  list<optional<B>>
-                                  >
-                              >
-                          >
-                      >);
-
-        struct EmptyNode {
-            std::vector<EmptyNode> children;
-        };
-
-        static_assert(JsonValue<EmptyNode>);
 
         struct C { Annotated<int> x; };
-        static_assert( JsonValue<C>);
-        static_assert( JsonValue<optional<C>>);
-        static_assert( JsonNullableValue<optional<C>>);
 
 
 

@@ -7,6 +7,15 @@
 #include <cassert>
 
 #include <iostream>
+
+auto printErr = [](auto res, std::string_view js_sv) {
+    int pos = res.pos() - js_sv.data();
+    int wnd = 20;
+    std::string before(js_sv.substr(pos+1 >= wnd ? pos+1-wnd:0, pos+1 >= wnd ? wnd:0));
+    std::string after(js_sv.substr(pos+1, wnd));
+    std::cerr << std::format("JsonFusion parse failed: error {} at {}: '...{}😖{}...'", int(res.error()), pos, before, after)<< std::endl;
+};
+
 int main() {
     struct A {
         int a = 10;
@@ -20,28 +29,28 @@ int main() {
             std::array<char, 10> nested_string;
         } nested;
     };
-    // static_assert([]() constexpr {
-    //     A a;
-    //     return JsonFusion::Parse(a, std::string_view(R"JSON(
-    //             {
-    //                 "a": 10,
-    //                 "empty_opt": null,
-    //                 "b": true,
-    //                 "c": [5, 6],
-    //                 "nested": {"nested_f": 18, "nested_string": "st"},
-    //                 "filled_opt": 14
+    static_assert([]() constexpr {
+        A a;
+        return JsonFusion::Parse(a, std::string_view(R"JSON(
+                {
+                    "a": 10,
+                    "empty_opt": null,
+                    "b": true,
+                    "c": [5, 6],
+                    "nested": {"nested_f": 18, "nested_string": "st"},
+                    "filled_opt": 14
 
-    //     }
-    //     )JSON"))
-    //         && a.a == 10
-    //         && a.b
-    //         && a.c[0] == 5 && a.c[1] == 6
-    //         && !a.empty_opt
-    //         && *a.filled_opt == 14
-    //         && a.nested.nested_f == 18
-    //         && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
-    //         ;
-    // }());
+        }
+        )JSON"))
+            && a.a == 10
+            && a.b
+            && a.c[0] == 5 && a.c[1] == 6
+            && !a.empty_opt
+            && *a.filled_opt == 14
+            && a.nested.nested_f == 18
+            && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
+            ;
+    }());
     static_assert([]() constexpr {
         A a{};
         a.b = true;
@@ -101,5 +110,95 @@ int main() {
         std::string out;
         assert(JsonFusion::Serialize(a, out));
         std::cout << out << std::endl;
+    }
+    {
+        using JsonFusion::Annotated;
+        using namespace JsonFusion::options;
+
+
+        struct VectorWithTimestamp{
+            struct Vector{
+                float x, y, z;
+            };
+            Annotated<Vector, as_array> pos;
+            std::uint64_t timestamp;
+        };
+
+
+        struct PointsStreamer {
+            using value_type = Annotated<VectorWithTimestamp, as_array>;
+
+            void  printPoint (const VectorWithTimestamp & point) {
+                std::cout << std::format("Point received: t={}, pos=({},{},{})",
+                                         point.timestamp,
+                                         point.pos->x,
+                                         point.pos->y,
+                                         point.pos->z
+                                         )
+                          << std::endl;
+            };
+
+            void reset()  {
+                std::cout << "Receiving points" << std::endl;
+            }
+
+            bool consume(const VectorWithTimestamp & point)  {
+                printPoint(point);
+                return true;
+            }
+
+            bool finalize(const VectorWithTimestamp & point)  {
+                printPoint(point);
+                std::cout << "All points received" << std::endl;
+                return true;
+            }
+        };
+
+        struct TagsStreamer {
+            struct Tag {
+                std::string id;
+                std::string text;
+            };
+            using value_type = Tag;
+            void reset()  {
+                std::cout << "Receiving tags" << std::endl;
+            }
+
+            bool consume(const Tag & tag)  {
+                std::cout << tag.id << " " << tag.text << std::endl;
+                return true;
+            }
+
+            bool finalize(const Tag & tag)  {
+                std::cout << tag.id << " " << tag.text << std::endl;
+                std::cout << "Tags received" << std::endl; return true;
+            }
+        };
+
+        struct A {
+            double f;
+            JsonFusion::Annotated<PointsStreamer, key<"points_xyz">> positions;
+
+            TagsStreamer tags;
+        };
+        A a;
+
+        std::string_view in(R"JSON(
+        {
+            "tags": [
+                {"id": "1", "text": "first tag"},
+                {"id": "2", "text": "second tag"}
+            ],
+            "points_xyz": [
+                [[1,2,3], 2],
+                [[4,5,6], 3],
+                [[7,8,9], 8]
+            ],
+            "f": 3.18
+        })JSON");
+        auto res = JsonFusion::Parse(a, in);
+        if(!res) {
+            printErr(res, in);
+        }
     }
 }
