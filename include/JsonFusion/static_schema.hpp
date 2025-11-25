@@ -440,27 +440,94 @@ constexpr decltype(auto) getRef(const Field & f) {
 } // namespace static_schema
 
 template<class S>
-concept ProducingStreamerLike = static_schema::JsonSerializableValue<typename S::value_type> && requires(S& s) {
+concept ProducingStreamerLike = static_schema::JsonSerializableValue<typename S::value_type>
+                                && requires(S& s, static_schema::AnnotatedValue<typename S::value_type>& v) {
     //if returns stream_read_result::value, the object was filled and need to continue calling "read".
     // If tream_read_result::value, no more data
     // stream_read_result::error error happened and need to abort serialization
     typename S::value_type;
 
     { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
+    requires (!requires {
+        s.read(std::move(v));
+    });
+
     { s.reset() } -> std::same_as<void>;
 };
+
+
+namespace static_schema {
+namespace consuming_streamer_concept_helpers {
+
+template<class S, class U, class V>
+consteval bool is_valid_consume_member() {
+    using M = decltype(&S::consume);
+
+    // Helper aliases for readability
+    using C  = S;
+    using CU = const U&;
+    using CV = const V&;
+
+    // All allowed signatures:
+    using SigU      = bool (C::*)(CU);
+    using SigUConst = bool (C::*)(CU) const;
+    using SigUNoex  = bool (C::*)(CU) noexcept;
+    using SigUConstNoex = bool (C::*)(CU) const noexcept;
+
+    using SigV      = bool (C::*)(CV);
+    using SigVConst = bool (C::*)(CV) const;
+    using SigVNoex  = bool (C::*)(CV) noexcept;
+    using SigVConstNoex = bool (C::*)(CV) const noexcept;
+
+    if constexpr (std::is_same_v<U, V>) {
+        // No annotation: underlying == value_type
+        // Only V-based signatures matter (U and V are same anyway)
+        return std::is_same_v<M, SigV> ||
+               std::is_same_v<M, SigVConst> ||
+               std::is_same_v<M, SigVNoex> ||
+               std::is_same_v<M, SigVConstNoex>;
+    } else {
+        // Annotated case: allow both U- and V-based signatures
+        return
+            std::is_same_v<M, SigU> ||
+            std::is_same_v<M, SigUConst> ||
+            std::is_same_v<M, SigUNoex> ||
+            std::is_same_v<M, SigUConstNoex> ||
+
+            std::is_same_v<M, SigV> ||
+            std::is_same_v<M, SigVConst> ||
+            std::is_same_v<M, SigVNoex> ||
+            std::is_same_v<M, SigVConstNoex>;
+    }
+}
 
 template<class S>
-concept ConsumingStreamerLike = static_schema::JsonParsableValue<typename S::value_type> && requires(S& s) {
-    //if returns false, need to abort parsing
-    // if returns true, continue
-
-    //
-    typename S::value_type;
-    { s.consume(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
-    { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
-    { s.reset() } -> std::same_as<void>;
+struct consuming_streamer_meta {
+    using V = typename S::value_type;
+    using U = static_schema::AnnotatedValue<V>;
+    using M = decltype(&S::consume);
+    static constexpr bool ok =
+        static_schema::JsonParsableValue<V> &&
+        is_valid_consume_member<S, U, V>();
 };
+
+}
+}
+
+template<class S>
+concept ConsumingStreamerLike = static_schema::JsonParsableValue<typename S::value_type>
+        && requires(S& s) {
+            { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
+            { s.reset() } -> std::same_as<void>;
+        }
+        && static_schema::consuming_streamer_concept_helpers::consuming_streamer_meta<S>::ok;
+        //     typename S::value_type;
+        //     using V = typename S::value_type;
+        //     using U = typename static_schema::AnnotatedValue<V>;
+        //     using M = decltype(&S::consume);  // must be a single, non-overloaded member
+
+        //     requires static_schema::consuming_streamer_concept_helpers::is_consume_member_v<M, U, V>;
+        // };
 
 
 namespace static_schema {

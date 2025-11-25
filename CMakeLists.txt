@@ -12,10 +12,7 @@ include_directories(${PROJECT_SOURCE_DIR}/include)
 file(GLOB JSON_FUSION
      ${PROJECT_SOURCE_DIR}/include/JsonFusion/*.hpp
 )
-add_executable(misc_tests
-    tests/misc/main.cpp
-    ${JSON_FUSION}
-)
+
 
 add_executable(rapidjson_comparison_parsing_benchmark
     benchmarks/comparison_parsing_benchmark.cpp

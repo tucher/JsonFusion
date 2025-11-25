@@ -133,9 +133,5 @@ int main() {
         char * en = out_pos + buf.size();
         bool r = JsonFusion::Serialize(t, out_pos, en);
         return r;
-
-
     }());
-
-
 }
