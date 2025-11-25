@@ -1447,5 +1447,21 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv)
     return Parse(obj, sv.data(), sv.size());
 }
 
+template <class T>
+    requires (!static_schema::JsonParsableValue<T>)
+constexpr auto  Parse(T obj, auto, auto) {
+    static_assert(static_schema::detail::always_false<T>::value,
+                  "[[[ JsonFusion ]]] T is not a supported JsonFusion parsable value model type.\n"
+                  "see JsonParsableValue concept for full rules");
+}
+
+template <class T>
+    requires (!static_schema::JsonParsableValue<T>)
+constexpr auto Parse(T obj, auto) {
+    static_assert(static_schema::detail::always_false<T>::value,
+                  "[[[ JsonFusion ]]] T is not a supported JsonFusion parsable value model type.\n"
+                  "see JsonParsableValue concept for full rules");
+}
+
 
 } // namespace JsonFusion

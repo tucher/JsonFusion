@@ -541,6 +541,25 @@ constexpr auto Serialize(const InputObjectT& obj, std::string& out)
 
     return Serialize(obj, it, end);  // calls the iterator-based core
 }
+template <class T>
+requires (!static_schema::JsonSerializableValue<T>)
+constexpr auto Serialize(T obj, auto C) {
+    static_assert(static_schema::detail::always_false<T>::value,
+                  "[[[ JsonFusion ]]] T is not a supported JsonFusion serializable value model type.\n"
+                  "see JsonSerializableValue concept for full rules");
+}
+
+
+template <class T>
+    requires (!static_schema::JsonSerializableValue<T>)
+constexpr auto Serialize(T obj, auto C, auto S) {
+    static_assert(static_schema::detail::always_false<T>::value,
+                  "[[[ JsonFusion ]]] T is not a supported JsonFusion serializable value model type.\n"
+                  "see JsonSerializableValue concept for full rules");
+}
+
+
+
 
 
 } // namespace JsonFusion

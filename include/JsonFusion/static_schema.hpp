@@ -6,6 +6,7 @@
 #include <optional>
 #include <utility>
 
+
 #include "options.hpp"
 namespace JsonFusion {
 
@@ -23,6 +24,41 @@ enum class stream_write_result : std::uint8_t {
 };
 
 namespace static_schema {
+
+
+namespace input_checks {
+
+
+template<class T, template<class...> class Template>
+struct is_specialization_of : std::false_type {};
+
+template<template<class...> class Template, class... Args>
+struct is_specialization_of<Template<Args...>, Template> : std::true_type {};
+
+template<class T, template<class...> class Template>
+inline constexpr bool is_specialization_of_v =
+    is_specialization_of<std::remove_cvref_t<T>, Template>::value;
+
+// Top-level forbidden shapes: no recursion, no PFR, no ranges.
+template<class T>
+struct is_directly_forbidden {
+    using D = std::remove_cvref_t<T>;
+    static constexpr bool value =
+        std::is_void_v<D> ||
+        std::is_pointer_v<D> ||
+        std::is_member_pointer_v<D> ||
+        std::is_null_pointer_v<D> ||
+        std::is_function_v<D> ||
+        std::is_reference_v<T>;
+};
+
+template<class T>
+inline constexpr bool is_directly_forbidden_v =
+    is_directly_forbidden<T>::value;
+
+
+} // namespace input_checks
+
 
 
 using options::detail::annotation_meta_getter;
@@ -295,7 +331,7 @@ struct is_json_serializable_value {
 };
 
 template<class C>
-concept JsonSerializableValue = is_json_serializable_value<C>::value;
+concept JsonSerializableValue = !input_checks::is_directly_forbidden_v<C> &&  is_json_serializable_value<C>::value;
 
 template<class T> struct is_json_parsable_value;  // primary declaration
 
@@ -357,7 +393,7 @@ struct is_json_parsable_value {
 };
 
 template<class C>
-concept JsonParsableValue = is_json_parsable_value<C>::value;
+concept JsonParsableValue = !input_checks::is_directly_forbidden_v<C> && is_json_parsable_value<C>::value;
 
 
 /* ######## Generic data access ######## */
@@ -491,6 +527,11 @@ struct array_write_cursor<Streamer> {
         streamer.reset();
     }
 };
+
+namespace detail {
+template<class T>
+struct always_false : std::false_type {};
+}
 
 } //static_schema
 

@@ -136,10 +136,6 @@ int main() {
 
 
     }());
-    static_assert([]() constexpr {
-        using BadType = std::optional<JsonFusion::Annotated<int, JsonFusion::options::range<2, 3>>>;
-        constexpr bool is_correct_type = JsonFusion::static_schema::JsonParsableValue<BadType>;
-        return true;
-    }());
+
 
 }
