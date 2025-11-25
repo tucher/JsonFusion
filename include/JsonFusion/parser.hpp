@@ -154,10 +154,10 @@ constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, D
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
-    if (*currentPos == 't' && match_literal(++currentPos, end, "rue")) {
+    if (*currentPos == 't' && match_literal(++currentPos, end, "rue") && (isPlainEnd(*currentPos) || currentPos == end)) {
         obj = true;
         return true;
-    } else if (*currentPos == 'f' && match_literal(++currentPos, end, "alse")) {
+    } else if (*currentPos == 'f' && match_literal(++currentPos, end, "alse") && (isPlainEnd(*currentPos)|| currentPos == end)) {
         obj = false;
         return true;
     } else {
@@ -433,7 +433,7 @@ concept DynamicContainerTypeConcept = requires (T  v) {
 };
 
 template <CharInputIterator It, CharSentinelFor<It> Sent>
-bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, std::uint16_t &out) {
+constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, std::uint16_t &out) {
     out = 0;
     for (int i = 0; i < 4; ++i) {
         if (currentPos == end) [[unlikely]] {
@@ -614,7 +614,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     }
     auto inserter = [&obj, &parsedSize, &ctx, &currentPos] (char c) -> bool {
         if constexpr (!DynamicContainerTypeConcept<ObjT>) {
-            if (parsedSize < obj.size()) {
+            if (parsedSize < obj.size()-1) {
                 obj[parsedSize] = c;
             } else {
                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
