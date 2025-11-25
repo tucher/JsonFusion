@@ -316,7 +316,7 @@ Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 For models using fixed-size containers (`std::array`, char buffers) and  types, both
 `Parse` and `Serialize` are fully `constexpr`-compatible. This enables compile-time JSON 
 validation, zero-cost embedded configs, and proves no hidden allocations or runtime 
-dependencies. See [`tests/consteval_tests.cpp`](tests/consteval_tests.cpp) for 
+dependencies. See the compile-time test suite [`tests/constexpr/*`](tests/constexpr) for 
 examples with nested structs, arrays, and optionals.
 
 ### Streaming Producers & Consumers (Typed SAX)
@@ -425,7 +425,7 @@ You manually maintain state and assemble typed objects yourself.
 
 **Unified mechanism:**
 - **Producers**: `read()` fills elements on demand (serialization)
-- **Consumers**: `consume()` receives fully-parsed elements (parsing)
+- **Consumers**: `consume()` receives fully-parsed elements (parsing) at the moment last input char of primitive parsed
 - Library uses only a small per-field stack buffer; all dynamic memory is under your control
 
 📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition
