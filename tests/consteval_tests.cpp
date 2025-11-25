@@ -30,6 +30,7 @@ int main() {
         } nested;
 
         std::vector<int> dynamic_array;
+        std::string dynamic_string;
     };
     static_assert([]() constexpr {
         A a;
@@ -41,6 +42,7 @@ int main() {
                     "c": [5, 6],
                     "nested": {"nested_f": 18, "nested_string": "st"},
                     "filled_opt": 14,
+                    "dynamic_string": "variable string",
                     "dynamic_array": [1]
 
         }
@@ -64,11 +66,12 @@ int main() {
         a.nested.nested_string[0]='f';
         a.nested.nested_string[1]='u';
         a.dynamic_array = {12,34};
+        a.dynamic_string = "str";
         std::string out;
         bool r = JsonFusion::Serialize(a, out);
 
         return r &&
-               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34]})JSON";
+               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34],"dynamic_string":"str"})JSON";
     }());
     static_assert([]() constexpr {
         struct Consumer {
