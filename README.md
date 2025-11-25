@@ -40,14 +40,14 @@ JsonFusion::Serialize(conf, output);
 ```
 *No macros, no registration, no JSON DOM, no inheritance or wrapping*
 
-| JSON Type | C++ Type                                        |
-|-----------|-------------------------------------------------|
-| object    | `struct`  *is_aggregate_v, all kinds*           |
-| array     | `list<...>`, `vector<...>`, `array<...>`, ...   |
-| null      | `optional<...>`                                 |
-| string    | `string`, `vector<char>`, `array<char, N>`, ... |
-| number    | `int`*(all kinds)*, `float`, `double`                        |
-| bool      | `bool`                                          |
+| JSON Type | C++ Type                                              |
+|-----------|-------------------------------------------------------|
+| object    | `struct`  *is_aggregate_v, all kinds*                 |
+| array     | `list<...>`, `vector<...>`, `array<...>`, *streamers* |
+| null      | `optional<...>`                                       |
+| string    | `string`, `vector<char>`, `array<char, N>`, ...       |
+| number    | `int`*(all kinds)*, `float`, `double`                 |
+| bool      | `bool`                                                |
 
 
 
@@ -65,6 +65,9 @@ JsonFusion::Serialize(conf, output);
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)
 - [Benchmarks](#benchmarks)
+- [Advanced Features](#advanced-features)
+  - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
+  - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
 
 ## Installation
 
@@ -86,8 +89,6 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 - Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
-- Constexpr parsing & serialization – For models using fixed-size containers (std::array, char buffers) and primitive types, both Parse and Serialize are usable in constexpr contexts. This enables compile-time JSON validation, “baked-in” embedded configs, and gives extra confidence that there are no hidden allocations or runtime dependencies on the library side. See [`tests/consteval_tests.cpp`](tests/consteval_tests.cpp) for examples with nested structs, arrays, and optionals.
- 
 
 ## Performance
 
@@ -304,3 +305,124 @@ Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
 **2.97 - 3.07 µs** (still competitive!)
 
 *GCC 13.2, arm64 Apple M1 Max, Ubuntu Linux on Parallels VM*
+
+## Advanced Features
+
+### Constexpr Parsing & Serialization
+
+For models using fixed-size containers (`std::array`, char buffers) and  types, both
+`Parse` and `Serialize` are fully `constexpr`-compatible. This enables compile-time JSON 
+validation, zero-cost embedded configs, and proves no hidden allocations or runtime 
+dependencies. See [`tests/consteval_tests.cpp`](tests/consteval_tests.cpp) for 
+examples with nested structs, arrays, and optionals.
+
+### Streaming Producers & Consumers (Typed SAX)
+
+Any JSON array field can be bound to either a **container** (`std::vector<T>`, `std::array<T,N>`) or a **streaming producer/consumer**.
+
+#### Streaming Producers (for Serialization)
+
+Instead of materializing all elements in memory, fill them on demand:
+
+```cpp
+struct Streamer {
+    struct Vector { float x, y, z; };
+    using value_type = Annotated<Vector, as_array>;
+
+    mutable int counter = 0;
+    int count;
+
+    void reset() const { counter = 0; }
+    
+    stream_read_result read(Vector & v) const {
+        if (counter >= count) return stream_read_result::end;
+        counter++;
+        v = {42.0f + counter, 43.0f + counter, 44.0f + counter};
+        return stream_read_result::value;
+    }
+};
+static_assert(ProducingStreamerLike<Streamer>);
+
+struct TopLevel {
+    Streamer points_xyz;  // Will serialize as JSON array
+};
+
+TopLevel a;
+a.points_xyz.count = 3;
+std::string out;
+Serialize(a, out);
+// {"points_xyz":[[43,44,45],[44,45,46],[45,46,47]]}
+```
+
+JsonFusion holds a **single `value_type` buffer on the stack** and repeatedly calls `read()`. 
+No intermediate containers, no hidden allocations.
+
+**Composability**: Since `value_type` can be any JsonFusion-compatible value (primitives, structs, 
+
+`Annotated<>`, even other streamers), you can nest producers arbitrarily:
+
+```cpp
+struct StreamerOuter {
+    struct StreamerInner {
+        using value_type = double;
+        // ... fills doubles on demand
+    };
+    using value_type = StreamerInner;  // Stream of streamers!
+    // ... fills  StreamerInner instances state on demand
+};
+
+Serialize(StreamerOuter{}, out);
+// [[1],[1,2],[1,2,3],[1,2,3,4],...]  – 2D jagged array, zero materialized containers
+```
+
+#### Streaming Consumers (for Parsing)
+
+Consume elements as they arrive, without storing the whole array:
+
+```cpp
+struct PointsConsumer {
+    using value_type = Vector;
+
+    void reset() { /* called at array start */ }
+    
+    bool consume(const Vector & point) {
+        processPoint(point);  // handle element immediately
+        return true;
+    }
+    
+    bool finalize(bool success) { 
+        return success;  // called after last element
+    }
+};
+static_assert(ConsumingStreamerLike<PointsConsumer>);
+
+struct TopLevel {
+    Annotated<PointsConsumer, key<"points">> consumer;
+};
+
+Parse(toplevel, R"({"points": [[1,2,3], [4,5,6], ...]})");
+// consume() called for each element, no std::vector allocated
+```
+
+JsonFusion parses each element directly into a **stack-allocated `value_type` buffer**, calls `consume()`, then reuses the buffer for the next element.
+
+#### Why This Is Different from Classic SAX
+
+Classic SAX APIs (RapidJSON, simdjson) drive you with low-level events:
+```
+StartArray, Key("foo"), String("bar"), Int(42), EndObject, …
+```
+You manually maintain state and assemble typed objects yourself.
+
+**JsonFusion's approach:**
+- You declare `value_type` (using the same `Annotated<>` system as normal fields)
+- JsonFusion parses each element into a **fully-typed C++ object**
+- Your callbacks receive complete, validated structures—not raw tokens
+- The abstraction **composes naturally**—streamers can contain structs, which contain other streamers
+
+**Unified mechanism:**
+- **Producers**: `read()` fills elements on demand (serialization)
+- **Consumers**: `consume()` receives fully-parsed elements (parsing)
+- Library uses only a small per-field stack buffer; all dynamic memory is under your control
+
+📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition
