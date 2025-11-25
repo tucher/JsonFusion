@@ -2,18 +2,18 @@
 
 Quick reference for tracking test implementation progress.
 
-## primitives/ (11 files)
+## primitives/ (11 files) ✅ COMPLETE
 - [x] test_parse_int.cpp
 - [x] test_parse_bool.cpp
 - [x] test_parse_char_array.cpp
 - [x] test_serialize_int.cpp
 - [x] test_serialize_bool.cpp
-- [ ] test_parse_integers_signed.cpp
-- [ ] test_parse_integers_unsigned.cpp
-- [ ] test_parse_integers_edge_cases.cpp
-- [ ] test_parse_bool_edge_cases.cpp
-- [ ] test_parse_strings_escaping.cpp
-- [ ] test_parse_strings_edge_cases.cpp
+- [x] test_parse_integers_signed.cpp
+- [x] test_parse_integers_unsigned.cpp
+- [x] test_parse_integers_edge_cases.cpp
+- [x] test_parse_bool_edge_cases.cpp
+- [x] test_parse_strings_escaping.cpp
+- [x] test_parse_strings_edge_cases.cpp
 
 ## composite/ (8 files)
 - [ ] test_parse_nested_flat.cpp
