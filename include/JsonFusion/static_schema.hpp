@@ -460,7 +460,7 @@ namespace static_schema {
 namespace consuming_streamer_concept_helpers {
 
 template<class S, class U, class V>
-consteval bool is_valid_consume_member() {
+consteval bool is_valid_consume_member_type() {
     using M = decltype(&S::consume);
 
     // Helper aliases for readability
@@ -502,32 +502,30 @@ consteval bool is_valid_consume_member() {
 }
 
 template<class S>
-struct consuming_streamer_meta {
-    using V = typename S::value_type;
-    using U = static_schema::AnnotatedValue<V>;
-    using M = decltype(&S::consume);
-    static constexpr bool ok =
-        static_schema::JsonParsableValue<V> &&
-        is_valid_consume_member<S, U, V>();
-};
+consteval bool has_valid_consume_member() {
+    // First: does S::consume even exist?
+    if constexpr (!requires { &S::consume; }) {
+        return false;  // no consume → not a ConsumingStreamerLike
+    } else {
+        using V = typename S::value_type;
+        using U = static_schema::AnnotatedValue<V>;
+        return is_valid_consume_member_type<S, U, V>();
+    }
+}
+
 
 }
 }
 
 template<class S>
-concept ConsumingStreamerLike = static_schema::JsonParsableValue<typename S::value_type>
+concept ConsumingStreamerLike =
+        static_schema::JsonParsableValue<typename S::value_type>
+        && static_schema::consuming_streamer_concept_helpers::has_valid_consume_member<S>()
         && requires(S& s) {
             { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
             { s.reset() } -> std::same_as<void>;
         }
-        && static_schema::consuming_streamer_concept_helpers::consuming_streamer_meta<S>::ok;
-        //     typename S::value_type;
-        //     using V = typename S::value_type;
-        //     using U = typename static_schema::AnnotatedValue<V>;
-        //     using M = decltype(&S::consume);  // must be a single, non-overloaded member
-
-        //     requires static_schema::consuming_streamer_concept_helpers::is_consume_member_v<M, U, V>;
-        // };
+        ;
 
 
 namespace static_schema {
