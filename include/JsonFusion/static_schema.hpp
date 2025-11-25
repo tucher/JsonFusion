@@ -415,7 +415,7 @@ concept ProducingStreamerLike = static_schema::JsonSerializableValue<typename S:
 };
 
 template<class S>
-concept ConsumerStreamerLike = static_schema::JsonParsableValue<typename S::value_type> && requires(S& s) {
+concept ConsumingStreamerLike = static_schema::JsonParsableValue<typename S::value_type> && requires(S& s) {
     //if returns false, need to abort parsing
     // if returns true, continue
 
@@ -452,7 +452,7 @@ struct array_read_cursor<Streamer> {
 
 
 // streaming source
-template<ConsumerStreamerLike Streamer>
+template<ConsumingStreamerLike Streamer>
 struct array_write_cursor<Streamer> {
     using element_type = Streamer::value_type;
     Streamer & streamer;

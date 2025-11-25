@@ -12,9 +12,18 @@ void streaming_demo () {
         struct Vector{
             float x, y, z;
         };
+
+        // Each element will be serialized as a JSON array [x,y,z]
         using value_type = JsonFusion::Annotated<Vector, JsonFusion::options::as_array>;
+
         int count;
         mutable int counter = 0;
+
+        // Called by JsonFusion to pull the next element.
+        // Returns:
+        //   value  – v has been filled, keep going
+        //   end    – no more elements
+        //   error  – abort serialization
 
         constexpr JsonFusion::stream_read_result read(Vector & v) const {
             if (counter >= count) {
@@ -27,6 +36,7 @@ void streaming_demo () {
             return JsonFusion::stream_read_result::value;
         }
 
+        // Called at the start of the JSON array
         void reset() const {
             counter = 0;
         }
@@ -78,9 +88,12 @@ void sax_demo() {
                                         )
                         << std::endl;
         };
+        // Called at the start of the JSON array
         void reset()  {
             std::cout << "Receiving points" << std::endl;
         }
+
+        // Called for each element, with a fully-parsed value_type
         bool consume(const VectorWithTimestamp & point)  {
             printPoint(point);
             return true;
@@ -90,7 +103,7 @@ void sax_demo() {
             return true;
         }
     };
-    static_assert(JsonFusion::ConsumerStreamerLike<PointsConsumer>, "Incompatible consumer");
+    static_assert(JsonFusion::ConsumingStreamerLike<PointsConsumer>, "Incompatible consumer");
 
     struct TagsConsumer {
         struct Tag {
@@ -99,12 +112,12 @@ void sax_demo() {
         };
         using value_type = Tag;
         
-        // called at array start
+       // Called at the start of the JSON array
         void reset()  {
             std::cout << "Receiving tags" << std::endl;
         }
 
-        // called for each element
+        // Called for each element, with a fully-parsed value_type
         bool consume(const Tag & tag)  {
             std::cout << tag.id << " " << tag.text << std::endl;
             return true;
@@ -112,15 +125,20 @@ void sax_demo() {
 
         // called once at the end (with json success flag, if true, all data was consumed successfully)
         bool finalize(bool success)  {
-            std::cout << "Tags received" << std::endl; return true;
+            if (!success) {
+                std::cout << "Tags stream aborted due to parse error\n";
+                return false;
+            }
+            std::cout << "Tags received\n";
+            return true;
         }
     };
-    static_assert(JsonFusion::ConsumerStreamerLike<TagsConsumer>, "Incompatible consumer");
+    static_assert(JsonFusion::ConsumingStreamerLike<TagsConsumer>, "Incompatible consumer");
 
     struct TopLevel {
         double f;
         JsonFusion::Annotated<PointsConsumer, key<"timestamped_points">> positions;
-        TagsConsumer tags;
+        TagsConsumer tags;  // field name "tags" -> JSON key "tags"
     };
 
     TopLevel a;
@@ -157,7 +175,60 @@ void sax_demo() {
     */
 }
 
+
+void nested_producers () {
+
+    struct StreamerOuter {
+        struct StreamerInner {
+            using value_type = double;
+
+            int count = 5;
+            mutable int counter = 0;
+
+            constexpr JsonFusion::stream_read_result read(double & v) const {
+                if (counter >= count) {
+                    return JsonFusion::stream_read_result::end;
+                }
+                counter ++;
+                v = counter;
+                return JsonFusion::stream_read_result::value;
+            }
+
+            void reset() const {
+                counter = 0;
+            }
+        };
+
+        using value_type = StreamerInner;
+
+        int count {8};
+        mutable int counter { 0};
+
+        constexpr JsonFusion::stream_read_result read(StreamerInner & v) const {
+            if (counter >= count) {
+                return JsonFusion::stream_read_result::end;
+            }
+            counter ++;
+            v.count = counter;
+            return JsonFusion::stream_read_result::value;
+        }
+
+        void reset() const {
+            counter = 0;
+        }
+    };
+
+    std::string out;
+    JsonFusion::Serialize(StreamerOuter{}, out);
+
+    std::cout << out << std::endl;
+
+    /*
+    [[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8]]
+    */
+}
 int main() {
     streaming_demo();
     sax_demo();
+    nested_producers();
 }
