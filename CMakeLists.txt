@@ -41,3 +41,9 @@ add_executable(consteval_tests
     ${JSON_FUSION}
 
 )
+
+add_executable(sax_demo
+    tests/sax_demo.cpp
+    ${JSON_FUSION}
+
+)

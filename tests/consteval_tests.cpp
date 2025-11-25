@@ -5,7 +5,7 @@
 #include <JsonFusion/parser.hpp>
 #include <list>
 #include <cassert>
-
+#include <format>
 #include <iostream>
 
 auto printErr = [](auto res, std::string_view js_sv) {

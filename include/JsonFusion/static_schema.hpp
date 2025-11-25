@@ -40,6 +40,7 @@ concept ArrayReadable = requires(C& c) {
     typename array_read_cursor<C>::element_type;
     { array_read_cursor<C>{c}.read_more() } -> std::same_as<stream_read_result>;
     { array_read_cursor<C>{c}.get() } -> std::same_as<const typename array_read_cursor<C>::element_type&>;
+    array_read_cursor<C>{c}.reset();
 };
 
 
@@ -50,6 +51,7 @@ struct array_read_cursor<C> {
     using element_type = typename C::value_type;
     const C& c;
     decltype(c.begin()) it = c.begin();
+    decltype(c.begin()) b = c.begin();
     bool first = true;
     const element_type& get() const {
         return *it;
@@ -63,6 +65,10 @@ struct array_read_cursor<C> {
         if(it != c.end()) return stream_read_result::value;
         else return stream_read_result::end;
     }
+    constexpr void reset() {
+        it = b;
+        first = true;
+    }
 };
 
 // fixed-size std::array
@@ -70,8 +76,8 @@ template<class T, std::size_t N>
 struct array_read_cursor<std::array<T, N>> {
     using element_type = T;
     const std::array<T, N>& c;
-    std::size_t index = 0;
-    bool first = true;
+    mutable std::size_t index = 0;
+    mutable bool first = true;
 
 
     constexpr const element_type& get() {
@@ -86,33 +92,9 @@ struct array_read_cursor<std::array<T, N>> {
         if(index < N) return stream_read_result::value;
         else return stream_read_result::end;
     }
-};
-
-
-
-template<class S>
-concept ProducingStreamerLike = requires(S& s) {
-    //if returns stream_read_result::value, the object was filled and need to continue calling "read".
-    // If tream_read_result::value, no more data
-    // stream_read_result::error error happened and need to abort serialization
-    typename S::value_type;
-    { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
-};
-
-
-// streaming source
-template<ProducingStreamerLike Streamer>
-struct array_read_cursor<Streamer> {
-    using element_type = Streamer::value_type;
-    const Streamer & streamer;
-    element_type buffer;
-    bool first_read = false;
-    bool has_more = false;
-    constexpr const element_type& get() {
-        return buffer;
-    }
-    constexpr stream_read_result read_more() {
-        return streamer.read(buffer);
+    constexpr void reset() const {
+        index = 0;
+        first = true;
     }
 };
 
@@ -131,9 +113,6 @@ concept ArrayWritable = requires(C& c) {
     array_write_cursor<C>{c}.reset();
 
 };
-
-
-
 
 template<class C>
     requires requires(C& c) {
@@ -187,59 +166,6 @@ struct array_write_cursor<std::array<T, N>> {
     constexpr void reset(){
         index = 0;
         first = true;
-    }
-};
-
-
-template<class S>
-concept ConsumerStreamerLike = requires(S& s) {
-    //if returns false, need to abort parsing
-    // if returns true, continue
-    typename S::value_type;
-    { s.consume(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
-    { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
-    { s.reset() } -> std::same_as<void>;
-};
-
-
-// streaming source
-template<ConsumerStreamerLike Streamer>
-struct array_write_cursor<Streamer> {
-    using element_type = Streamer::value_type;
-    Streamer & streamer;
-    element_type buffer{};
-    bool first_read = true;
-
-    constexpr stream_write_result allocate_slot() {
-        if(first_read) {
-            first_read = false;
-            return stream_write_result::slot_allocated;
-        }
-        if(!streamer.consume(buffer)) {
-            return stream_write_result::error;
-        } else {
-            return stream_write_result::slot_allocated;
-        }
-    }
-
-    constexpr element_type& get_slot() {
-        return buffer;
-    }
-
-    constexpr stream_write_result finalize(bool res) {
-        if(!streamer.consume(buffer)) {
-            return stream_write_result::error;
-        }
-        if(!streamer.finalize(res)) {
-            return stream_write_result::error;
-        } else {
-            return stream_write_result::value_processed;
-        }
-    }
-
-    constexpr void reset(){
-        first_read = true;
-        streamer.reset();
     }
 };
 
@@ -476,6 +402,97 @@ constexpr decltype(auto) getRef(const Field & f) {
 
 
 } // namespace static_schema
+
+template<class S>
+concept ProducingStreamerLike = static_schema::JsonSerializableValue<typename S::value_type> && requires(S& s) {
+    //if returns stream_read_result::value, the object was filled and need to continue calling "read".
+    // If tream_read_result::value, no more data
+    // stream_read_result::error error happened and need to abort serialization
+    typename S::value_type;
+
+    { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
+    { s.reset() } -> std::same_as<void>;
+};
+
+template<class S>
+concept ConsumerStreamerLike = static_schema::JsonParsableValue<typename S::value_type> && requires(S& s) {
+    //if returns false, need to abort parsing
+    // if returns true, continue
+
+    //
+    typename S::value_type;
+    { s.consume(std::declval<const typename S::value_type&>()) } -> std::same_as<bool>;
+    { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
+    { s.reset() } -> std::same_as<void>;
+};
+
+
+namespace static_schema {
+
+// streaming source
+template<ProducingStreamerLike Streamer>
+struct array_read_cursor<Streamer> {
+    using element_type = Streamer::value_type;
+    const Streamer & streamer;
+    element_type buffer;
+    bool first_read = false;
+    bool has_more = false;
+    constexpr const element_type& get() {
+        return buffer;
+    }
+    constexpr stream_read_result read_more() {
+        return streamer.read(buffer);
+    }
+
+    constexpr void reset() const {
+        streamer.reset();
+    }
+};
+
+
+
+// streaming source
+template<ConsumerStreamerLike Streamer>
+struct array_write_cursor<Streamer> {
+    using element_type = Streamer::value_type;
+    Streamer & streamer;
+    element_type buffer{};
+    bool first_read = true;
+
+    constexpr stream_write_result allocate_slot() {
+        if(first_read) {
+            first_read = false;
+            return stream_write_result::slot_allocated;
+        }
+        if(!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        } else {
+            return stream_write_result::slot_allocated;
+        }
+    }
+
+    constexpr element_type& get_slot() {
+        return buffer;
+    }
+
+    constexpr stream_write_result finalize(bool res) {
+        if(!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        }
+        if(!streamer.finalize(res)) {
+            return stream_write_result::error;
+        } else {
+            return stream_write_result::value_processed;
+        }
+    }
+
+    constexpr void reset(){
+        first_read = true;
+        streamer.reset();
+    }
+};
+
+} //static_schema
 
 } // namespace JsonFusion
 

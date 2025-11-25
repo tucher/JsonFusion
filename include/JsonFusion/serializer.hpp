@@ -306,6 +306,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
     using FH   = static_schema::array_read_cursor<ObjT>;
     FH cursor{ obj };
+    cursor.reset();
     while(true) {
         stream_read_result res = cursor.read_more();
         if(res == stream_read_result::end) {

@@ -1,16 +1,13 @@
 #include <string_view>
-#include <array>
-#include <optional>
-#include <list>
 #include <cassert>
 #include <iostream>
-
+#include <format>
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/parser.hpp>
 
 
 void streaming_demo () {
-    
+
     struct Streamer {
         struct Vector{
             float x, y, z;
@@ -18,6 +15,7 @@ void streaming_demo () {
         using value_type = JsonFusion::Annotated<Vector, JsonFusion::options::as_array>;
         int count;
         mutable int counter = 0;
+
         constexpr JsonFusion::stream_read_result read(Vector & v) const {
             if (counter >= count) {
                 return JsonFusion::stream_read_result::end;
@@ -28,7 +26,14 @@ void streaming_demo () {
             v.z = 44 + counter;
             return JsonFusion::stream_read_result::value;
         }
+
+        void reset() const {
+            counter = 0;
+        }
     };
+
+    static_assert(JsonFusion::ProducingStreamerLike<Streamer>, "Incompatible streamer");
+
     struct TopLevel {
         Streamer points_xyz;
     };
@@ -43,7 +48,7 @@ void streaming_demo () {
 
     /* Output:
 
-    {"f":-2,"points_xyz":[[43,44,45],[44,45,46],[45,46,47]],"v":[1,23]}
+    {"points_xyz":[[43,44,45],[44,45,46],[45,46,47]]}
 
     */  
 }
@@ -73,21 +78,19 @@ void sax_demo() {
                                         )
                         << std::endl;
         };
-
         void reset()  {
             std::cout << "Receiving points" << std::endl;
         }
-
         bool consume(const VectorWithTimestamp & point)  {
             printPoint(point);
             return true;
         }
-
         bool finalize(bool success)  {
             std::cout << "All points received" << std::endl;
             return true;
         }
     };
+    static_assert(JsonFusion::ConsumerStreamerLike<PointsConsumer>, "Incompatible consumer");
 
     struct TagsConsumer {
         struct Tag {
@@ -107,11 +110,12 @@ void sax_demo() {
             return true;
         }
 
-        // called once at the end (with json domain success flag)
+        // called once at the end (with json success flag, if true, all data was consumed successfully)
         bool finalize(bool success)  {
             std::cout << "Tags received" << std::endl; return true;
         }
     };
+    static_assert(JsonFusion::ConsumerStreamerLike<TagsConsumer>, "Incompatible consumer");
 
     struct TopLevel {
         double f;
