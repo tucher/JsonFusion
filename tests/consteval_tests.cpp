@@ -32,7 +32,7 @@ int main() {
         std::vector<int> dynamic_array;
         std::string dynamic_string;
         std::vector<std::vector<int>> vec_of_vec_of_int;
-        std::vector<std::optional<std::vector<int>>> vec_of_opt_vecs;
+        std::vector<std::optional<std::vector<std::string>>> vec_of_opt_vecs;
 
     };
     static_assert([]() constexpr {
@@ -48,7 +48,7 @@ int main() {
                     "dynamic_string": "variable string",
                     "dynamic_array": [1],
                     "vec_of_vec_of_int":[[2]],
-                    "vec_of_opt_vecs": [null, [1,2,3], null]
+                    "vec_of_opt_vecs": [null, ["a","b","c"], null]
         }
         )JSON"))
             && a.a == 10
@@ -59,6 +59,9 @@ int main() {
             && a.nested.nested_f == 18
             && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
             && a.dynamic_array[0] == 1
+            && a.vec_of_vec_of_int[0][0]==2
+            && !a.vec_of_opt_vecs[0] && !a.vec_of_opt_vecs[2]
+               && a.vec_of_opt_vecs[1] && *a.vec_of_opt_vecs[1] == std::vector<std::string>{"a", "b", "c"}
             ;
     }());
     static_assert([]() constexpr {
@@ -72,12 +75,12 @@ int main() {
         a.dynamic_array = {12,34};
         a.dynamic_string = "str";
         a.vec_of_vec_of_int = {{3}};
-        a.vec_of_opt_vecs = {std::nullopt, std::vector<int>{1,2,3} , std::nullopt};
+        a.vec_of_opt_vecs = {std::nullopt, std::vector<std::string>{"a","b","c"} , std::nullopt};
         std::string out;
         bool r = JsonFusion::Serialize(a, out);
 
         return r &&
-               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34],"dynamic_string":"str","vec_of_vec_of_int":[[3]],"vec_of_opt_vecs":[null,[1,2,3],null]})JSON";
+               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34],"dynamic_string":"str","vec_of_vec_of_int":[[3]],"vec_of_opt_vecs":[null,["a","b","c"],null]})JSON";
     }());
     static_assert([]() constexpr {
         struct Consumer {

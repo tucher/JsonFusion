@@ -69,6 +69,7 @@ JsonFusion::Serialize(conf, output);
 - [Advanced Features](#advanced-features)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
+  - [Compile-Time Testing](#compile-time-testing)
 
 ## Installation
 
@@ -429,3 +430,53 @@ You manually maintain state and assemble typed objects yourself.
 - Library uses only a small per-field stack buffer; all dynamic memory is under your control
 
 📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition
+
+### Compile-Time Testing
+
+JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using `static_assert`. No test framework, no runtime: the compiler is the test runner.
+
+**Why constexpr tests:**
+- **Proves zero hidden allocations**: If it compiles in `constexpr`, no dynamic allocation happened
+- **Validates correctness before any runtime**: Catches bugs at compile time
+- **Tests the actual user-facing API**: Same `Parse`/`Serialize` calls users make
+- **Perfect for embedded**: Demonstrates the code works in the most constrained environments
+
+**Current coverage** ([`tests/constexpr/`](tests/constexpr)):
+- All primitive types (booleans, integers, strings with escaping/Unicode)
+- Overflow detection for all integer types
+- Error handling and error codes
+- Type system validation (concepts, streaming protocols)
+- Both fixed-size (`std::array`, char buffers) and dynamic containers (`std::vector`, `std::string`)
+- Deeply nested types: `std::vector<std::optional<std::vector<std::string>>>`
+- Nested structs with mixed container types
+- Optional fields (including in nested containers)
+- Streaming producers and consumers
+
+**Example** (this runs at compile time):
+```cpp
+struct Config { 
+    int value;
+    std::string dynamic_string;
+    std::vector<std::vector<int>> nested_vecs;
+    std::vector<std::optional<std::vector<std::string>>> complex_nested;
+};
+
+static_assert([]() constexpr {
+    Config c{};
+    auto result = JsonFusion::Parse(c, std::string(R"(
+        {
+            "value": 42,
+            "dynamic_string": "allocated at compile time!",
+            "nested_vecs": [[1,2], [3,4,5]],
+            "complex_nested": [null, ["a","b"], null]
+        })"));
+    return result 
+        && c.value == 42 
+        && c.nested_vecs[1][2] == 5
+        && c.complex_nested[1]->at(0) == "a";
+}()); 
+```
+
+This approach aligns with JsonFusion's philosophy: leverage compile-time introspection to prove correctness before the program even runs.
+
+📁 **Test suite details**: [`tests/constexpr/README.md`](tests/constexpr/README.md)
