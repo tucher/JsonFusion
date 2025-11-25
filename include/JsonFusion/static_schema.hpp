@@ -89,10 +89,10 @@ struct array_read_cursor<C> {
     decltype(c.begin()) it = c.begin();
     decltype(c.begin()) b = c.begin();
     bool first = true;
-    const element_type& get() const {
+    constexpr const element_type& get() const {
         return *it;
     }
-    stream_read_result read_more() {
+    constexpr stream_read_result read_more() {
         if(first) {
             first = false;
         } else {
@@ -159,10 +159,10 @@ struct array_write_cursor<C> {
     using element_type = typename C::value_type;
     C& c;
 
-    stream_write_result allocate_slot() {
+    constexpr stream_write_result allocate_slot() {
         return stream_write_result::slot_allocated;
     }
-    element_type & get_slot() {
+    constexpr element_type & get_slot() {
         return c.emplace_back();
     }
     constexpr stream_write_result finalize(bool) {
@@ -439,22 +439,6 @@ constexpr decltype(auto) getRef(const Field & f) {
 
 } // namespace static_schema
 
-template<class S>
-concept ProducingStreamerLike = static_schema::JsonSerializableValue<typename S::value_type>
-                                && requires(S& s, static_schema::AnnotatedValue<typename S::value_type>& v) {
-    //if returns stream_read_result::value, the object was filled and need to continue calling "read".
-    // If tream_read_result::value, no more data
-    // stream_read_result::error error happened and need to abort serialization
-    typename S::value_type;
-
-    { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
-    requires (!requires {
-        s.read(std::move(v));
-    });
-
-    { s.reset() } -> std::same_as<void>;
-};
-
 
 namespace static_schema {
 namespace consuming_streamer_concept_helpers {
@@ -517,6 +501,7 @@ consteval bool has_valid_consume_member() {
 }
 }
 
+//Need to always check custom producers and consumers with this concepts, because by default everything will decay to simple json object
 template<class S>
 concept ConsumingStreamerLike =
         static_schema::JsonParsableValue<typename S::value_type>
@@ -527,6 +512,23 @@ concept ConsumingStreamerLike =
         }
         ;
 
+
+template<class S>
+concept ProducingStreamerLike =
+        static_schema::JsonSerializableValue<typename S::value_type>
+        && requires(S& s, static_schema::AnnotatedValue<typename S::value_type>& v) {
+           //if returns stream_read_result::value, the object was filled and need to continue calling "read".
+           // If tream_read_result::value, no more data
+           // stream_read_result::error error happened and need to abort serialization
+           typename S::value_type;
+
+           { s.read(std::declval<typename S::value_type&>()) } -> std::same_as<stream_read_result>;
+           requires (!requires {
+               s.read(std::move(v));
+           });
+
+           { s.reset() } -> std::same_as<void>;
+       };
 
 namespace static_schema {
 

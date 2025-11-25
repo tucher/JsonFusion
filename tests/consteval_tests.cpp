@@ -28,17 +28,20 @@ int main() {
             int nested_f;
             std::array<char, 10> nested_string;
         } nested;
+
+        std::vector<int> dynamic_array;
     };
     static_assert([]() constexpr {
         A a;
-        return JsonFusion::Parse(a, std::string_view(R"JSON(
+        return JsonFusion::Parse(a, std::string(R"JSON(
                 {
                     "a": 10,
                     "empty_opt": null,
                     "b": true,
                     "c": [5, 6],
                     "nested": {"nested_f": 18, "nested_string": "st"},
-                    "filled_opt": 14
+                    "filled_opt": 14,
+                    "dynamic_array": [1]
 
         }
         )JSON"))
@@ -49,6 +52,7 @@ int main() {
             && *a.filled_opt == 14
             && a.nested.nested_f == 18
             && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
+            && a.dynamic_array[0] == 1
             ;
     }());
     static_assert([]() constexpr {
@@ -59,14 +63,12 @@ int main() {
         a.c[1]=118;
         a.nested.nested_string[0]='f';
         a.nested.nested_string[1]='u';
-        std::array<char, 1000> buf;
+        a.dynamic_array = {12,34};
+        std::string out;
+        bool r = JsonFusion::Serialize(a, out);
 
-        char * out_pos =buf.data();
-        char * en = out_pos + buf.size();
-        bool r = JsonFusion::Serialize(a, out_pos, en);
-
-        std::string_view res(R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"}})JSON");
-        return r &&std::ranges::equal(buf.data(), out_pos, res.data(), res.end());
+        return r &&
+               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34]})JSON";
     }());
     static_assert([]() constexpr {
         struct Consumer {
