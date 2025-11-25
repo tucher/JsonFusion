@@ -68,5 +68,78 @@ int main() {
         std::string_view res(R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"}})JSON");
         return r &&std::ranges::equal(buf.data(), out_pos, res.data(), res.end());
     }());
+    static_assert([]() constexpr {
+        struct Consumer {
+            struct Tag {
+                std::string id;
+                std::string text;
+            };
+            using value_type = Tag;
+
+            // Called at the start of the JSON array
+            constexpr void reset()  {
+
+            }
+
+            // Called for each element, with a fully-parsed value_type
+            constexpr bool consume(const Tag & tag)  {
+
+                return true;
+            }
+
+            // called once at the end (with json success flag, if true, all data was consumed successfully)
+            constexpr bool finalize(bool success)  {
+                if (!success) {
+
+                    return false;
+                }
+                return true;
+            }
+
+        };
+        Consumer t{};
+        return JsonFusion::Parse(t, std::string_view(R"JSON([
+            {"id": "1", "text": "first tag"},
+            {"id": "2", "text": "second tag"}
+        ]
+        )JSON"));
+
+    }());
+    static_assert([]() constexpr {
+        struct Producer {
+            using value_type = int64_t;
+
+            int count = 5;
+            mutable int counter = 0;
+
+            constexpr JsonFusion::stream_read_result read(double & v) const {
+                if (counter >= count) {
+                    return JsonFusion::stream_read_result::end;
+                }
+                counter ++;
+                v = counter;
+                return JsonFusion::stream_read_result::value;
+            }
+
+            void reset() const {
+                counter = 0;
+            }
+
+        };
+        Producer t{};
+        std::array<char, 1000> buf;
+
+        char * out_pos =buf.data();
+        char * en = out_pos + buf.size();
+        bool r = JsonFusion::Serialize(t, out_pos, en);
+        return r;
+
+
+    }());
+    static_assert([]() constexpr {
+        using BadType = std::optional<JsonFusion::Annotated<int, JsonFusion::options::range<2, 3>>>;
+        constexpr bool is_correct_type = JsonFusion::static_schema::JsonParsableValue<BadType>;
+        return true;
+    }());
 
 }

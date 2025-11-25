@@ -70,10 +70,10 @@ public:
     constexpr operator bool() const {
         return m_error == ParseError::NO_ERROR;
     }
-    InpIter pos() const {
+    constexpr InpIter pos() const {
         return m_pos;
     }
-    ParseError error() const {
+    constexpr ParseError error() const {
         return m_error;
     }
 };
@@ -277,7 +277,7 @@ constexpr bool read_number_token(It& currentPos,
 // Returns false on overflow or invalid '-' for unsigned types.
 template <class Int>
 constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
-    static_assert(std::is_integral_v<Int>, "Int must be an integral type");
+    static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
 
     using Limits   = std::numeric_limits<Int>;
     using Unsigned = std::make_unsigned_t<Int>;
@@ -419,7 +419,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     } else {
         // Should never happen if JsonNumber is correct
         static_assert(std::is_integral_v<ObjT> || std::is_floating_point_v<ObjT>,
-                      "JsonNumber underlying type must be integral or floating");
+                      "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
         ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
         return false;
     }
@@ -1081,7 +1081,7 @@ template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
     using FH = FieldsHelper<ObjT>;
-    static_assert(FH::fieldsAreUnique, "Fields are not unique");
+    static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
     if(*currentPos != '{') {
         ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
         return false;

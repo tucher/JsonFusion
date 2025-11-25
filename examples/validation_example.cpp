@@ -2,7 +2,7 @@
 // Demonstrates:
 //  - Field validation (range, length constraints)
 //  - Using key<"..."> to decouple C++ names from JSON field names
-// Compile: g++ -std=c++20 -I../include validation_example.cpp -o validation_example
+// Compile: g++ -std=c++23 -I../include validation_example.cpp -o validation_example
 
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/annotated.hpp>

@@ -49,6 +49,7 @@ JsonFusion::Serialize(conf, output);
 | number    | `int`*(all kinds)*, `float`, `double`                 |
 | bool      | `bool`                                                |
 
+**Note on strings**: When parsing into fixed-size char arrays (`std::array<char, N>`), JsonFusion **always null-terminates** the string (if space permits), making them directly usable with C string functions like `strlen()`, `printf()`, etc. This is verified in compile-time tests.
 
 
 ## Table of Contents
@@ -76,7 +77,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 ### Requirements
 
-- **C++20** or later
+- **C++23** or later
 - Compiler: GCC 12+, Clang 13+, MSVC 2019+
 - **Boost.PFR** (bundled into `/include`, no separate installation needed)
 
@@ -169,6 +170,8 @@ A good fit for:
 - **Legacy firmware** - Add JSON without touching existing C code too much
 - **Embedded C projects** - Modern JSON parsing with zero C code changes
 
+**String handling**: When parsing into fixed-size char arrays (common in C structs), JsonFusion automatically null-terminates strings, making them immediately usable with standard C string functions (`strlen`, `strcmp`, `printf`, etc.).
+
 **Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work perfectly. See `examples/c_interop/` for a complete working example. See the [philosophy](docs/WHY_REFLECTION.md) - standard C++ reflection will likely change this story in the near future.
 
 
@@ -239,7 +242,7 @@ for (const auto & track: tracks) {
 
 ## Limitations
 
-- Designed for C++20 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
+- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
 - **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
 

@@ -2,7 +2,7 @@
 
 CXX = g++
 CC = gcc
-CXXFLAGS = -std=c++20 -I../../include
+CXXFLAGS = -std=c++23 -I../../include
 CFLAGS = -std=c99
 
 TARGET = c_interop_test

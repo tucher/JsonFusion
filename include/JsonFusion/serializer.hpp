@@ -171,7 +171,7 @@ template <class Int>
 constexpr inline char* format_decimal_integer(Int value,
                                     char* first,
                                     char* last) noexcept {
-    static_assert(std::is_integral_v<Int>, "Int must be an integral type");
+    static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
 
     // We'll generate digits into the end of the buffer, then memmove forward.
     char* p = last;

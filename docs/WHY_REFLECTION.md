@@ -146,7 +146,7 @@ For extremely resource-constrained environments (8-bit microcontrollers, bootloa
 ### Not All Environments Support Modern C++
 
 Some embedded/safety-critical contexts restrict or prohibit:
-- **C++20 features** – Many embedded toolchains lag years behind standard
+- **C++23 features** – Many embedded toolchains lag years behind standard
 - **Standard library** – Freestanding implementations may not have `<tuple>`, `<array>`, etc.
 
 If you're targeting bare-metal ARM Cortex-M0 with 2KB RAM and a C89 compiler, hand-written C parsing code might be your only option.
@@ -172,7 +172,7 @@ JsonFusion works best for:
   - *Confirmed compiling*: RP2040 (Raspberry Pi Pico), ARM Cortex-M7, ESP32 with recent GCC versions
   - Note: These are proof-of-concept tests, not production-validated deployments
 - **Desktop/server** applications where binary size isn't measured in KB
-- **Teams comfortable with C++20** who value reduced boilerplate
+- **Teams comfortable with c++23** who value reduced boilerplate
 - **Projects where type safety** and validation justify the abstraction cost
 
 

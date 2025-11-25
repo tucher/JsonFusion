@@ -57,7 +57,7 @@ struct not_json {
 
 template<ConstString Desc>
 struct key {
-    static_assert(Desc.check(), "key contains control characters");
+    static_assert(Desc.check(), "[[[ JsonFusion ]]] Jsonkey contains control characters");
     using tag = detail::key_tag;
     static constexpr auto desc = Desc;
 };
@@ -79,7 +79,7 @@ struct range {
 
 template<ConstString Desc>
 struct description {
-    static_assert(Desc.check(), "key contains control characters");
+    static_assert(Desc.check(), "[[[ JsonFusion ]]] key contains control characters");
     using tag = detail::description_tag;
     static constexpr auto desc = Desc;
 };
@@ -205,7 +205,7 @@ struct annotation_meta {
 // Optional, non-annotated
 template<class T, class... Opts>
 struct annotation_meta<std::optional<Annotated<T, Opts...>>> {
-    static_assert(!sizeof(T), "Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
+    static_assert(!sizeof(T), "[[[ JsonFusion ]]] Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
 };
 
 // Annotated<T, Opts...>

@@ -10,18 +10,18 @@ This directory contains example programs demonstrating JsonFusion usage.
 cd examples
 
 # Basic usage
-g++ -std=c++20 -I../include basic_usage.cpp -o basic_usage
+g++ -std=c++23 -I../include basic_usage.cpp -o basic_usage
 ./basic_usage
 
 # Validation example
-g++ -std=c++20 -I../include validation_example.cpp -o validation_example
+g++ -std=c++23 -I../include validation_example.cpp -o validation_example
 ./validation_example
 ```
 
 ### Option 2: Using clang++
 
 ```bash
-clang++ -std=c++20 -I../include basic_usage.cpp -o basic_usage
+clang++ -std=c++23 -I../include basic_usage.cpp -o basic_usage
 ./basic_usage
 ```
 

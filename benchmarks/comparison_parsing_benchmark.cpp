@@ -20,7 +20,7 @@ namespace rj = rapidjson;
 
 
 int main() {
-    constexpr int iterations = 10000000;
+    constexpr int iterations = 100000;
 
     std::ios::sync_with_stdio(false);
 
@@ -73,10 +73,13 @@ int main() {
     }
 
     {
+        rj::Document doc;
+        std::string buf = std::string(json_fusion_test_models::kJsonStatic);
         auto start = std::chrono::steady_clock::now();
         for (int i = 0; i < iterations; ++i) {
-            rj::Document doc;
-            doc.Parse(json_fusion_test_models::kJsonStatic.data(), json_fusion_test_models::kJsonStatic.size());
+            std::string tmp = buf;   
+            // doc.Parse(json_fusion_test_models::kJsonStatic.data(), json_fusion_test_models::kJsonStatic.size());
+            doc.ParseInsitu(tmp.data()); 
             if (doc.HasParseError()) {
                 std::cerr << "RapidJSON parse error: "
                           << rj::GetParseError_En(doc.GetParseError())

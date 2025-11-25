@@ -1,5 +1,5 @@
 // Basic JsonFusion usage example
-// Compile: g++ -std=c++20 -I../include basic_usage.cpp -o basic_usage
+// Compile: g++ -std=c++23 -I../include basic_usage.cpp -o basic_usage
 
 #include <JsonFusion/parser.hpp>
 #include <iostream>

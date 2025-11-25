@@ -27,13 +27,13 @@ make test
 Or manually:
 ```bash
 # Compile C++ wrapper
-g++ -std=c++20 -I../../include -c parser.cpp -o parser.o
+g++ -std=c++23 -I../../include -c parser.cpp -o parser.o
 
 # Compile C main
 gcc -std=c99 -c main.c -o main.o
 
 # Link together
-g++ -std=c++20 -I../../include -o c_interop_test main.o parser.o
+g++ -std=c++23 -I../../include -o c_interop_test main.o parser.o
 
 # Run
 ./c_interop_test
