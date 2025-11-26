@@ -42,7 +42,6 @@ namespace detail {
 
 struct not_json_tag{};
 struct key_tag{};
-struct not_required_tag{};
 struct allow_excess_fields_tag{};
 struct description_tag{};
 
@@ -82,9 +81,6 @@ struct as_array {
     using tag = detail::as_array_tag;
 };
 
-struct not_required {
-    using tag = detail::not_required_tag;
-};
 
 struct allow_excess_fields{
     using tag = detail::allow_excess_fields_tag;

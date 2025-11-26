@@ -3,6 +3,7 @@
 #include <optional>
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/parser.hpp>
+#include <JsonFusion/validators.hpp>
 #include <list>
 #include <cassert>
 #include <format>
@@ -17,6 +18,13 @@ auto printErr = [](auto res, std::string_view js_sv) {
 };
 
 int main() {
+    struct Nested {
+        int nested_f;
+        std::array<char, 10> nested_string;
+        std::array<char, 10> skip1;
+        bool skip2;
+    };
+
     struct A {
         int a = 10;
         bool b;
@@ -24,11 +32,8 @@ int main() {
         std::optional<float> empty_opt;
         std::optional<int> filled_opt;
 
-        struct Nested {
-            int nested_f;
-            std::array<char, 10> nested_string;
-        } nested;
 
+        JsonFusion::Annotated<Nested, JsonFusion::validators::not_required<"skip1", "skip2">> nested;
         std::vector<int> dynamic_array;
         std::string dynamic_string;
         std::vector<std::vector<int>> vec_of_vec_of_int;
@@ -56,8 +61,8 @@ int main() {
             && a.c[0] == 5 && a.c[1] == 6
             && !a.empty_opt
             && *a.filled_opt == 14
-            && a.nested.nested_f == 18
-            && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
+            && a.nested->nested_f == 18
+            && a.nested->nested_string[0]=='s'&& a.nested->nested_string[1]=='t'
             && a.dynamic_string == "variable string"
             && a.dynamic_array[0] == 1
             && a.vec_of_vec_of_int[0][0]==2
@@ -69,10 +74,10 @@ int main() {
         A a{};
         a.b = true;
         a.filled_opt=18;
-        a.nested.nested_f=-9;
+        a.nested->nested_f=-9;
         a.c[1]=118;
-        a.nested.nested_string[0]='f';
-        a.nested.nested_string[1]='u';
+        a.nested->nested_string[0]='f';
+        a.nested->nested_string[1]='u';
         a.dynamic_array = {12,34};
         a.dynamic_string = "str";
         a.vec_of_vec_of_int = {{3}};
@@ -81,7 +86,7 @@ int main() {
         bool r = JsonFusion::Serialize(a, out);
 
         return r &&
-               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu"},"dynamic_array":[12,34],"dynamic_string":"str","vec_of_vec_of_int":[[3]],"vec_of_opt_vecs":[null,["a","b","c"],null]})JSON";
+               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu","skip1":"","skip2":false},"dynamic_array":[12,34],"dynamic_string":"str","vec_of_vec_of_int":[[3]],"vec_of_opt_vecs":[null,["a","b","c"],null]})JSON";
     }());
     static_assert([]() constexpr {
         struct Consumer {
@@ -149,4 +154,7 @@ int main() {
         bool r = JsonFusion::Serialize(t, out_pos, en);
         return r;
     }());
+
+
+
 }

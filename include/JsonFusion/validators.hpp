@@ -4,6 +4,7 @@
 #include <limits>
 #include <utility>
 #include "options.hpp"
+#include "struct_introspection.hpp"
 
 namespace JsonFusion {
 
@@ -30,7 +31,6 @@ enum class SchemaError : std::uint64_t {
     string_length_out_of_range      = 1ull << 1,
     array_items_count_out_of_range  = 1ull << 2,
     missing_required_fields         = 1ull << 3,
-    excess_fields                   = 1ull << 4,
     // … more, all 1 << N
 };
 
@@ -100,7 +100,12 @@ struct min_length {
     static constexpr std::size_t value = N;
     template<class Storage>
     static constexpr bool validate(const Storage& val, ValidationCtx&ctx, std::size_t size) {
-        return size >= N;
+        if(size >= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::string_length_out_of_range);
+            return false;
+        }
     }
 };
 
@@ -110,7 +115,12 @@ struct max_length {
     static constexpr std::size_t value = N;
     template<class Storage>
     static constexpr bool validate(const Storage& val, ValidationCtx&ctx, std::size_t size) {
-        return size <= N;
+        if(size <= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::string_length_out_of_range);
+            return false;
+        }
     }
 
 };
@@ -120,7 +130,12 @@ struct min_items {
     using tag = parsing_events_tags::array_parsing_finished;
     template<class Storage>
     static constexpr bool validate(const Storage& val, ValidationCtx&ctx, std::size_t count) {
-        return count >= N;
+        if(count >= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::array_items_count_out_of_range);
+            return false;
+        }
     }
 };
 
@@ -129,10 +144,48 @@ struct max_items {
     using tag = parsing_events_tags::array_item_parsed;
     template<class Storage>
     static constexpr bool validate(const Storage& val, ValidationCtx&ctx, std::size_t count) {
-        return count <= N;
+        if(count <= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::array_items_count_out_of_range);
+            return false;
+        }
     }
 };
 
+template <ConstString ... NotRequiredNames>
+struct not_required {
+    using tag = parsing_events_tags::object_parsing_finished;
+
+
+
+    struct NotRequredTable {
+
+    };
+
+    template<class Storage>
+    static constexpr bool validate(const Storage& val, ValidationCtx&ctx, const std::array<bool, introspection::FieldsHelper<Storage>::fieldsCount> & seen) {
+        static_assert(
+            ((introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
+            "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
+
+        constexpr auto seenTable = []() consteval {
+            std::array<bool, introspection::FieldsHelper<Storage>::fieldsCount> ret{};
+            ((ret[introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView())] = true) && ...);
+            return ret;
+        }();
+        for(int i = 0; i < seen.size(); i ++) {
+            if(!seen[i]) {
+                if(!seenTable[i]) {
+                    ctx.addSchemaError(SchemaError::missing_required_fields);
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+};
 
 template <class Opts>
 struct validator {
