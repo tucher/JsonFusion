@@ -14,6 +14,7 @@ JsonFusion maps JSON types to C++ types with a two-layer schema system:
 ## ⚡ CRITICAL: Streaming Validation (Single-Pass)
 
 **ALL validation happens DURING parsing, not after.** JsonFusion is a **streaming parser** that validates **AS SOON AS POSSIBLE** with **early rejection**.
+Because there are some checks that logically happen “at the end of a thing”: min_length<> (after string), min_items<> (after array), object_parsing_finished for not_required<>. But they are still single-pass: they happen as soon as the parser knows the boundary is closed.
 
 This is the **fundamental reason** why JsonFusion can be:
 - ✅ **`constexpr`**: No dynamic allocation required
@@ -116,6 +117,7 @@ Annotated<double, range<-273.15, 1000.0>> temperature;
    - As digits are parsed, value is built up
    - **Immediately** reject if value exceeds type capacity (e.g., `128` for `int8_t`)
    - Early termination on overflow
+   - float numbers are parsed to a buffer of sufficient size, then converted to `double`, then checked for starage range
 2. After successful parse: **Immediately** check `range<>` constraint if present (explicit)
 
 All checks happen **during or immediately after** parsing. Rejection is immediate.
@@ -262,6 +264,8 @@ Annotated<std::array<int, 100>, min_items<5>> at_least_five;
 ## 5. `object` → Two Paradigms in C++
 
 JSON objects map to **two fundamentally different** C++ patterns.
+- **Structs**: compile-time field set, unknown keys rejected by default.
+- **Maps**: runtime field set, unknown keys are the *normal* case.
 
 ### JSON Object Keys: Streaming String Validation
 
@@ -324,7 +328,7 @@ struct Person {
 1. **Field names**: Compile-time fixed (or via `key<"name">` annotation)
 2. **Field types**: Each field has its own type (can differ)
 3. **Field count**: Fixed at compile time
-4. **Required fields**: Non-optional fields must be present
+4. **Required fields**: By default all struct fields are required; this can be relaxed with a struct-level not_required<...>.
 5. **Unknown fields**: Rejected by default
 
 ```cpp
