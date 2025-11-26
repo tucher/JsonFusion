@@ -42,7 +42,7 @@ JsonFusion::Serialize(conf, output);
 
 | JSON Type | C++ Type                                              |
 |-----------|-------------------------------------------------------|
-| object    | `struct`  *is_aggregate_v, all kinds*                 |
+| object    | `struct`,  `map<string-like, Any>`, *streamers*       |
 | array     | `list<...>`, `vector<...>`, `array<...>`, *streamers* |
 | null      | `optional<...>`                                       |
 | string    | `string`, `vector<char>`, `array<char, N>`, ...       |
