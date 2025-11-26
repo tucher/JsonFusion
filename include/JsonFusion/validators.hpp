@@ -19,6 +19,8 @@ enum class SchemaError : std::uint64_t {
     string_length_out_of_range      = 1ull << 1,
     array_items_count_out_of_range  = 1ull << 2,
     missing_required_fields         = 1ull << 3,
+    map_properties_count_out_of_range = 1ull << 4,
+    map_key_length_out_of_range     = 1ull << 5,
     // … more, all 1 << N
 };
 
@@ -222,6 +224,95 @@ struct not_required {
     }
 };
 
+// ============================================================================
+// Map/Object Property Count Validators
+// ============================================================================
+
+template<std::size_t N>
+struct min_properties {
+    using tag = parsing_events_tags::map_parsing_finished;
+    static constexpr std::size_t value = N;
+    
+    template<class Storage>
+    static constexpr bool validate(const Storage& val, ValidationCtx& ctx, std::size_t count) {
+        if (count >= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
+            return false;
+        }
+    }
+};
+
+template<std::size_t N>
+struct max_properties {
+    using tag = parsing_events_tags::map_entry_parsed;
+    static constexpr std::size_t value = N;
+    
+    template<class Storage>
+    static constexpr bool validate(const Storage& val, ValidationCtx& ctx, std::size_t count) {
+        if (count <= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
+            return false;
+        }
+    }
+};
+
+// ============================================================================
+// Map Key Validation
+// ============================================================================
+
+template<std::size_t N>
+struct min_key_length {
+    using tag = parsing_events_tags::map_key_finished;
+    static constexpr std::size_t value = N;
+    
+    template<class Storage, class KeyType>
+    static constexpr bool validate(const Storage& val, ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+        // Calculate key length (up to null terminator for char arrays)
+        std::size_t key_len = 0;
+        if constexpr (requires { key.size(); key[0]; }) {
+            for (std::size_t i = 0; i < key.size(); ++i) {
+                if (key[i] == '\0') break;
+                key_len++;
+            }
+        }
+        
+        if (key_len >= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::map_key_length_out_of_range);
+            return false;
+        }
+    }
+};
+
+template<std::size_t N>
+struct max_key_length {
+    using tag = parsing_events_tags::map_key_finished;
+    static constexpr std::size_t value = N;
+    
+    template<class Storage, class KeyType>
+    static constexpr bool validate(const Storage& val, ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+        // Calculate key length (up to null terminator for char arrays)
+        std::size_t key_len = 0;
+        if constexpr (requires { key.size(); key[0]; }) {
+            for (std::size_t i = 0; i < key.size(); ++i) {
+                if (key[i] == '\0') break;
+                key_len++;
+            }
+        }
+        
+        if (key_len <= N) {
+            return true;
+        } else {
+            ctx.addSchemaError(SchemaError::map_key_length_out_of_range);
+            return false;
+        }
+    }
+};
 
 
 } //namespace validators

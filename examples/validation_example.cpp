@@ -1,17 +1,22 @@
 // JsonFusion validation example with Annotated fields
 // Demonstrates:
 //  - Field validation (range, length constraints)
+//  - Map validation (property count, key length)
 //  - Using key<"..."> to decouple C++ names from JSON field names
 // Compile: g++ -std=c++23 -I../include validation_example.cpp -o validation_example
 
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/annotated.hpp>
 #include <JsonFusion/options.hpp>
+#include <JsonFusion/validators.hpp>
 #include <iostream>
 #include <array>
+#include <map>
+#include <string>
 
 using namespace JsonFusion;
 using namespace JsonFusion::options;
+using namespace JsonFusion::validators;
 
 struct Motor {
     // C++ name is "motor_id", but JSON field is "id"
@@ -83,6 +88,32 @@ int main() {
         std::cout << "✗ Invalid JSON caught: error=" << static_cast<int>(result2.error())
                   << " at position " << result2.pos() << std::endl;
         std::cout << "  (Motor ID 99 is outside valid range 1-8)" << std::endl;
+    }
+    
+    // Map validation example
+    std::cout << "\n--- Map Validation ---" << std::endl;
+    
+    using ValidatedMap = Annotated<
+        std::map<std::string, int>,
+        min_properties<2>,      // At least 2 entries
+        max_properties<5>,      // At most 5 entries
+        min_key_length<3>,      // Keys >= 3 chars
+        max_key_length<10>      // Keys <= 10 chars
+    >;
+    
+    ValidatedMap map;
+    const char* map_json = R"({"name": 1, "age": 2, "city": 3})";
+    auto map_result = Parse(map, map_json);
+    
+    if (map_result) {
+        std::cout << "✓ Valid map: 3 entries, keys 3-10 chars" << std::endl;
+    }
+    
+    // Invalid: key too short
+    const char* bad_map = R"({"ab": 1, "name": 2})";
+    auto bad_result = Parse(map, bad_map);
+    if (!bad_result) {
+        std::cout << "✗ Invalid map caught: key 'ab' too short (< 3 chars)" << std::endl;
     }
     
     return 0;
