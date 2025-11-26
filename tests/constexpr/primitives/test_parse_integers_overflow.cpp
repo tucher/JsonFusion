@@ -81,10 +81,12 @@ struct ConfigInt64 { int64_t value; };
 // Overflow above INT64_MAX (9223372036854775807)
 static_assert(TestParseError<ConfigInt64>(R"({"value": 9223372036854775808})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 static_assert(TestParseError<ConfigInt64>(R"({"value": 99999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<ConfigInt64>(R"({"value": 999999999999999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));  // Extremely large
 
 // Underflow below INT64_MIN (-9223372036854775808)
 static_assert(TestParseError<ConfigInt64>(R"({"value": -9223372036854775809})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 static_assert(TestParseError<ConfigInt64>(R"({"value": -99999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<ConfigInt64>(R"({"value": -999999999999999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));  // Extremely large negative
 
 // ===== uint64_t overflow =====
 struct ConfigUInt64 { uint64_t value; };
@@ -92,6 +94,7 @@ struct ConfigUInt64 { uint64_t value; };
 // Overflow above UINT64_MAX (18446744073709551615)
 static_assert(TestParseError<ConfigUInt64>(R"({"value": 18446744073709551616})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 static_assert(TestParseError<ConfigUInt64>(R"({"value": 99999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<ConfigUInt64>(R"({"value": 999999999999999999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));  // Extremely large
 
 // Negative values for unsigned types
 static_assert(TestParseError<ConfigUInt64>(R"({"value": -1})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));

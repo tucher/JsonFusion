@@ -31,7 +31,6 @@ enum class ParseError {
     ILLFORMED_MAP,
 
     UNEXPECTED_END_OF_DATA,
-    UNEXPECTED_SYMBOL,
     FIXED_SIZE_CONTAINER_OVERFLOW,
     NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE,
     FLOAT_VALUE_IN_INTEGER_STORAGE,
@@ -448,7 +447,7 @@ constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<
         } else if (currChar >= 'a' && currChar <= 'f') {
             v = static_cast<std::uint8_t>(currChar - 'a' + 10);
         } else {
-            ctx.setError(ParseError::UNEXPECTED_SYMBOL, currentPos);
+            ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
             return false;
         }
         out = static_cast<std::uint16_t>((out << 4) | v);
@@ -589,7 +588,7 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
 
             default:
                 /* Unexpected symbol */
-                ctx.setError(ParseError::UNEXPECTED_SYMBOL, currentPos);
+                ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                 return false;
             }
             if (out) { // only emit if we actually set a simple escape

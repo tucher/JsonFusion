@@ -42,13 +42,13 @@ static_assert(TestParse(R"({"text": "a\nb\tc"})", Config{"a\nb\tc"}));
 static_assert(TestParse(R"({"text": "\"quoted\""})", Config{"\"quoted\""}));
 
 // ===== Error: Invalid escape sequences =====
-static_assert(TestParseError<Config>(R"({"text": "\x"})", JsonFusion::ParseError::UNEXPECTED_SYMBOL));
-static_assert(TestParseError<Config>(R"({"text": "\z"})", JsonFusion::ParseError::UNEXPECTED_SYMBOL));
+static_assert(TestParseError<Config>(R"({"text": "\x"})", JsonFusion::ParseError::ILLFORMED_STRING));
+static_assert(TestParseError<Config>(R"({"text": "\z"})", JsonFusion::ParseError::ILLFORMED_STRING));
 
 // ===== Error: Incomplete unicode escape =====
-static_assert(TestParseError<Config>(R"({"text": "\u"})", JsonFusion::ParseError::UNEXPECTED_SYMBOL));
-static_assert(TestParseError<Config>(R"({"text": "\u123"})", JsonFusion::ParseError::UNEXPECTED_SYMBOL));
-static_assert(TestParseError<Config>(R"({"text": "\u12"})", JsonFusion::ParseError::UNEXPECTED_SYMBOL));
+static_assert(TestParseError<Config>(R"({"text": "\u"})", JsonFusion::ParseError::ILLFORMED_STRING));
+static_assert(TestParseError<Config>(R"({"text": "\u123"})", JsonFusion::ParseError::ILLFORMED_STRING));
+static_assert(TestParseError<Config>(R"({"text": "\u12"})", JsonFusion::ParseError::ILLFORMED_STRING));
 
 // ===== Error: Unescaped control characters (RFC 8259 §7 violation) =====
 // RFC 8259 §7: Control characters (U+0000 to U+001F) MUST be escaped.

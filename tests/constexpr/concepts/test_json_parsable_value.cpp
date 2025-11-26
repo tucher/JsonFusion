@@ -75,10 +75,6 @@ static_assert(!static_schema::JsonParsableValue<void(SimpleStruct::*)()>);  // M
 // Void
 static_assert(!static_schema::JsonParsableValue<void>);
 
-// C arrays (int[N]) cause compilation errors deep in trait evaluation.
-// This is a known limitation - use std::array<int, N> instead.
-// Removed test: causes compilation failure, not a runtime check failure.
-
 // Nested optionals (optional<optional<T>> should not be valid)
 static_assert(!static_schema::JsonParsableValue<std::optional<std::optional<int>>>);
 
