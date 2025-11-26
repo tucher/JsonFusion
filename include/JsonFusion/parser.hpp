@@ -198,6 +198,7 @@ constexpr bool read_number_token(It& currentPos,
     bool inExp            = false;
     bool seenDigitBeforeExp = false;
     bool seenDigitAfterExp  = false;
+    bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
 
     if (currentPos == end) {
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -235,6 +236,17 @@ constexpr bool read_number_token(It& currentPos,
         char c = *currentPos;
 
         if (c >= '0' && c <= '9') {
+            // RFC 8259: Leading zeros not allowed (except "0" itself)
+            if (firstDigit && c == '0') {
+                auto peek = currentPos;
+                ++peek;
+                if (peek != end && *peek >= '0' && *peek <= '9') {
+                    ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+                    return false;
+                }
+            }
+            firstDigit = false;  // Mark that we've seen the first digit
+            
             if (!inExp) {
                 seenDigitBeforeExp = true;
             } else {
