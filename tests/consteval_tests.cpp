@@ -58,6 +58,7 @@ int main() {
             && *a.filled_opt == 14
             && a.nested.nested_f == 18
             && a.nested.nested_string[0]=='s'&& a.nested.nested_string[1]=='t'
+            && a.dynamic_string == "variable string"
             && a.dynamic_array[0] == 1
             && a.vec_of_vec_of_int[0][0]==2
             && !a.vec_of_opt_vecs[0] && !a.vec_of_opt_vecs[2]

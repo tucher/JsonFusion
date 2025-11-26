@@ -4,6 +4,8 @@
 #include <string_view>
 #include <type_traits>
 #include <optional>
+#include <limits>
+#include <utility>
 
 #include "annotated.hpp"
 
@@ -34,20 +36,18 @@ ConstString(const CharT (&str)[N])->ConstString<CharT, N-1>;
 
 namespace options {
 
+
+
 namespace detail {
+
 struct not_json_tag{};
 struct key_tag{};
 struct not_required_tag{};
 struct allow_excess_fields_tag{};
-struct range_tag{};
 struct description_tag{};
-struct min_length_tag {};
-struct max_length_tag {};
-struct min_items_tag {};
-struct max_items_tag {};
+
 struct float_decimals_tag {};
 struct as_array_tag {};
-
 }
 
 struct not_json {
@@ -62,20 +62,7 @@ struct key {
     static constexpr auto desc = Desc;
 };
 
-struct not_required {
-    using tag = detail::not_required_tag;
-};
 
-struct allow_excess_fields {
-    using tag = detail::allow_excess_fields_tag;
-};
-
-template<auto Min, auto Max>
-struct range {
-    using tag = detail::range_tag;
-    static constexpr auto min = Min;
-    static constexpr auto max = Max;
-};
 
 template<ConstString Desc>
 struct description {
@@ -84,29 +71,6 @@ struct description {
     static constexpr auto desc = Desc;
 };
 
-template<std::size_t N>
-struct min_length {
-    using tag = detail::min_length_tag;
-    static constexpr std::size_t value = N;
-};
-
-template<std::size_t N>
-struct max_length {
-    using tag = detail::max_length_tag;
-    static constexpr std::size_t value = N;
-};
-
-template<std::size_t N>
-struct min_items {
-    using tag = detail::min_items_tag;
-    static constexpr std::size_t value = N;
-};
-
-template<std::size_t N>
-struct max_items {
-    using tag = detail::max_items_tag;
-    static constexpr std::size_t value = N;
-};
 
 template<std::size_t N>
 struct float_decimals {
@@ -116,6 +80,14 @@ struct float_decimals {
 
 struct as_array {
     using tag = detail::as_array_tag;
+};
+
+struct not_required {
+    using tag = detail::not_required_tag;
+};
+
+struct allow_excess_fields{
+    using tag = detail::allow_excess_fields_tag;
 };
 
 namespace detail {
@@ -161,6 +133,7 @@ struct no_options {
 
 template<class T, class... Opts>
 struct field_options {
+
     using underlying_type = T;
 
     template<class Tag>
@@ -171,6 +144,7 @@ struct field_options {
 
     template<class Tag>
     using get_option = option_type<Tag>;
+
 };
 
 
@@ -211,6 +185,7 @@ struct annotation_meta<std::optional<Annotated<T, Opts...>>> {
 // Annotated<T, Opts...>
 template<class T, class... Opts>
 struct annotation_meta<Annotated<T, Opts...>> {
+    static_assert((requires { typename Opts::tag; } && ...));
     using value_t = T;
     using options      = field_options<T, Opts...>;
 

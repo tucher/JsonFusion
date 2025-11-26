@@ -14,31 +14,35 @@
 
 #include "static_schema.hpp"
 #include "options.hpp"
+#include "validators.hpp"
+
 #include "fp_to_str.hpp"
 
 namespace JsonFusion {
 
 enum class ParseError {
     NO_ERROR,
-    UNEXPECTED_END_OF_DATA,
-    UNEXPECTED_SYMBOL,
-    FIXED_SIZE_CONTAINER_OVERFLOW,
     ILLFORMED_NUMBER,
-    ILLFORMED_BOOL,
-    EXCESS_FIELD,
-    NULL_IN_NON_OPTIONAL,
     ILLFORMED_NULL,
     ILLFORMED_STRING,
     ILLFORMED_ARRAY,
     ILLFORMED_OBJECT,
+
+    UNEXPECTED_END_OF_DATA,
+    UNEXPECTED_SYMBOL,
+    FIXED_SIZE_CONTAINER_OVERFLOW,
+    NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE,
+    FLOAT_VALUE_IN_INTEGER_STORAGE,
+    ILLFORMED_BOOL,
+    EXCESS_FIELD,
+    NULL_IN_NON_OPTIONAL,
+
     EXCESS_DATA,
     SKIPPING_STACK_OVERFLOW,
-    NUMBER_OUT_OF_RANGE_SCHEMA_ERROR,
-    STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR,
+    SCHEMA_VALIDATION_ERROR,
+
     OBJECT_HAS_MISSING_FIELDS_SCHEMA_ERROR,
-    ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR,
     ARRAY_DESTRUCRING_SCHEMA_ERROR,
-    VALUE_OUT_OF_RANGE,
     DATA_CONSUMER_ERROR
 };
 
@@ -63,29 +67,40 @@ template <CharInputIterator InpIter>
 class ParseResult {
     ParseError m_error = ParseError::NO_ERROR;
     InpIter m_pos;
+    validators::ValidationResult validationResult;
 public:
-    constexpr ParseResult(ParseError err, InpIter pos):
-        m_error(err), m_pos(pos)
+    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter pos):
+        m_error(err), m_pos(pos), validationResult(schemaErrors)
     {}
     constexpr operator bool() const {
-        return m_error == ParseError::NO_ERROR;
+        return m_error == ParseError::NO_ERROR && validationResult;
     }
     constexpr InpIter pos() const {
         return m_pos;
     }
     constexpr ParseError error() const {
+        if (m_error == ParseError::NO_ERROR) {
+            return ParseError::NO_ERROR;
+        } else {
+            if(!validationResult) {
+                return ParseError::SCHEMA_VALIDATION_ERROR;
+            }
+        }
         return m_error;
     }
+
 };
 
 
 namespace  parser_details {
+
 
 template <CharInputIterator InpIter>
 class DeserializationContext {
 
     ParseError error = ParseError::NO_ERROR;
     InpIter m_pos;
+    validators::ValidationCtx _validationCtx;
 public:
     constexpr DeserializationContext(InpIter b) {
         m_pos = b;
@@ -96,8 +111,9 @@ public:
     }
 
     constexpr ParseResult<InpIter> result() {
-        return ParseResult<InpIter>(error, m_pos);
+        return ParseResult<InpIter>(error, _validationCtx.result(), m_pos);
     }
+    constexpr validators::ValidationCtx & validationCtx() {return _validationCtx;}
 };
 
 constexpr inline bool isSpace(char a) {
@@ -156,14 +172,13 @@ constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, D
     }
     if (*currentPos == 't' && match_literal(++currentPos, end, "rue") && (isPlainEnd(*currentPos) || currentPos == end)) {
         obj = true;
-        return true;
     } else if (*currentPos == 'f' && match_literal(++currentPos, end, "alse") && (isPlainEnd(*currentPos)|| currentPos == end)) {
         obj = false;
-        return true;
     } else {
         ctx.setError(ParseError::ILLFORMED_BOOL, currentPos);
         return false;
     }
+    return validators::validator<Opts>::template validate<validators::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx());
 }
 
 
@@ -357,61 +372,26 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     if constexpr (std::is_integral_v<ObjT>) {
         // Reject decimals/exponents for integer fields
         if (seenDot || seenExp) {
-            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, currentPos);
             return false;
         }
 
         ObjT value{};
         if(!parse_decimal_integer<ObjT>(buf, value)) {
-            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+            ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
             return false;
-        }
-        if constexpr (Opts::template has_option<options::detail::range_tag>) {
-            using Range = Opts::template get_option<options::detail::range_tag>;
-            if (value < Range::min || value > Range::max) {
-                ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
-                return false;
-            }
         }
 
         obj = value;
-        return true;
     } else if constexpr (std::is_floating_point_v<ObjT>) {
-        if constexpr (false) { // better to postpone this until actual becnhmarks data comes
-            if (!seenDot && !seenExp) {
-                long long tmp{};
-                if (!parse_decimal_integer(buf, tmp)) {
-                    ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-                    return false;
-                }
-                if constexpr (Opts::template has_option<options::detail::range_tag>) {
-                    using Range = typename Opts::template get_option<options::detail::range_tag>;
-                    if (tmp < Range::min || tmp > Range::max) {
-                        ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
-                        return false;
-                    }
-                }
-
-                obj = static_cast<ObjT>(tmp);
-                return true;
-            }
-        }
         double x;
         if(fp_to_str_detail::parse_number_to_double(buf, x)) {
-            if constexpr (Opts::template has_option<options::detail::range_tag>) {
-                using Range = typename Opts::template get_option<options::detail::range_tag>;
-                if (x < Range::min || x > Range::max) {
-                    ctx.setError(ParseError::NUMBER_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
-                    return false;
-                }
-            }
             if(static_cast<double>(std::numeric_limits<ObjT>::lowest()) > x
                 || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
-                ctx.setError(ParseError::VALUE_OUT_OF_RANGE, currentPos);
+                ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
                 return false;
             }
             obj = static_cast<ObjT>(x);
-            return true;
         } else {
             ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
@@ -423,6 +403,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
         return false;
     }
+    if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+        return false;
+    }
+    return true;
 }
 
 template <typename T>
@@ -624,14 +609,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             obj.push_back(c);
         }
         parsedSize++;
-        if constexpr (Opts::template has_option<options::detail::max_length_tag>) {
-            using MaxLengthOpt = typename Opts::template get_option<options::detail::max_length_tag>;
-            if(parsedSize > MaxLengthOpt::value) {
-                ctx.setError(ParseError::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
-                return false;
-            }
-
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), parsedSize)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
         }
+
         return true;
     };
 
@@ -640,14 +622,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             if(parsedSize < obj.size())
                 obj[parsedSize] = 0;
         }
-        if constexpr (Opts::template has_option<options::detail::min_length_tag>) {
-            using MinLengthOpt = typename Opts::template get_option<options::detail::min_length_tag>;
-            if(parsedSize < MinLengthOpt::value) {
-                ctx.setError(ParseError::STRING_LENGTH_OUT_OF_RANGE_SCHEMA_ERROR, currentPos);
-                return false;
-            }
-
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
         }
+
         return true;
     } else {
         return false;
@@ -691,14 +670,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                 cursor.finalize(false);
                 return false;
             }
-            if constexpr (Opts::template has_option<options::detail::min_items_tag>) {
-                using MinItems = Opts::template get_option<options::detail::min_items_tag>;
-                if (parsed_items_count < MinItems::value) {
-                    ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
-                    cursor.finalize(false);
-                    return false;
-                }
+            if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                cursor.finalize(false);
+                return false;
             }
+
             cursor.finalize(true);
             currentPos ++;
             return true;
@@ -727,14 +704,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
 
         parsed_items_count ++;
-        if constexpr (Opts::template has_option<options::detail::max_items_tag>) {
-            using MaxItems = Opts::template get_option<options::detail::max_items_tag>;
-            if (parsed_items_count > MaxItems::value) {
-                cursor.finalize(false);
-                ctx.setError(ParseError::ARRAY_WRONG_ITEMS_COUNT_SCHEMA_ERROR, currentPos);
-                return false;
-            }
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            cursor.finalize(false);
+            return false;
         }
+
 
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             cursor.finalize(false);
@@ -1142,6 +1117,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         if(!parseString([&](char c){
                 if constexpr(false) {//early skip. Cool, but actually really harmful: this will happen extremely rare
                     if(!searcher.step(c)) {
+
                         if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
                             ctx.setError(ParseError::EXCESS_FIELD, currentPos);
                             return false;

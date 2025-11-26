@@ -12,7 +12,7 @@ namespace json_fusion_test_models {
 
 namespace static_model {
 
-using namespace JsonFusion::options;
+using namespace JsonFusion::validators;
 using JsonFusion::Annotated;
 constexpr std::size_t mult = 16;
 using SmallStr  = std::array<char, 16*mult>;
@@ -86,7 +86,7 @@ using std::string;
 using std::string_view;
 using std::vector;
 
-using namespace JsonFusion::options;
+using namespace JsonFusion::validators;
 using JsonFusion::Annotated;
 
 struct Network {
