@@ -581,6 +581,11 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
         break;
 
         default:
+            // RFC 8259 §7: Control characters (U+0000-U+001F) MUST be escaped
+            if (static_cast<unsigned char>(c) <= 0x1F) {
+                ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
+                return false;
+            }
             if(!inserter(*currentPos)) {
                 return false;
             }
