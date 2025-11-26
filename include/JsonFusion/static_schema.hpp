@@ -364,6 +364,10 @@ struct is_json_object {
             return false; // arrays are handled separately
         }else if constexpr (ArrayWritable<U>) {
             return false; // arrays are handled separately
+        }else if constexpr (MapReadable<U>) {
+            return false; // maps are handled separately
+        }else if constexpr (MapWritable<U>) {
+            return false; // maps are handled separately
         }else if constexpr (!std::is_class_v<U>) {
             return false;
         } else if constexpr (!std::is_aggregate_v<U>) {
