@@ -456,7 +456,10 @@ constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<
 }
 
 template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent>
-constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx, 
+                          bool continueOnInserterFailure = false) {
+    bool stopInserting = false;
+    
     if(*currentPos != '"'){
         ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
         return false;
@@ -568,9 +571,15 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
                 }
 
                 for (int i = 0; i < len; ++i) {
-                    if (!inserter(utf8[i])) {
-                        ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                        return false;
+                    if (!stopInserting) {
+                        if (!inserter(utf8[i])) {
+                            if (continueOnInserterFailure) {
+                                stopInserting = true;
+                            } else {
+                                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                                return false;
+                            }
+                        }
                     }
                 }
             }
@@ -582,9 +591,15 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
                 return false;
             }
             if (out) { // only emit if we actually set a simple escape
-                if (!inserter(out)) {
-                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
+                if (!stopInserting) {
+                    if (!inserter(out)) {
+                        if (continueOnInserterFailure) {
+                            stopInserting = true;
+                        } else {
+                            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                            return false;
+                        }
+                    }
                 }
                 currentPos++;
             }
@@ -598,8 +613,14 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
                 ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
                 return false;
             }
-            if(!inserter(*currentPos)) {
-                return false;
+            if (!stopInserting) {
+                if(!inserter(*currentPos)) {
+                    if (continueOnInserterFailure) {
+                        stopInserting = true;
+                    } else {
+                        return false;
+                    }
+                }
             }
             currentPos++;
         }
@@ -994,6 +1015,15 @@ struct FieldsHelper {
         return std::ranges::adjacent_find(sortedArr, {}, &FieldDescr::name) == sortedArr.end();
     }(fieldIndexesSortedByFieldName);
 
+    static constexpr std::size_t maxFieldNameLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& field : fieldIndexesSortedByFieldName) {
+            if (field.name.size() > maxLen) {
+                maxLen = field.name.size();
+            }
+        }
+        return maxLen;
+    }();
 
     static consteval std::size_t indexInSortedByName(std::string_view name) {
         for(int i = 0; i < fieldsCount; i++) {
@@ -1005,7 +1035,12 @@ struct FieldsHelper {
     }
 };
 
-struct IncrementalFieldSearch {
+// Thresholds for selecting search strategy at compile time
+inline constexpr std::size_t MaxFieldsCountForLinearSearch = 8;
+inline constexpr std::size_t MaxFieldLengthForLinearSearch = 32;
+
+// Binary search strategy: incrementally narrows candidate range per character
+struct IncrementalBinaryFieldSearch {
     using It = const FieldDescr*;
 
     It first;         // current candidate range [first, last)
@@ -1013,7 +1048,7 @@ struct IncrementalFieldSearch {
     It original_end;  // original end, used as "empty result"
     std::size_t depth = 0; // how many characters have been fed
 
-    constexpr IncrementalFieldSearch(It begin, It end)
+    constexpr IncrementalBinaryFieldSearch(It begin, It end)
         : first(begin), last(end), original_end(end), depth(0) {}
 
     // Feed next character; narrows [first, last) by character at position `depth`.
@@ -1065,7 +1100,69 @@ struct IncrementalFieldSearch {
     }
 };
 
+// Linear search strategy: buffers the field name, does simple linear search at the end
+template<std::size_t MaxLen>
+struct BufferedLinearFieldSearch {
+    using It = const FieldDescr*;
 
+    It begin;         // field descriptors range [begin, end)
+    It end;
+    char buffer[MaxLen];
+    std::size_t length = 0;
+
+    constexpr BufferedLinearFieldSearch(It begin_, It end_)
+        : begin(begin_), end(end_), buffer{}, length(0) {}
+
+    // Simply buffer the character, no searching yet
+    constexpr bool step(char ch) {
+        if (length < MaxLen) {
+            buffer[length++] = ch;
+            return true;
+        }
+        // Field name too long, won't match anything
+        return false;
+    }
+
+    // Perform linear search through all fields
+    constexpr It result() const {
+        std::string_view key(buffer, length);
+        for (It it = begin; it != end; ++it) {
+            if (it->name == key) {
+                return it;
+            }
+        }
+        return end; // not found
+    }
+};
+
+// Adapter that selects strategy at compile time based on field count and max length
+template<std::size_t FieldCount, std::size_t MaxFieldLen>
+struct AdaptiveFieldSearch {
+    using It = const FieldDescr*;
+    
+    static constexpr bool useLinear = 
+        (FieldCount <= MaxFieldsCountForLinearSearch) && 
+        (MaxFieldLen <= MaxFieldLengthForLinearSearch);
+
+    using SearchImpl = std::conditional_t<
+        useLinear,
+        BufferedLinearFieldSearch<MaxFieldLen>,
+        IncrementalBinaryFieldSearch
+    >;
+
+    SearchImpl impl;
+
+    constexpr AdaptiveFieldSearch(It begin, It end)
+        : impl(begin, end) {}
+
+    constexpr bool step(char ch) {
+        return impl.step(ch);
+    }
+
+    constexpr It result() const {
+        return impl.result();
+    }
+};
 
 
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
@@ -1114,27 +1211,21 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             return false;
         }
 
-        IncrementalFieldSearch searcher{
+        AdaptiveFieldSearch<FH::fieldsCount, FH::maxFieldNameLength> searcher{
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
+        bool fieldRejected = false;
 
         if(!parseString([&](char c){
-                if constexpr(false) {//early skip. Cool, but actually really harmful: this will happen extremely rare
-                    if(!searcher.step(c)) {
-
-                        if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
-                            ctx.setError(ParseError::EXCESS_FIELD, currentPos);
-                            return false;
-                        }
-                    }
-                    return true;
-                } else {
-                    searcher.step(c);
-                    return true;
+                // Early rejection optimization: stop searching once no candidates remain
+                if(!searcher.step(c)) {
+                    fieldRejected = true;
+                    return false; // Signal to stop inserting (parseString won't call us again)
                 }
-            }, currentPos, end, ctx)) {
-            // field not found or bad string
+                return true;
+            }, currentPos, end, ctx, true)) {
+            // String itself was malformed
             return false;
 
         }
