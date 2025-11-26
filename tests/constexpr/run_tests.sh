@@ -15,7 +15,37 @@ PASS=0
 FAIL=0
 WARNINGS=0
 
-for test_file in $(find tests/constexpr -name "test_*.cpp" | sort); do
+# CRITICAL: Run structural detection tests FIRST
+# If type detection is broken, all other tests are meaningless
+STRUCTURAL_TEST="tests/constexpr/concepts/test_structural_detection.cpp"
+if [ -f "$STRUCTURAL_TEST" ]; then
+    test_name="test_structural_detection"
+    category="concepts"
+    printf "%-20s %-20s ... " "$category" "$test_name"
+    
+    if g++ -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
+        echo "❌ FAIL"
+        echo ""
+        echo "============================================================"
+        echo "CRITICAL FAILURE: Type detection/classification is broken!"
+        echo "All other tests are meaningless until this is fixed."
+        echo "============================================================"
+        echo ""
+        cat "$TMP_DIR/$test_name.log"
+        exit 1
+    else
+        if grep -q "warning:" "$TMP_DIR/$test_name.log"; then
+            echo "⚠️  PASS (with warnings)"
+            WARNINGS=$((WARNINGS + 1))
+        else
+            echo "✅ PASS"
+        fi
+        PASS=$((PASS + 1))
+    fi
+fi
+
+# Run all other tests
+for test_file in $(find tests/constexpr -name "test_*.cpp" | grep -v "test_structural_detection.cpp" | sort); do
     test_name=$(basename "$test_file" .cpp)
     category=$(basename $(dirname "$test_file"))
     printf "%-20s %-20s ... " "$category" "$test_name"

@@ -710,7 +710,11 @@ concept ConsumingStreamerLike =
             { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
             { s.reset() } -> std::same_as<void>;
         }
-        ;
+        // Exclude map streamers (which have .key and .value in value_type)
+        && !requires {
+            { std::declval<typename S::value_type>().key };
+            { std::declval<typename S::value_type>().value };
+        };
 
 
 template<class S>
@@ -728,7 +732,47 @@ concept ProducingStreamerLike =
            });
 
            { s.reset() } -> std::same_as<void>;
-       };
+        }
+        // Exclude map streamers (which have .key and .value in value_type)
+        && !requires {
+            { std::declval<typename S::value_type>().key };
+            { std::declval<typename S::value_type>().value };
+        };
+
+// High-level map consumer interface (for parsing)
+// value_type should be a struct/pair with .key and .value members
+template<class S>
+concept ConsumingMapStreamerLike =
+        requires(S& s, const typename S::value_type& entry) {
+            typename S::value_type;
+            // Check that value_type has .key and .value members
+            { std::declval<typename S::value_type>().key };
+            { std::declval<typename S::value_type>().value };
+            // Methods
+            { s.consume(entry) } -> std::same_as<bool>;
+            { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
+            { s.reset() } -> std::same_as<void>;
+        }
+        // Key must be string-like, value must be parsable
+        && static_schema::JsonString<decltype(std::declval<typename S::value_type>().key)>
+        && static_schema::JsonParsableValue<decltype(std::declval<typename S::value_type>().value)>;
+
+// High-level map producer interface (for serialization)
+// value_type should be a struct/pair with .key and .value members
+template<class S>
+concept ProducingMapStreamerLike =
+        requires(S& s, typename S::value_type& entry) {
+            typename S::value_type;
+            // Check that value_type has .key and .value members
+            { std::declval<typename S::value_type>().key };
+            { std::declval<typename S::value_type>().value };
+            // Methods
+            { s.read(entry) } -> std::same_as<stream_read_result>;
+            { s.reset() } -> std::same_as<void>;
+        }
+        // Key must be string-like, value must be serializable
+        && static_schema::JsonString<decltype(std::declval<typename S::value_type>().key)>
+        && static_schema::JsonSerializableValue<decltype(std::declval<typename S::value_type>().value)>;
 
 namespace static_schema {
 
@@ -792,6 +836,80 @@ struct array_write_cursor<Streamer> {
     constexpr void reset(){
         first_read = true;
         streamer.reset();
+    }
+};
+
+// Map streaming adapters - automatic cursors for map streamers
+
+// Consuming map streamer -> map_write_cursor adapter
+template<ConsumingMapStreamerLike Streamer>
+struct map_write_cursor<Streamer> {
+    using key_type = decltype(std::declval<typename Streamer::value_type>().key);
+    using mapped_type = decltype(std::declval<typename Streamer::value_type>().value);
+    
+    Streamer& streamer;
+    typename Streamer::value_type buffer{};
+    bool first = true;
+    
+    constexpr stream_write_result allocate_key() {
+        buffer = typename Streamer::value_type{};
+        return stream_write_result::slot_allocated;
+    }
+    
+    constexpr key_type& key_ref() {
+        return buffer.key;
+    }
+    
+    constexpr stream_write_result allocate_value_for_parsed_key() {
+        return stream_write_result::slot_allocated;
+    }
+    
+    constexpr mapped_type& value_ref() {
+        return buffer.value;
+    }
+    
+    constexpr stream_write_result finalize_pair(bool ok) {
+        if (!ok) return stream_write_result::error;
+        
+        if (!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        }
+        
+        return stream_write_result::value_processed;
+    }
+    
+    constexpr void reset() {
+        streamer.reset();
+    }
+};
+
+// Producing map streamer -> map_read_cursor adapter
+template<ProducingMapStreamerLike Streamer>
+struct map_read_cursor<Streamer> {
+    using key_type = decltype(std::declval<typename Streamer::value_type>().key);
+    using mapped_type = decltype(std::declval<typename Streamer::value_type>().value);
+    
+    const Streamer& streamer;
+    mutable typename Streamer::value_type buffer{};
+    mutable bool first = true;
+    
+    constexpr stream_read_result read_more() const {
+        auto result = streamer.read(buffer);
+        if (first) first = false;
+        return result;
+    }
+    
+    constexpr const key_type& get_key() const {
+        return buffer.key;
+    }
+    
+    constexpr const mapped_type& get_value() const {
+        return buffer.value;
+    }
+    
+    constexpr void reset() const {
+        streamer.reset();
+        first = true;
     }
 };
 
