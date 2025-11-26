@@ -11,6 +11,7 @@
 #include <pfr.hpp>
 #include <algorithm>
 #include <limits>
+#include <bitset>
 
 #include "static_schema.hpp"
 #include "options.hpp"
@@ -994,7 +995,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     bool has_trailing_comma = false;
     bool isFirst = true;
 
-    std::array<bool, FH::fieldsCount> parsedFieldsByIndex{};
+    std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);

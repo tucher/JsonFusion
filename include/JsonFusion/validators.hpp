@@ -3,26 +3,14 @@
 #include <type_traits>
 #include <limits>
 #include <utility>
+#include <bitset>
+
 #include "options.hpp"
 #include "struct_introspection.hpp"
 
 namespace JsonFusion {
 
 namespace validators {
-
-namespace parsing_events_tags {
-
-struct bool_parsing_finished{};
-
-struct number_parsing_finished{};
-
-struct string_parsed_some_chars{};
-struct string_parsing_finished{};
-struct array_item_parsed{};
-struct array_parsing_finished{};
-struct object_parsing_finished{};
-
-}
 
 
 enum class SchemaError : std::uint64_t {
@@ -65,6 +53,55 @@ struct ValidationCtx {
 };
 
 
+template <class Opts>
+struct validator {
+
+};
+
+template<>
+struct validator<options::detail::no_options> {
+    template<class ValidatorsTag, class ObjT, class ... Args>
+    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
+        return true;
+    }
+};
+
+template<class T, class... Opts>
+struct validator<options::detail::field_options<T, Opts...>> {
+    using underlying_type = T;
+    using GlobalOpts = options::detail::field_options<T, Opts...>;
+
+    template<class ValidatorsTag, class ObjT, class ... Args>
+    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
+        auto callOne = [&]<class Opt>() {
+            if constexpr(std::same_as<typename Opt::tag, ValidatorsTag>) {
+                return Opt::validate(storage, ctx, args...);
+            } else {
+                return true;
+            }
+        };
+        bool ok = true;
+        (void)std::initializer_list<int>{
+            (ok = ok && callOne.template operator()<Opts>(), 0)...
+        };
+        return ok;
+    }
+};
+
+
+
+namespace parsing_events_tags {
+
+struct bool_parsing_finished{};
+struct number_parsing_finished{};
+struct string_parsed_some_chars{};
+struct string_parsing_finished{};
+struct array_item_parsed{};
+struct array_parsing_finished{};
+struct object_parsing_finished{};
+
+}
+
 
 template<auto Min, auto Max>
 struct range {
@@ -76,10 +113,10 @@ struct range {
             static_assert(
                 std::numeric_limits<Storage>::lowest() <= Min && Min <= std::numeric_limits<Storage>::max() &&
                 std::numeric_limits<Storage>::lowest() <= Max && Max <= std::numeric_limits<Storage>::max(),
-                "[[[ JsonFusion ]]] range: Provided min or max values are outside of field's type range");
+                "[[[ JsonFusion ]]] range: Provided min or max values are outside of field's storage type range");
         } else if constexpr(std::is_integral_v<Storage>) {
             static_assert(std::in_range<Storage>(Min) && std::in_range<Storage>(Max),
-                "[[[ JsonFusion ]]] range: Provided min or max values are outside of field's type range");
+                "[[[ JsonFusion ]]] range: Provided min or max values are outside of field's storage type range");
         }
         else {
             static_assert(!sizeof(Storage), "[[[ JsonFusion ]]] Option is not applicable to field");
@@ -122,7 +159,6 @@ struct max_length {
             return false;
         }
     }
-
 };
 
 template<std::size_t N>
@@ -157,74 +193,33 @@ template <ConstString ... NotRequiredNames>
 struct not_required {
     using tag = parsing_events_tags::object_parsing_finished;
 
-
-
-    struct NotRequredTable {
-
-    };
-
     template<class Storage>
-    static constexpr bool validate(const Storage& val, ValidationCtx&ctx, const std::array<bool, introspection::FieldsHelper<Storage>::fieldsCount> & seen) {
+    static constexpr bool validate(const Storage& val, ValidationCtx&ctx, const std::bitset<introspection::FieldsHelper<Storage>::fieldsCount> & seen) {
         static_assert(
             ((introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
             "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
 
-        constexpr auto seenTable = []() consteval {
-            std::array<bool, introspection::FieldsHelper<Storage>::fieldsCount> ret{};
-            ((ret[introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView())] = true) && ...);
-            return ret;
+        // Builds the required fields mask at compile time: requiredMask[i] = true if field i is not in not_required list
+        // This is computed  per template instantiation, not at runtime
+        constexpr auto requiredMask = []() consteval {
+            std::bitset<introspection::FieldsHelper<Storage>::fieldsCount> mask{};
+            mask.set(); // all required by default
+            // Mark these as not-required
+            ((mask.reset(introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView()))), ...);
+            return mask;
         }();
-        for(int i = 0; i < seen.size(); i ++) {
-            if(!seen[i]) {
-                if(!seenTable[i]) {
-                    ctx.addSchemaError(SchemaError::missing_required_fields);
-                    return false;
-                }
-            }
+
+        if ((seen & requiredMask) != requiredMask) {
+            ctx.addSchemaError(SchemaError::missing_required_fields);
+            return false;
         }
         return true;
     }
-
-};
-
-template <class Opts>
-struct validator {
-
-};
-
-template<>
-struct validator<options::detail::no_options> {
-    template<class ValidatorsTag, class ObjT, class ... Args>
-    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
-        return true;
-    }
-};
-
-template<class T, class... Opts>
-struct validator<options::detail::field_options<T, Opts...>> {
-    using underlying_type = T;
-    using GlobalOpts = options::detail::field_options<T, Opts...>;
-
-    template<class ValidatorsTag, class ObjT, class ... Args>
-    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
-        auto callOne = [&]<class Opt>() {
-            if constexpr(std::same_as<typename Opt::tag, ValidatorsTag>) {
-                return Opt::validate(storage, ctx, args...);
-            } else {
-                return true;
-            }
-        };
-        bool ok = true;
-        (void)std::initializer_list<int>{
-            (ok = ok && callOne.template operator()<Opts>(), 0)...
-        };
-        return ok;
-    }
 };
 
 
 
-} //namespace json_validators
+} //namespace validators
 
 
 } // namespace JsonFusion
