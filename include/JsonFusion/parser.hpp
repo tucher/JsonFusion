@@ -8,7 +8,6 @@
 #include <utility>  // std::declval
 #include <ranges>
 #include <type_traits>
-#include <pfr.hpp>
 #include <algorithm>
 #include <limits>
 #include <bitset>
@@ -916,8 +915,81 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx
 
 
 
+
+struct FieldDescr {
+    std::string_view name;
+    std::size_t originalIndex;
+
+};
+
+template<class T>
+struct FieldsHelper {
+    template<std::size_t I>
+    static consteval bool fieldIsNotJSON() {
+        using Field   = introspection::structureElementTypeByIndex<I, T>;
+        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    static constexpr std::size_t rawFieldsCount = introspection::structureElementsCount<T>;
+
+    static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) consteval{
+        //TODO get name from options, if presented
+        return (std::size_t{0} + ... + (!fieldIsNotJSON<I>() ? 1: 0));
+    }(std::make_index_sequence<rawFieldsCount>{});
+
+
+
+    template<std::size_t I>
+    static consteval std::string_view fieldName() {
+        using Field   = introspection::structureElementTypeByIndex<I, T>;
+        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+
+        if constexpr (Opts::template has_option<options::detail::key_tag>) {
+            using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
+            return KeyOpt::desc.toStringView();
+        } else {
+            return introspection::structureElementNameByIndex<I, T>;
+        }
+    }
+
+    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesSortedByFieldName =
+        []<std::size_t... I>(std::index_sequence<I...>) consteval {
+            std::array<FieldDescr, fieldsCount> arr;
+            std::size_t index = 0;
+            auto add_one = [&](auto ic) consteval {
+                constexpr std::size_t J = decltype(ic)::value;
+                if constexpr (!fieldIsNotJSON<J>()) {
+                    arr[index++] = FieldDescr{ fieldName<J>(), J };
+                }
+            };
+            (add_one(std::integral_constant<std::size_t, I>{}), ...);
+            std::ranges::sort(arr, {}, &FieldDescr::name);
+
+            return arr;
+        }(std::make_index_sequence<rawFieldsCount>{});
+
+    static constexpr bool fieldsAreUnique = [](std::array<FieldDescr, fieldsCount> sortedArr) consteval{
+        return std::ranges::adjacent_find(sortedArr, {}, &FieldDescr::name) == sortedArr.end();
+    }(fieldIndexesSortedByFieldName);
+
+
+    static consteval std::size_t indexInSortedByName(std::string_view name) {
+        for(int i = 0; i < fieldsCount; i++) {
+            if(fieldIndexesSortedByFieldName[i].name == name) {
+                return i;
+            }
+        }
+        return -1;
+    }
+};
+
 struct IncrementalFieldSearch {
-    using It = const introspection::FieldDescr*;
+    using It = const FieldDescr*;
 
     It first;         // current candidate range [first, last)
     It last;
@@ -934,7 +1006,7 @@ struct IncrementalFieldSearch {
             return false;
 
         // projection: FieldDescr -> char at current depth
-        auto char_at_depth = [this](const introspection::FieldDescr& f) -> char {
+        auto char_at_depth = [this](const FieldDescr& f) -> char {
             std::string_view s = f.name;
             // sentinel: '\0' means "past the end"
             return depth < s.size() ? s[depth] : '\0';
@@ -966,7 +1038,7 @@ struct IncrementalFieldSearch {
 
 
         // exactly one candidate
-        const introspection::FieldDescr& candidate = *first;
+        const FieldDescr& candidate = *first;
 
         // undertyping: not all characters of the name have been given
         if (depth != candidate.name.size())
@@ -982,7 +1054,7 @@ struct IncrementalFieldSearch {
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
-    using FH = introspection::FieldsHelper<ObjT>;
+    using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
     if(*currentPos != '{') {
         ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
@@ -1012,7 +1084,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             }
             currentPos ++;
 
-            if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex)) {
+            if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
                 return false;
             }
@@ -1085,7 +1157,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                     if(parsedFieldsByIndex[arrIndex] == true) {
                         ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
                         return false;
-                    } else if (!ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
+                    } else if (!ParseValue(
+                                   introspection::getStructElementByIndex<StructIndex>(obj),
+                                   currentPos, end, ctx)) {
                         return false;
                     } else {
                         parsedFieldsByIndex[arrIndex] = true;
@@ -1142,7 +1216,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
     std::size_t field_offset = 0;
-    static constexpr std::size_t totalFieldsCount = pfr::tuple_size_v<ObjT>;
+    static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -1159,7 +1233,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             std::size_t final_fields_offest = field_offset;
             auto skip_checker = [&](auto ic) {
                 constexpr std::size_t StructIndex = decltype(ic)::value;
-                using Field   = pfr::tuple_element_t<StructIndex, ObjT>;
+                using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
                 using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
                 if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
                     final_fields_offest ++;
@@ -1201,13 +1275,13 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         bool skipped = false;
         auto try_one = [&](auto ic) {
             constexpr std::size_t StructIndex = decltype(ic)::value;
-            using Field   = pfr::tuple_element_t<StructIndex, ObjT>;
+            using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
             using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
             if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
                 skipped = true;
                 return false;
             } else {
-                if(ParseValue(pfr::get<StructIndex>(obj), currentPos, end, ctx)) {
+                if(ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), currentPos, end, ctx)) {
 
                     return true;
                 } else {

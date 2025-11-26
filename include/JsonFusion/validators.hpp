@@ -193,19 +193,19 @@ template <ConstString ... NotRequiredNames>
 struct not_required {
     using tag = parsing_events_tags::object_parsing_finished;
 
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, ValidationCtx&ctx, const std::bitset<introspection::FieldsHelper<Storage>::fieldsCount> & seen) {
+    template<class Storage, class FH>
+    static constexpr bool validate(const Storage& val, ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
         static_assert(
-            ((introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
+            ((FH::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
             "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
 
         // Builds the required fields mask at compile time: requiredMask[i] = true if field i is not in not_required list
         // This is computed  per template instantiation, not at runtime
         constexpr auto requiredMask = []() consteval {
-            std::bitset<introspection::FieldsHelper<Storage>::fieldsCount> mask{};
+            std::bitset<FH::fieldsCount> mask{};
             mask.set(); // all required by default
             // Mark these as not-required
-            ((mask.reset(introspection::FieldsHelper<Storage>::indexInSortedByName(NotRequiredNames.toStringView()))), ...);
+            ((mask.reset(FH::indexInSortedByName(NotRequiredNames.toStringView()))), ...);
             return mask;
         }();
 
