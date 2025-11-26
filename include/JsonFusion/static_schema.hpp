@@ -150,6 +150,36 @@ concept ArrayWritable = requires(C& c) {
 
 };
 
+
+template<class C>
+struct map_write_cursor;
+
+template<class C>
+concept MapWritable = requires(C& c) {
+    typename map_write_cursor<C>::key_type;
+    typename map_write_cursor<C>::mapped_type;
+    { map_write_cursor<C>{c}.allocate_key() } -> std::same_as<stream_write_result>;
+    { map_write_cursor<C>{c}.key_ref() } -> std::same_as<typename map_write_cursor<C>::key_type&>;
+    { map_write_cursor<C>{c}.allocate_value_for_parsed_key() } -> std::same_as<stream_write_result>;
+    { map_write_cursor<C>{c}.value_ref() } -> std::same_as<typename map_write_cursor<C>::mapped_type&>;
+    { map_write_cursor<C>{c}.finalize_pair(std::declval<bool>()) } -> std::same_as<stream_write_result>;
+    map_write_cursor<C>{c}.reset();
+};
+
+
+template<class C>
+struct map_read_cursor;
+
+template<class C>
+concept MapReadable = requires(C& c) {
+    typename map_read_cursor<C>::key_type;
+    typename map_read_cursor<C>::mapped_type;
+    { map_read_cursor<C>{c}.read_more() } -> std::same_as<stream_read_result>;
+    { map_read_cursor<C>{c}.get_key() } -> std::same_as<const typename map_read_cursor<C>::key_type&>;
+    { map_read_cursor<C>{c}.get_value() } -> std::same_as<const typename map_read_cursor<C>::mapped_type&>;
+    map_read_cursor<C>{c}.reset();
+};
+
 template<class C>
     requires requires(C& c) {
         { c.emplace_back() } -> std::same_as<typename C::value_type & >;
@@ -201,6 +231,100 @@ struct array_write_cursor<std::array<T, N>> {
     }
     constexpr void reset(){
         index = 0;
+        first = true;
+    }
+};
+
+
+// Generic map write cursor for map-like containers with try_emplace
+template<class M>
+    requires requires(M& m) {
+        typename M::key_type;
+        typename M::mapped_type;
+        { m.try_emplace(std::declval<typename M::key_type>(), std::declval<typename M::mapped_type>()) };
+        m.clear();
+    }
+struct map_write_cursor<M> {
+    using key_type = typename M::key_type;
+    using mapped_type = typename M::mapped_type;
+    
+    M& m;
+    key_type current_key{};
+    mapped_type current_value{};
+    
+    constexpr stream_write_result allocate_key() {
+        current_key = key_type{};
+        return stream_write_result::slot_allocated;
+    }
+    
+    constexpr key_type& key_ref() {
+        return current_key;
+    }
+    
+    constexpr stream_write_result allocate_value_for_parsed_key() {
+        current_value = mapped_type{};
+        return stream_write_result::slot_allocated;
+    }
+    
+    constexpr mapped_type& value_ref() {
+        return current_value;
+    }
+    
+    constexpr stream_write_result finalize_pair(bool ok) {
+        if (!ok) return stream_write_result::error;
+        
+        auto [it, inserted] = m.try_emplace(
+            std::move(current_key), 
+            std::move(current_value)
+        );
+        
+        return inserted ? stream_write_result::value_processed 
+                        : stream_write_result::error;  // duplicate key
+    }
+    
+    constexpr void reset() {
+        m.clear();
+    }
+};
+
+
+// Generic map read cursor for map-like containers
+template<class M>
+    requires requires(const M& m) {
+        typename M::key_type;
+        typename M::mapped_type;
+        { m.begin() } -> std::same_as<typename M::const_iterator>;
+        { m.end() } -> std::same_as<typename M::const_iterator>;
+    }
+struct map_read_cursor<M> {
+    using key_type = typename M::key_type;
+    using mapped_type = typename M::mapped_type;
+    
+    const M& m;
+    typename M::const_iterator it = m.begin();
+    typename M::const_iterator b = m.begin();
+    bool first = true;
+    
+    constexpr stream_read_result read_more() {
+        if (first) {
+            first = false;
+        } else {
+            ++it;
+        }
+        return (it != m.end()) ? stream_read_result::value 
+                               : stream_read_result::end;
+    }
+    
+    constexpr const key_type& get_key() const {
+        return it->first;
+    }
+    
+    constexpr const mapped_type& get_value() const {
+        return it->second;
+    }
+    
+    constexpr void reset() {
+        it = b;
         first = true;
     }
 };
@@ -290,14 +414,28 @@ struct is_json_serializable_array {
 
 template<class C>
 concept JsonSerializableArray = is_json_serializable_array<C>::value;
+
 template<class T>
 struct is_non_null_json_serializable_value {
-    static constexpr bool value =
-        JsonBool<T>   ||
-        JsonNumber<T> ||
-        JsonString<T> ||
-        is_json_object<T>::value ||
-        is_json_serializable_array<T>::value;
+    static constexpr bool value = []{
+        if constexpr (JsonBool<T> || JsonNumber<T> || JsonString<T>) {
+            return true;
+        } else if constexpr (is_json_object<T>::value) {
+            return true;
+        } else if constexpr (is_json_serializable_array<T>::value) {
+            return true;
+        } else {
+            // Inline map check
+            using U = AnnotatedValue<T>;
+            if constexpr (MapReadable<U>) {
+                using Cursor = map_read_cursor<U>;
+                return JsonString<typename Cursor::key_type> &&
+                       is_json_serializable_value<typename Cursor::mapped_type>::value;
+            } else {
+                return false;
+            }
+        }
+    }();
 };
 
 
@@ -334,6 +472,8 @@ template<class C>
 concept JsonSerializableValue = !input_checks::is_directly_forbidden_v<C> &&  is_json_serializable_value<C>::value;
 
 template<class T> struct is_json_parsable_value;  // primary declaration
+template<class T> struct is_json_parsable_map;     // forward declaration
+template<class T> struct is_json_serializable_map; // forward declaration
 
 
 template<class T>
@@ -356,12 +496,25 @@ concept JsonParsableArray = is_json_parsable_array<C>::value;
 
 template<class T>
 struct is_non_null_json_parsable_value {
-    static constexpr bool value =
-        JsonBool<T>   ||
-        JsonNumber<T> ||
-        JsonString<T> ||
-        is_json_object<T>::value ||
-        is_json_parsable_array<T>::value;
+    static constexpr bool value = []{
+        if constexpr (JsonBool<T> || JsonNumber<T> || JsonString<T>) {
+            return true;
+        } else if constexpr (is_json_object<T>::value) {
+            return true;
+        } else if constexpr (is_json_parsable_array<T>::value) {
+            return true;
+        } else {
+            // Inline map check
+            using U = AnnotatedValue<T>;
+            if constexpr (MapWritable<U>) {
+                using Cursor = map_write_cursor<U>;
+                return JsonString<typename Cursor::key_type> &&
+                       is_json_parsable_value<typename Cursor::mapped_type>::value;
+            } else {
+                return false;
+            }
+        }
+    }();
 };
 
 template<class Field>
@@ -395,6 +548,49 @@ struct is_json_parsable_value {
 template<class C>
 concept JsonParsableValue = !input_checks::is_directly_forbidden_v<C> && is_json_parsable_value<C>::value;
 
+/* ######## Map type detection (actual implementations) ######## */
+
+template<typename T>
+struct is_json_parsable_map {
+    static constexpr bool value = [] {
+        using U = AnnotatedValue<T>;
+        if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
+            return false;
+        } else if constexpr (is_json_object<T>::value) {
+            return false; // objects are handled separately
+        } else if constexpr (MapWritable<U>) {
+            using Cursor = map_write_cursor<U>;
+            return JsonString<typename Cursor::key_type> &&
+                   is_json_parsable_value<typename Cursor::mapped_type>::value;
+        } else {
+            return false;
+        }
+    }();
+};
+
+template<class C>
+concept JsonParsableMap = is_json_parsable_map<C>::value;
+
+template<typename T>
+struct is_json_serializable_map {
+    static constexpr bool value = [] {
+        using U = AnnotatedValue<T>;
+        if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
+            return false;
+        } else if constexpr (is_json_object<T>::value) {
+            return false; // objects are handled separately
+        } else if constexpr (MapReadable<U>) {
+            using Cursor = map_read_cursor<U>;
+            return JsonString<typename Cursor::key_type> &&
+                   is_json_serializable_value<typename Cursor::mapped_type>::value;
+        } else {
+            return false;
+        }
+    }();
+};
+
+template<class C>
+concept JsonSerializableMap = is_json_serializable_map<C>::value;
 
 /* ######## Generic data access ######## */
 

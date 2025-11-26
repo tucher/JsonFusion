@@ -28,6 +28,7 @@ enum class ParseError {
     ILLFORMED_STRING,
     ILLFORMED_ARRAY,
     ILLFORMED_OBJECT,
+    ILLFORMED_MAP,
 
     UNEXPECTED_END_OF_DATA,
     UNEXPECTED_SYMBOL,
@@ -43,7 +44,8 @@ enum class ParseError {
     SCHEMA_VALIDATION_ERROR,
 
     ARRAY_DESTRUCRING_SCHEMA_ERROR,
-    DATA_CONSUMER_ERROR
+    DATA_CONSUMER_ERROR,
+    DUPLICATE_KEY_IN_MAP
 };
 
 
@@ -761,6 +763,139 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
     }
     cursor.finalize(false);
+    return false;
+}
+
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+    requires static_schema::JsonParsableMap<ObjT>
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+    using FH = static_schema::map_write_cursor<ObjT>;
+    FH cursor{ obj };
+    cursor.reset();
+    
+    if(*currentPos != '{') {
+        ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
+        return false;
+    }
+    currentPos++;
+    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        return false;
+    }
+    
+    std::size_t parsed_entries_count = 0;
+    bool has_trailing_comma = false;
+    
+    while(true) {
+        if(currentPos == end) [[unlikely]] {
+            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+            return false;
+        }
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            return false;
+        }
+        
+        if(*currentPos == '}') {
+            if(has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
+                return false;
+            }
+            if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                return false;
+            }
+            currentPos++;
+            return true;
+        }
+        
+        if(parsed_entries_count > 0 && !has_trailing_comma) {
+            ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
+            return false;
+        }
+        
+        // Allocate key slot
+        stream_write_result alloc_r = cursor.allocate_key();
+        if(alloc_r != stream_write_result::slot_allocated) {
+            if(alloc_r == stream_write_result::overflow) {
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                return false;
+            } else {
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                return false;
+            }
+        }
+        
+        // Parse key as string
+        auto& key = cursor.key_ref();
+        using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
+        if(!ParseNonNullValue<KeyOpts>(key, currentPos, end, ctx)) {
+            return false;
+        }
+        
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
+        }
+        
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            return false;
+        }
+        if(*currentPos != ':') {
+            ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
+            return false;
+        }
+        currentPos++;
+        
+        // Allocate value slot
+        alloc_r = cursor.allocate_value_for_parsed_key();
+        if(alloc_r != stream_write_result::slot_allocated) {
+            if(alloc_r == stream_write_result::overflow) {
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                return false;
+            } else {
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                return false;
+            }
+        }
+        
+        // Parse value
+        auto& value = cursor.value_ref();
+        if(!ParseValue(value, currentPos, end, ctx)) {
+            return false;
+        }
+        
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), key, value, parsed_entries_count)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
+        }
+        
+        // Finalize the key-value pair
+        stream_write_result finalize_r = cursor.finalize_pair(true);
+        if(finalize_r != stream_write_result::value_processed) {
+            if(finalize_r == stream_write_result::error) {
+                ctx.setError(ParseError::DUPLICATE_KEY_IN_MAP, currentPos);
+                return false;
+            } else {
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                return false;
+            }
+        }
+        
+        parsed_entries_count++;
+        if(!validators::validator<Opts>::template validate<validators::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
+        }
+        
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+            return false;
+        }
+        has_trailing_comma = false;
+        if(*currentPos == ',') {
+            has_trailing_comma = true;
+            currentPos++;
+        }
+    }
+    
     return false;
 }
 
@@ -1487,6 +1622,7 @@ constexpr ParseResult<It> Parse(InputObjectT & obj, It begin, const Sent & end) 
 }
 
 template<class InputObjectT, class ContainterT>
+    requires (!std::is_pointer_v<ContainterT>) && requires(const ContainterT& c) { c.begin(); c.end(); }
 constexpr auto Parse(InputObjectT & obj, const ContainterT & c) {
     return Parse(obj, c.begin(), c.end());
 }

@@ -340,6 +340,67 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 }
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+    requires static_schema::JsonSerializableMap<ObjT>
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+    if(outputPos == end) {
+        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+        return false;
+    }
+    *outputPos++ = '{';
+    bool first = true;
+
+    using FH = static_schema::map_read_cursor<ObjT>;
+    FH cursor{ obj };
+    cursor.reset();
+    
+    while(true) {
+        stream_read_result res = cursor.read_more();
+        if(res == stream_read_result::end) {
+            break;
+        } else if(res == stream_read_result::error) {
+            ctx.setError(SerializeError::INPUT_STREAM_ERROR, outputPos);
+            return false;
+        }
+
+        const auto& key = cursor.get_key();
+        const auto& value = cursor.get_value();
+        
+        if(first) {
+            first = false;
+        } else {
+            if(outputPos == end) {
+                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                return false;
+            }
+            *outputPos++ = ',';
+        }
+        
+        // Serialize key as string
+        if(!SerializeValue(key, outputPos, end, ctx)) {
+            return false;
+        }
+        
+        if(outputPos == end) {
+            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+            return false;
+        }
+        *outputPos++ = ':';
+        
+        // Serialize value
+        if(!SerializeValue(value, outputPos, end, ctx)) {
+            return false;
+        }
+    }
+
+    if(outputPos == end) {
+        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+        return false;
+    }
+    *outputPos++ = '}';
+    return true;
+}
+
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
     requires static_schema::JsonObject<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
 

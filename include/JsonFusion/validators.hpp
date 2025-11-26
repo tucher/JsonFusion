@@ -99,6 +99,11 @@ struct string_parsing_finished{};
 struct array_item_parsed{};
 struct array_parsing_finished{};
 struct object_parsing_finished{};
+struct map_key_parsed_some_chars{};
+struct map_key_finished{};
+struct map_value_parsed{};
+struct map_entry_parsed{};
+struct map_parsing_finished{};
 
 }
 
