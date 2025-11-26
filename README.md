@@ -87,7 +87,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - High performance, comparable to RapidJSON + manual mapping
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in s single parsing pass
-- No macros, no codegen, no registration – relies on PFR and aggregates
+- No macros, no codegen, no registration – relies on PFR-driven introspection
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 - Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
@@ -173,7 +173,14 @@ A good fit for:
 
 **String handling**: When parsing into fixed-size char arrays (common in C structs), JsonFusion automatically null-terminates strings, making them immediately usable with standard C string functions (`strlen`, `strcmp`, `printf`, etc.).
 
-**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work perfectly. See `examples/c_interop/` for a complete working example. See the [philosophy](docs/WHY_REFLECTION.md) - standard C++ reflection will likely change this story in the near future.
+**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work 
+perfectly. See `examples/c_interop/` for a complete working example.
+
+All PFR usage is isolated in [`struct_introspection.hpp`](include/JsonFusion/struct_introspection.hpp), which defines 
+"how to iterate struct fields" as an abstraction layer. The rest of JsonFusion only talks to that abstraction. When 
+C++26 reflection becomes mainstream, this layer can be replaced with a standards-based implementation without changing 
+JsonFusion's public API or core design. Better reflection support will only improve capabilities (including more 
+seamless C interop) without forcing users to rewrite code. See the [philosophy](docs/WHY_REFLECTION.md) for details.
 
 
 ## Declarative Schema and Runtime Validation
