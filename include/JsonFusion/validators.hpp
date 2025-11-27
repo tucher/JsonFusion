@@ -13,6 +13,172 @@ namespace JsonFusion {
 
 namespace validators {
 
+// ============================================================================
+// Generic Name Search Utilities (Extracted from Parser)
+// ============================================================================
+
+/// Generic descriptor for named entities (fields, keys, etc.)
+struct NameDescr {
+    std::string_view name;
+    std::size_t originalIndex;
+};
+
+// Thresholds for selecting search strategy at compile time
+inline constexpr std::size_t MaxNamesCountForLinearSearch = 8;
+inline constexpr std::size_t MaxNameLengthForLinearSearch = 32;
+
+/// Binary search strategy: incrementally narrows candidate range per character
+struct IncrementalBinaryNameSearch {
+    using It = const NameDescr*;
+
+    It first;         // current candidate range [first, last)
+    It last;
+    It original_begin; // original begin, for reset
+    It original_end;  // original end, used as "empty result"
+    std::size_t depth = 0; // how many characters have been fed
+
+    constexpr IncrementalBinaryNameSearch(It begin, It end)
+        : first(begin), last(end), original_begin(begin), original_end(end), depth(0) {}
+
+    // Feed next character; narrows [first, last) by character at position `depth`.
+    // Returns true if any candidates remain after this step.
+    constexpr bool step(char ch) {
+        if (first == last)
+            return false;
+
+        // projection: NameDescr -> char at current depth
+        auto char_at_depth = [this](const NameDescr& f) -> char {
+            std::string_view s = f.name;
+            // sentinel: '\0' means "past the end"
+            return depth < s.size() ? s[depth] : '\0';
+        };
+
+        // lower_bound: first element with char_at_depth(elem) >= ch
+        auto lower = std::ranges::lower_bound(
+            first, last, ch, {}, char_at_depth
+        );
+
+        // upper_bound: first element with char_at_depth(elem) > ch
+        auto upper = std::ranges::upper_bound(
+            lower, last, ch, {}, char_at_depth
+        );
+
+        first = lower;
+        last  = upper;
+        ++depth;
+        return first != last;
+    }
+
+    // Return:
+    //   - pointer to unique NameDescr if exactly one matches AND
+    //     fully typed (depth >= name.size())
+    //   - original_end if 0 matches OR >1 matches OR undertyped.
+    constexpr It result() const {
+        if (first == last)
+            return original_end; // 0 matches
+
+        // exactly one candidate
+        const NameDescr& candidate = *first;
+
+        // undertyping: not all characters of the name have been given
+        if (depth != candidate.name.size())
+            return original_end;
+
+        return first;
+    }
+    
+    // Reset for next key
+    constexpr void reset() {
+        first = original_begin;
+        last = original_end;
+        depth = 0;
+    }
+};
+
+/// Linear search strategy: buffers the name, does simple linear search at the end
+template<std::size_t MaxLen>
+struct BufferedLinearNameSearch {
+    using It = const NameDescr*;
+
+    It begin;         // name descriptors range [begin, end)
+    It end;
+    char buffer[MaxLen];
+    std::size_t length = 0;
+    bool overflown = false;
+
+    constexpr BufferedLinearNameSearch(It begin_, It end_)
+        : begin(begin_), end(end_), buffer{}, length(0) {}
+
+    // Simply buffer the character, no searching yet
+    constexpr bool step(char ch) {
+        if (length < MaxLen) {
+            buffer[length++] = ch;
+            return true;
+        }
+        // Name too long, won't match anything
+        overflown = true;
+        return false;
+    }
+
+    // Perform linear search through all names
+    constexpr It result() const {
+        if(overflown) return end;
+        std::string_view key(buffer, length);
+        for (It it = begin; it != end; ++it) {
+            if (it->name == key) {
+                return it;
+            }
+        }
+        return end; // not found
+    }
+    
+    // Reset for next key
+    constexpr void reset() {
+        for (std::size_t i = 0; i < MaxLen; ++i) {
+            buffer[i] = '\0';
+        }
+        length = 0;
+        overflown = false;
+    }
+};
+
+/// Adapter that selects strategy at compile time based on name count and max length
+template<std::size_t NameCount, std::size_t MaxNameLen>
+struct AdaptiveNameSearch {
+    using It = const NameDescr*;
+    
+    static constexpr bool useLinear = 
+        (NameCount <= MaxNamesCountForLinearSearch) && 
+        (MaxNameLen <= MaxNameLengthForLinearSearch);
+
+    using SearchImpl = std::conditional_t<
+        useLinear,
+        BufferedLinearNameSearch<MaxNameLen>,
+        IncrementalBinaryNameSearch
+    >;
+
+    SearchImpl impl;
+
+    constexpr AdaptiveNameSearch(It begin, It end)
+        : impl(begin, end) {}
+
+    constexpr bool step(char ch) {
+        return impl.step(ch);
+    }
+
+    constexpr It result() const {
+        return impl.result();
+    }
+    
+    constexpr void reset() {
+        impl.reset();
+    }
+};
+
+// ============================================================================
+// Schema Errors
+// ============================================================================
+
 enum class SchemaError : std::uint64_t {
     none                            = 0,
     number_out_of_range             = 1ull << 0,
@@ -310,16 +476,13 @@ struct min_properties {
     static constexpr std::size_t value = N;
     
     template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>
     static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
-        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
-            if (count >= N) {
-                return true;
-            } else {
-                ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
-                return false;
-            }
-        } else {
+        if (count >= N) {
             return true;
+        } else {
+            ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
+            return false;
         }
     }
 };
@@ -329,8 +492,9 @@ struct max_properties {
     using tag = detail::parsing_events_tags::map_entry_parsed;
     static constexpr std::size_t value = N;
     
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_entry_parsed>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
         if (count <= N) {
             return true;
         } else {
@@ -394,42 +558,81 @@ struct max_key_length {
     }
 };
 
-template<ConstString ... Keys>
+template<ConstString... Keys>
 struct required_keys {
-    struct notag{}; // TODO remove!!!
-    using tag = notag; // or multiple tags
-
+    struct notag{}; // TODO: multi-tag support
+    using tag = notag;
+    
+    static constexpr std::size_t keyCount = sizeof...(Keys);
+    
+    // Build sorted array of required key names at compile time
+    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
+        std::array<NameDescr, keyCount> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &NameDescr::name);
+        return arr;
+    }();
+    
+    static constexpr std::size_t maxKeyLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& k : sortedKeys) {
+            if (k.name.size() > maxLen) maxLen = k.name.size();
+        }
+        return maxLen;
+    }();
+    
     template<class Storage>
     struct state {
-        // anything you need for this option *for this Storage*
-        // std::bitset<sizeof...(Keys)> seen{};
-        // maybe also a fast mapping from key->index, precomputed in a consteval helper
-        std::map<std::string, bool> seen = [](){
-            std::map<std::string, bool>  ret;
-            ((ret.emplace(Keys.toStringView(), false)), ...);
-            return ret;
-        }();
+        std::bitset<keyCount> seen{};  // Track which required keys were parsed
+        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+            sortedKeys.data(), 
+            sortedKeys.data() + sortedKeys.size()
+        };
     };
-
+    
+    // Incremental validation during key parsing (per-character)
     template<class Tag, class Storage>
-    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, std::size_t entry_count) {
-        if constexpr(std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
-            for(auto[_,v]: st.seen) {
-                if(!v) {
-                    ctx.addSchemaError(SchemaError::map_missing_required_key);
-                    return false;
-                }
-            }
-            return true;
-        } else {
-            return true;
-        }
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map,
+                                   detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+    {
+        st.searcher.step(c);  // Update search state, don't fail yet
+        return true;
     }
+    
+    // Final validation after key is fully parsed
+    template<class Tag, class Storage, class KeyType>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+    {
+        auto result = st.searcher.result();
+        if (result != sortedKeys.end()) {
+            // Found a required key - mark as seen
+            std::size_t idx = result->originalIndex;
+            st.seen.set(idx);
+        }
+        // Reset searcher for next key
+        st.searcher.reset();
+        return true;
+    }
+    
+    // Catch-all for other tags
+    template<class Tag, class Storage, class... Args>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const Args&... args) {
+        return true;
+    }
+    
+    // Check all required keys were seen
     template<class Tag, class Storage>
-    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
-        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
-            if(st.seen.contains(key)) {
-                st.seen[key] = true;
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, std::size_t entry_count) {
+        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
+            if (st.seen.count() != keyCount) {
+                ctx.addSchemaError(SchemaError::map_missing_required_key);
+                return false;
             }
             return true;
         } else {
@@ -438,61 +641,142 @@ struct required_keys {
     }
 };
 
-template<ConstString ... Keys>
+template<ConstString... Keys>
 struct allowed_keys {
-    struct notag{}; // TODO remove!!!
-    using tag = notag; // or multiple tags
-
+    struct notag{}; // TODO: multi-tag support
+    using tag = notag;
+    
+    static constexpr std::size_t keyCount = sizeof...(Keys);
+    
+    // Build sorted array of allowed key names at compile time
+    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
+        std::array<NameDescr, keyCount> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &NameDescr::name);
+        return arr;
+    }();
+    
+    static constexpr std::size_t maxKeyLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& k : sortedKeys) {
+            if (k.name.size() > maxLen) maxLen = k.name.size();
+        }
+        return maxLen;
+    }();
+    
     template<class Storage>
     struct state {
-        std::map<std::string, bool> keys_set = [](){
-            std::map<std::string, bool>  ret;
-            ((ret.emplace(Keys.toStringView(), false)), ...);
-            return ret;
-        }();
+        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+            sortedKeys.data(), 
+            sortedKeys.data() + sortedKeys.size()
+        };
     };
-
-
+    
+    // Incremental validation during key parsing (per-character)
     template<class Tag, class Storage>
-    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
-        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
-            if(!st.keys_set.contains(key)) {
-                ctx.addSchemaError(SchemaError::map_key_not_allowed);
-                return false;
-            }
-            return true;
-        } else {
-            return true;
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+    {
+        // Feed character to incremental search
+        if (!st.searcher.step(c)) {
+            // Early rejection: no allowed key matches this prefix
+            ctx.addSchemaError(SchemaError::map_key_not_allowed);
+            return false;
         }
+        return true;
+    }
+    
+    // Final validation after key is fully parsed
+    template<class Tag, class Storage, class KeyType>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+    {
+        auto result = st.searcher.result();
+        if (result == sortedKeys.end()) {
+            // Key not in allowed list
+            ctx.addSchemaError(SchemaError::map_key_not_allowed);
+            return false;
+        }
+        // Reset searcher for next key
+        st.searcher.reset();
+        return true;
+    }
+    
+    // Catch-all for other tags
+    template<class Tag, class Storage, class... Args>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const Args&... args) {
+        return true;
     }
 };
 
-template<ConstString ... Keys>
+template<ConstString... Keys>
 struct forbidden_keys {
-    struct notag{}; // TODO remove!!!
-    using tag = notag; // or multiple tags
-
+    struct notag{}; // TODO: multi-tag support
+    using tag = notag;
+    
+    static constexpr std::size_t keyCount = sizeof...(Keys);
+    
+    // Build sorted array of forbidden key names at compile time
+    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
+        std::array<NameDescr, keyCount> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &NameDescr::name);
+        return arr;
+    }();
+    
+    static constexpr std::size_t maxKeyLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& k : sortedKeys) {
+            if (k.name.size() > maxLen) maxLen = k.name.size();
+        }
+        return maxLen;
+    }();
+    
     template<class Storage>
     struct state {
-        std::map<std::string, bool> keys_set = [](){
-            std::map<std::string, bool>  ret;
-            ((ret.emplace(Keys.toStringView(), false)), ...);
-            return ret;
-        }();
+        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+            sortedKeys.data(), 
+            sortedKeys.data() + sortedKeys.size()
+        };
     };
-
-
+    
+    // Incremental validation during key parsing (per-character)
     template<class Tag, class Storage>
-    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
-        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
-            if(st.keys_set.contains(key)) {
-                ctx.addSchemaError(SchemaError::map_key_forbidden);
-                return false;
-            }
-            return true;
-        } else {
-            return true;
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+    {
+        st.searcher.step(c);  // Track matching, but don't fail yet
+        return true;
+    }
+    
+    // Final validation after key is fully parsed
+    template<class Tag, class Storage, class KeyType>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+    {
+        auto result = st.searcher.result();
+        if (result != sortedKeys.end()) {
+            // Key IS in forbidden list - reject!
+            ctx.addSchemaError(SchemaError::map_key_forbidden);
+            return false;
         }
+        // Reset searcher for next key
+        st.searcher.reset();
+        return true;
+    }
+    
+    // Catch-all for other tags
+    template<class Tag, class Storage, class... Args>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
+                                   detail::ValidationCtx& ctx, const Args&... args) {
+        return true;
     }
 };
 

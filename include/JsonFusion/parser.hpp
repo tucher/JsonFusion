@@ -832,14 +832,49 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             }
         }
         
-        // Parse key as string
+        // Parse key as string with incremental validation
         auto& key = cursor.key_ref();
         using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
-        if(!ParseNonNullValue<KeyOpts>(key, currentPos, end, ctx)) {
+        
+        // Custom string parsing with incremental key validation
+        std::size_t parsedSize = 0;
+        if constexpr (DynamicContainerTypeConcept<typename FH::key_type>) {
+            key.clear();
+        }
+        
+        auto inserter = [&](char c) -> bool {
+            if constexpr (!DynamicContainerTypeConcept<typename FH::key_type>) {
+                if (parsedSize < key.size()-1) {
+                    key[parsedSize] = c;
+                } else {
+                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    return false;
+                }
+            } else {
+                key.push_back(c);
+            }
+            parsedSize++;
+            
+            // Emit incremental key parsing event for validators
+            if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_parsed_some_chars>
+                            (obj, ctx.validationCtx(), c)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                return false;
+            }
+            
+            return true;
+        };
+        
+        if(!parseString(inserter, currentPos, end, ctx)) {
             return false;
         }
         
-
+        if constexpr (!DynamicContainerTypeConcept<typename FH::key_type>) {
+            if(parsedSize < key.size())
+                key[parsedSize] = 0;
+        }
+        
+        // Emit key finished event
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
