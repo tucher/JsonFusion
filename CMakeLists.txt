@@ -44,3 +44,25 @@ add_executable(sax_demo
     ${JSON_FUSION}
 
 )
+
+
+add_executable(benchmarks
+    benchmarks/main.cpp
+    benchmarks/bench_matrix.hpp
+    ${JSON_FUSION}
+
+)
+target_include_directories(benchmarks PRIVATE
+  ../Downloads/rapidjson-master/include
+  ../Downloads/json-develop/single_include
+)
+
+
+
+target_compile_options(benchmarks PRIVATE
+  $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto>
+)
+
+target_link_options(benchmarks PRIVATE
+  $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto>
+)

@@ -67,17 +67,20 @@ concept CharSentinelFor =
 template <CharInputIterator InpIter>
 class ParseResult {
     ParseError m_error = ParseError::NO_ERROR;
-    InpIter m_pos;
+    InpIter m_begin, m_pos;
     validators::ValidationResult validationResult;
 public:
-    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter pos):
-        m_error(err), m_pos(pos), validationResult(schemaErrors)
+    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter begin, InpIter pos):
+        m_error(err), m_begin(begin), m_pos(pos), validationResult(schemaErrors)
     {}
     constexpr operator bool() const {
         return m_error == ParseError::NO_ERROR && validationResult;
     }
     constexpr InpIter pos() const {
         return m_pos;
+    }
+    constexpr std::size_t offset() const {
+        return m_pos - m_begin;
     }
     constexpr ParseError error() const {
         if (m_error == ParseError::NO_ERROR) {
@@ -100,10 +103,12 @@ template <CharInputIterator InpIter>
 class DeserializationContext {
 
     ParseError error = ParseError::NO_ERROR;
+    InpIter m_begin;
     InpIter m_pos;
     validators::detail::ValidationCtx _validationCtx;
 public:
     constexpr DeserializationContext(InpIter b) {
+        m_begin = b;
         m_pos = b;
     }
     constexpr void setError(ParseError err, InpIter pos) {
@@ -112,7 +117,7 @@ public:
     }
 
     constexpr ParseResult<InpIter> result() {
-        return ParseResult<InpIter>(error, _validationCtx.result(), m_pos);
+        return ParseResult<InpIter>(error, _validationCtx.result(), m_begin, m_pos);
     }
     constexpr validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
 };

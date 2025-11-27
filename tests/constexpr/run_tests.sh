@@ -44,26 +44,66 @@ if [ -f "$STRUCTURAL_TEST" ]; then
     fi
 fi
 
-# Run all other tests
-for test_file in $(find tests/constexpr -name "test_*.cpp" | grep -v "test_structural_detection.cpp" | sort); do
+# Detect number of CPUs
+if command -v nproc > /dev/null 2>&1; then
+    NPROCS=$(nproc)
+elif command -v sysctl > /dev/null 2>&1; then
+    NPROCS=$(sysctl -n hw.ncpu)
+else
+    NPROCS=4  # fallback
+fi
+
+echo ""
+echo "Running remaining tests in parallel (using $NPROCS CPUs)..."
+echo ""
+
+# Function to run a single test (will be run in parallel)
+run_test() {
+    test_file="$1"
     test_name=$(basename "$test_file" .cpp)
     category=$(basename $(dirname "$test_file"))
-    printf "%-20s %-20s ... " "$category" "$test_name"
     
-    if g++ -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
-        echo "❌ FAIL"
-        cat "$TMP_DIR/$test_name.log"
-        FAIL=$((FAIL + 1))
-    else
+    if g++ -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
         if grep -q "warning:" "$TMP_DIR/$test_name.log"; then
-            echo "⚠️  PASS (with warnings)"
-            WARNINGS=$((WARNINGS + 1))
+            echo "WARN|$category|$test_name"
         else
-            echo "✅ PASS"
+            echo "PASS|$category|$test_name"
         fi
-        PASS=$((PASS + 1))
+    else
+        echo "FAIL|$category|$test_name"
+        cat "$TMP_DIR/$test_name.log" > "$TMP_DIR/$test_name.errors"
     fi
-done
+}
+
+export -f run_test
+export INCLUDE_DIR
+export TMP_DIR
+
+# Run all other tests in parallel
+find tests/constexpr -name "test_*.cpp" | grep -v "test_structural_detection.cpp" | sort | xargs -P "$NPROCS" -I {} bash -c 'run_test "$@"' _ {} > "$TMP_DIR/parallel_results.txt"
+
+# Process results
+while IFS='|' read -r status category test_name; do
+    printf "%-20s %-20s ... " "$category" "$test_name"
+    case "$status" in
+        PASS)
+            echo "✅ PASS"
+            PASS=$((PASS + 1))
+            ;;
+        WARN)
+            echo "⚠️  PASS (with warnings)"
+            PASS=$((PASS + 1))
+            WARNINGS=$((WARNINGS + 1))
+            ;;
+        FAIL)
+            echo "❌ FAIL"
+            FAIL=$((FAIL + 1))
+            if [ -f "$TMP_DIR/$test_name.errors" ]; then
+                cat "$TMP_DIR/$test_name.errors"
+            fi
+            ;;
+    esac
+done < "$TMP_DIR/parallel_results.txt"
 
 echo "======================================="
 echo "Results: $PASS passed, $FAIL failed"
