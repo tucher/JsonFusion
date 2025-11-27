@@ -656,7 +656,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             obj.push_back(c);
         }
         parsedSize++;
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), parsedSize)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), c)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }

@@ -175,6 +175,29 @@ struct AdaptiveNameSearch {
     }
 };
 
+/// Helper to compute sorted keys and metadata for key set validators
+template<ConstString... Keys>
+struct KeySetHelper {
+    static constexpr std::size_t keyCount = sizeof...(Keys);
+    
+    // Build sorted array of key names at compile time
+    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
+        std::array<NameDescr, keyCount> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &NameDescr::name);
+        return arr;
+    }();
+    
+    static constexpr std::size_t maxKeyLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& k : sortedKeys) {
+            if (k.name.size() > maxLen) maxLen = k.name.size();
+        }
+        return maxLen;
+    }();
+};
+
 // ============================================================================
 // Schema Errors
 // ============================================================================
@@ -352,6 +375,71 @@ struct constant {
     }
 };
 
+// ============================================================================
+// String Enum Validation
+// ============================================================================
+
+template<ConstString... Values>
+struct enum_values {
+    struct notag{}; // TODO: multi-tag support
+    using tag = notag;
+    
+    using ValueSet = KeySetHelper<Values...>;
+    static constexpr std::size_t valueCount = ValueSet::keyCount;
+    static constexpr auto& sortedValues = ValueSet::sortedKeys;
+    static constexpr std::size_t maxValueLength = ValueSet::maxKeyLength;
+    
+    template<class Storage>
+    struct state {
+        AdaptiveNameSearch<valueCount, maxValueLength> searcher{
+            sortedValues.data(), 
+            sortedValues.data() + sortedValues.size()
+        };
+    };
+    
+    // Incremental validation during string parsing (per-character)
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& str, 
+                                   detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
+    {
+        // Feed character to incremental search
+        if (!st.searcher.step(c)) {
+            // Early rejection: no enum value matches this prefix
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            st.searcher.reset();
+            return false;
+        }
+        return true;
+    }
+    
+    // Final validation after string is fully parsed
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& str, 
+                                   detail::ValidationCtx& ctx, std::size_t parsed_size)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
+    {
+        auto result = st.searcher.result();
+        st.searcher.reset();
+        
+        // Check if we have a valid match
+        if (result == sortedValues.end()) {
+            // String does not match any enum value (or is empty)
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        }
+        
+        // Verify the parsed string length matches the enum value length
+        // (This handles cases where the incremental validation passed but lengths don't match)
+        if (parsed_size != result->name.size()) {
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        }
+        
+        return true;
+    }
+};
+
 template<auto Min, auto Max>
 struct range {
     using tag = detail::parsing_events_tags::number_parsing_finished;
@@ -400,13 +488,22 @@ struct max_length {
     using tag = detail::parsing_events_tags::string_parsed_some_chars;
 
     template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
-        if(size <= N) {
-            return true;
-        } else {
+    struct state {
+        std::size_t char_count = 0;
+    };
+
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& val, 
+                                   detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
+    {
+        st.char_count++;
+        if (st.char_count > N) {
+            // Early rejection: string is too long
             ctx.addSchemaError(SchemaError::string_length_out_of_range);
             return false;
         }
+        return true;
     }
 };
 
@@ -563,24 +660,10 @@ struct required_keys {
     struct notag{}; // TODO: multi-tag support
     using tag = notag;
     
-    static constexpr std::size_t keyCount = sizeof...(Keys);
-    
-    // Build sorted array of required key names at compile time
-    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
-        std::array<NameDescr, keyCount> arr;
-        std::size_t idx = 0;
-        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
-        std::ranges::sort(arr, {}, &NameDescr::name);
-        return arr;
-    }();
-    
-    static constexpr std::size_t maxKeyLength = []() consteval {
-        std::size_t maxLen = 0;
-        for (const auto& k : sortedKeys) {
-            if (k.name.size() > maxLen) maxLen = k.name.size();
-        }
-        return maxLen;
-    }();
+    using KeySet = KeySetHelper<Keys...>;
+    static constexpr std::size_t keyCount = KeySet::keyCount;
+    static constexpr auto& sortedKeys = KeySet::sortedKeys;
+    static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
     
     template<class Storage>
     struct state {
@@ -618,26 +701,19 @@ struct required_keys {
         return true;
     }
     
-    // Catch-all for other tags
-    template<class Tag, class Storage, class... Args>
-    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
-                                   detail::ValidationCtx& ctx, const Args&... args) {
-        return true;
-    }
     
     // Check all required keys were seen
     template<class Tag, class Storage>
     static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
-                                   detail::ValidationCtx& ctx, std::size_t entry_count) {
-        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
-            if (st.seen.count() != keyCount) {
-                ctx.addSchemaError(SchemaError::map_missing_required_key);
-                return false;
-            }
-            return true;
-        } else {
-            return true;
+                                   detail::ValidationCtx& ctx, std::size_t entry_count) 
+            requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>                               
+    {
+        st.searcher.reset();
+        if (st.seen.count() != keyCount) {
+            ctx.addSchemaError(SchemaError::map_missing_required_key);
+            return false;
         }
+        return true;
     }
 };
 
@@ -646,24 +722,10 @@ struct allowed_keys {
     struct notag{}; // TODO: multi-tag support
     using tag = notag;
     
-    static constexpr std::size_t keyCount = sizeof...(Keys);
-    
-    // Build sorted array of allowed key names at compile time
-    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
-        std::array<NameDescr, keyCount> arr;
-        std::size_t idx = 0;
-        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
-        std::ranges::sort(arr, {}, &NameDescr::name);
-        return arr;
-    }();
-    
-    static constexpr std::size_t maxKeyLength = []() consteval {
-        std::size_t maxLen = 0;
-        for (const auto& k : sortedKeys) {
-            if (k.name.size() > maxLen) maxLen = k.name.size();
-        }
-        return maxLen;
-    }();
+    using KeySet = KeySetHelper<Keys...>;
+    static constexpr std::size_t keyCount = KeySet::keyCount;
+    static constexpr auto& sortedKeys = KeySet::sortedKeys;
+    static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
     
     template<class Storage>
     struct state {
@@ -683,6 +745,7 @@ struct allowed_keys {
         if (!st.searcher.step(c)) {
             // Early rejection: no allowed key matches this prefix
             ctx.addSchemaError(SchemaError::map_key_not_allowed);
+            st.searcher.reset();
             return false;
         }
         return true;
@@ -695,22 +758,16 @@ struct allowed_keys {
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
     {
         auto result = st.searcher.result();
+        st.searcher.reset();
         if (result == sortedKeys.end()) {
             // Key not in allowed list
             ctx.addSchemaError(SchemaError::map_key_not_allowed);
             return false;
         }
         // Reset searcher for next key
-        st.searcher.reset();
         return true;
     }
-    
-    // Catch-all for other tags
-    template<class Tag, class Storage, class... Args>
-    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
-                                   detail::ValidationCtx& ctx, const Args&... args) {
-        return true;
-    }
+
 };
 
 template<ConstString... Keys>
@@ -718,24 +775,10 @@ struct forbidden_keys {
     struct notag{}; // TODO: multi-tag support
     using tag = notag;
     
-    static constexpr std::size_t keyCount = sizeof...(Keys);
-    
-    // Build sorted array of forbidden key names at compile time
-    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
-        std::array<NameDescr, keyCount> arr;
-        std::size_t idx = 0;
-        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
-        std::ranges::sort(arr, {}, &NameDescr::name);
-        return arr;
-    }();
-    
-    static constexpr std::size_t maxKeyLength = []() consteval {
-        std::size_t maxLen = 0;
-        for (const auto& k : sortedKeys) {
-            if (k.name.size() > maxLen) maxLen = k.name.size();
-        }
-        return maxLen;
-    }();
+    using KeySet = KeySetHelper<Keys...>;
+    static constexpr std::size_t keyCount = KeySet::keyCount;
+    static constexpr auto& sortedKeys = KeySet::sortedKeys;
+    static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
     
     template<class Storage>
     struct state {
@@ -762,22 +805,15 @@ struct forbidden_keys {
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
     {
         auto result = st.searcher.result();
+        st.searcher.reset();
         if (result != sortedKeys.end()) {
             // Key IS in forbidden list - reject!
             ctx.addSchemaError(SchemaError::map_key_forbidden);
             return false;
         }
-        // Reset searcher for next key
-        st.searcher.reset();
         return true;
     }
-    
-    // Catch-all for other tags
-    template<class Tag, class Storage, class... Args>
-    static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& map, 
-                                   detail::ValidationCtx& ctx, const Args&... args) {
-        return true;
-    }
+
 };
 
 } //namespace validators
