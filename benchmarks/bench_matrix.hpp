@@ -41,6 +41,18 @@ concept HasParse = requires(T t, Out& out, std::string& data, bool insitu, std::
     { t.parse_validate_and_populate(out, data, insitu, remark) } -> std::same_as<bool>;
 };
 
+template<typename T>
+concept HasDynamic = requires {
+    typename T::DynamicModel;
+};
+
+template<typename T>
+concept HasStatic = requires {
+    typename T::StaticModel;
+};
+
+
+
 
 template<typename  Config, typename ... Libs>
 void run_for_cfg(Libs...);
@@ -53,7 +65,7 @@ int run_impl(Libraries<Libs...>, Configs<Cfgs...>) {
 
 template<typename Cfg, typename ... Libs>
 void run_for_cfg(Libs...libs) {
-    std::cout << std::format("{:=^60} iterations: {}",  "Model " + std::string(Cfg::name), Cfg::iter_count) << std::endl;
+    std::cout << std::format("{:=^40} iterations: {}",  "Model " + std::string(Cfg::name), Cfg::iter_count) << std::endl;
 
     auto run_for_pair = [&]<typename Model, typename Tester>(std::string_view json_src) {
 
@@ -90,11 +102,15 @@ void run_for_cfg(Libs...libs) {
 
 
     };
-
-    std::cout << std::format("{}", "  Static containers") << std::endl;
-    (run_for_pair.template operator()<typename Cfg::StaticModel, Libs>(Cfg::json), ...);
-    std::cout << std::format("{}", "  Dynamic containers") << std::endl;
-    (run_for_pair.template operator()<typename Cfg::DynamicModel, Libs>(Cfg::json), ...);
+    bool print_containers = HasStatic<Cfg> && HasDynamic<Cfg>;
+    if constexpr(HasStatic<Cfg>) {
+        if(print_containers)std::cout << std::format("{}", "  Static containers") << std::endl;
+        (run_for_pair.template operator()<typename Cfg::StaticModel, Libs>(Cfg::json), ...);
+    }
+    if constexpr(HasDynamic<Cfg>) {
+        if(print_containers)std::cout << std::format("{}", "  Dynamic containers") << std::endl;
+        (run_for_pair.template operator()<typename Cfg::DynamicModel, Libs>(Cfg::json), ...);
+    }
 
     std::cout << "\n";
 }

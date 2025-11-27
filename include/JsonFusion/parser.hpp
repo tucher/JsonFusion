@@ -1709,6 +1709,13 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv)
     return Parse(obj, sv.data(), sv.size());
 }
 
+
+// string front-end
+template<static_schema::JsonParsableValue InputObjectT>
+constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string & sv) {
+    return Parse(obj, sv.data(), sv.size());
+}
+
 template <class T>
     requires (!static_schema::JsonParsableValue<T>)
 constexpr auto  Parse(T obj, auto, auto) {

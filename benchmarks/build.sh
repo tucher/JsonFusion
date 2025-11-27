@@ -1,0 +1,1 @@
+/opt/homebrew/bin/g++-15 -I../include -I ../../Downloads/rapidjson-master/include -I . -std=c++23 -O3 -flto -march=native -c main.cpp -o main.o && /opt/homebrew/bin/g++-15 -flto main.o -o json_fusion_benchmark
