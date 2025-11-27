@@ -89,6 +89,16 @@ struct allow_excess_fields{
 namespace detail {
 
 
+template<class Opt, class Tag, class = void>
+struct option_matches_tag : std::false_type {};
+
+template<class Opt, class Tag>
+struct option_matches_tag<Opt, Tag, std::void_t<typename Opt::tag>>
+    : std::bool_constant<std::is_same_v<typename Opt::tag, Tag>> {};
+
+
+// === find_option_by_tag ===
+
 template<class Tag, class... Opts>
 struct find_option_by_tag;
 
@@ -98,21 +108,15 @@ struct find_option_by_tag<Tag> {
     using type = void;
 };
 
-// Recursive case: check First::tag, or continue
+// Recursive case: check First::tag (if present), otherwise continue
 template<class Tag, class First, class... Rest>
 struct find_option_by_tag<Tag, First, Rest...> {
 private:
-    using first_tag = std::conditional_t<
-        requires { typename First::tag; },
-        typename First::tag,
-        void
-        >;
-
     using next = typename find_option_by_tag<Tag, Rest...>::type;
 
 public:
     using type = std::conditional_t<
-        std::is_same_v<Tag, first_tag>,
+        option_matches_tag<First, Tag>::value,
         First,
         next
         >;
@@ -125,7 +129,6 @@ struct no_options {
     template<class Tag>
     using get_option = void;
 };
-
 
 template<class T, class... Opts>
 struct field_options {
@@ -140,7 +143,6 @@ struct field_options {
 
     template<class Tag>
     using get_option = option_type<Tag>;
-
 };
 
 

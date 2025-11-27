@@ -355,10 +355,6 @@ struct map_parsing_finished{};
 
 template<auto C>
 struct constant {
-    struct notag{}; // TODO remove!!!
-    using tag = notag; // or multiple tags
-
-
     template<class Tag, class Storage>
     static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx) {
         if constexpr(std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>) {
@@ -380,10 +376,7 @@ struct constant {
 // ============================================================================
 
 template<ConstString... Values>
-struct enum_values {
-    struct notag{}; // TODO: multi-tag support
-    using tag = notag;
-    
+struct enum_values {    
     using ValueSet = KeySetHelper<Values...>;
     static constexpr std::size_t valueCount = ValueSet::keyCount;
     static constexpr auto& sortedValues = ValueSet::sortedKeys;
@@ -442,10 +435,9 @@ struct enum_values {
 
 template<auto Min, auto Max>
 struct range {
-    using tag = detail::parsing_events_tags::number_parsing_finished;
-
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx) {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx) {
         if constexpr (std::is_floating_point_v<Storage>){
             static_assert(
                 std::numeric_limits<Storage>::lowest() <= Min && Min <= std::numeric_limits<Storage>::max() &&
@@ -470,10 +462,9 @@ struct range {
 
 template<std::size_t N>
 struct min_length {
-    using tag = detail::parsing_events_tags::string_parsing_finished;
-
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
         if(size >= N) {
             return true;
         } else {
@@ -485,8 +476,6 @@ struct min_length {
 
 template<std::size_t N>
 struct max_length {
-    using tag = detail::parsing_events_tags::string_parsed_some_chars;
-
     template<class Storage>
     struct state {
         std::size_t char_count = 0;
@@ -509,9 +498,9 @@ struct max_length {
 
 template<std::size_t N>
 struct min_items {
-    using tag = detail::parsing_events_tags::array_parsing_finished;
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::array_parsing_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
         if(count >= N) {
             return true;
         } else {
@@ -523,9 +512,9 @@ struct min_items {
 
 template<std::size_t N>
 struct max_items {
-    using tag = detail::parsing_events_tags::array_item_parsed;
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::array_item_parsed>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
         if(count <= N) {
             return true;
         } else {
@@ -537,10 +526,9 @@ struct max_items {
 
 template <ConstString ... NotRequiredNames>
 struct not_required {
-    using tag = detail::parsing_events_tags::object_parsing_finished;
-
-    template<class Storage, class FH>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
+    template<class Tag, class Storage, class FH>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::object_parsing_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
         static_assert(
             ((FH::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
             "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
@@ -569,7 +557,6 @@ struct not_required {
 
 template<std::size_t N>
 struct min_properties {
-    using tag = detail::parsing_events_tags::map_parsing_finished;
     static constexpr std::size_t value = N;
     
     template<class Tag, class Storage>
@@ -586,7 +573,6 @@ struct min_properties {
 
 template<std::size_t N>
 struct max_properties {
-    using tag = detail::parsing_events_tags::map_entry_parsed;
     static constexpr std::size_t value = N;
     
     template<class Tag, class Storage>
@@ -607,11 +593,11 @@ struct max_properties {
 
 template<std::size_t N>
 struct min_key_length {
-    using tag = detail::parsing_events_tags::map_key_finished;
     static constexpr std::size_t value = N;
     
-    template<class Storage, class KeyType>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+    template<class Tag, class Storage, class KeyType>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -632,11 +618,11 @@ struct min_key_length {
 
 template<std::size_t N>
 struct max_key_length {
-    using tag = detail::parsing_events_tags::map_key_finished;
     static constexpr std::size_t value = N;
     
-    template<class Storage, class KeyType>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+    template<class Tag, class Storage, class KeyType>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -657,8 +643,6 @@ struct max_key_length {
 
 template<ConstString... Keys>
 struct required_keys {
-    struct notag{}; // TODO: multi-tag support
-    using tag = notag;
     
     using KeySet = KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
@@ -719,8 +703,6 @@ struct required_keys {
 
 template<ConstString... Keys>
 struct allowed_keys {
-    struct notag{}; // TODO: multi-tag support
-    using tag = notag;
     
     using KeySet = KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
@@ -772,8 +754,6 @@ struct allowed_keys {
 
 template<ConstString... Keys>
 struct forbidden_keys {
-    struct notag{}; // TODO: multi-tag support
-    using tag = notag;
     
     using KeySet = KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
