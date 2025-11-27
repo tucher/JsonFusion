@@ -179,7 +179,13 @@ constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, D
         ctx.setError(ParseError::ILLFORMED_BOOL, currentPos);
         return false;
     }
-    return validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx());
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    if(!validatorsState.template validate<validators::detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
+        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+        return false;
+    } else {
+        return true;
+    }
 }
 
 
@@ -416,7 +422,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
         return false;
     }
-    if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
         ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
         return false;
     }
@@ -636,7 +643,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
-    auto inserter = [&obj, &parsedSize, &ctx, &currentPos] (char c) -> bool {
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    auto inserter = [&obj, &parsedSize, &ctx, &currentPos, &validatorsState] (char c) -> bool {
         if constexpr (!DynamicContainerTypeConcept<ObjT>) {
             if (parsedSize < obj.size()-1) {
                 obj[parsedSize] = c;
@@ -648,7 +656,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             obj.push_back(c);
         }
         parsedSize++;
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), parsedSize)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), parsedSize)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -661,7 +669,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             if(parsedSize < obj.size())
                 obj[parsedSize] = 0;
         }
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -692,6 +700,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     using FH   = static_schema::array_write_cursor<ObjT>;
     FH cursor{ obj };
     cursor.reset();
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -709,7 +718,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                 cursor.finalize(false);
                 return false;
             }
-            if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
+            if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
                 cursor.finalize(false);
                 return false;
@@ -743,7 +752,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
 
         parsed_items_count ++;
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             cursor.finalize(false);
             return false;
@@ -798,12 +807,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                 ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
                 return false;
             }
-            // if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
-            //     ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
-            //     return false;
-            // }
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
-
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                return false;
             }
             currentPos++;
             return true;
@@ -834,7 +840,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
         
 
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -867,7 +873,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             return false;
         }
         
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), key, value, parsed_entries_count)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -885,7 +891,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         }
         
         parsed_entries_count++;
-        if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
+
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -1321,6 +1328,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     bool isFirst = true;
 
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -1337,7 +1345,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             }
             currentPos ++;
 
-            if(!validators::detail::validator<Opts>::template validate<validators::detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
+            if(!validatorsState.template validate<validators::detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
                 return false;
             }

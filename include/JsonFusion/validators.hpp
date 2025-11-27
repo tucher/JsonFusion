@@ -7,7 +7,8 @@
 
 #include "options.hpp"
 #include "struct_introspection.hpp"
-
+#include <iostream>
+#include <map>
 namespace JsonFusion {
 
 namespace validators {
@@ -20,6 +21,10 @@ enum class SchemaError : std::uint64_t {
     missing_required_fields         = 1ull << 3,
     map_properties_count_out_of_range = 1ull << 4,
     map_key_length_out_of_range     = 1ull << 5,
+    wrong_constant_value            = 1ull << 6,
+    map_key_not_allowed             = 1ull << 7,
+    map_key_forbidden               = 1ull << 9,
+    map_missing_required_key        = 1ull << 10,
     // … more, all 1 << N
 };
 
@@ -107,14 +112,24 @@ private:
         const Args&... args
         )
     {
-        if constexpr (std::same_as<typename Opt::tag, Tag>) {
-            if constexpr (std::is_same_v<State, empty_state>) {
+        if constexpr (!std::is_same_v<State, empty_state>) {
+            if constexpr (requires { Opt::template validate<Tag>(Tag{}, st, storage, ctx, args...); }) {
+                return Opt::template validate<Tag>(Tag{}, st, storage, ctx, args...);
+            } else {
+                return true;
+            }
+
+        } else {
+
+            // Stateless option
+            if constexpr (requires { Opt::template validate<Tag>(Tag{}, storage, ctx, args...); }) {
+                return Opt::template validate<Tag>(Tag{}, storage, ctx, args...);
+            } else if constexpr (requires { Opt::validate(storage, ctx, args...); }) {
                 return Opt::validate(storage, ctx, args...);
             } else {
-                return Opt::validate(st, storage, ctx, args...);
+                return true;
             }
-        } else {
-            return true; // tag doesn't match this option
+
         }
     }
 };
@@ -127,40 +142,7 @@ struct validator_state<options::detail::no_options, Storage> {
     }
 };
 
-template <class Opts>
-struct validator {
 
-};
-
-template<>
-struct validator<options::detail::no_options> {
-    template<class ValidatorsTag, class ObjT, class ... Args>
-    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
-        return true;
-    }
-};
-
-template<class T, class... Opts>
-struct validator<options::detail::field_options<T, Opts...>> {
-    using underlying_type = T;
-    using GlobalOpts = options::detail::field_options<T, Opts...>;
-
-    template<class ValidatorsTag, class ObjT, class ... Args>
-    static constexpr bool validate(const ObjT & storage, ValidationCtx & ctx, const Args & ... args) {
-        auto callOne = [&]<class Opt>() {
-            if constexpr(std::same_as<typename Opt::tag, ValidatorsTag>) {
-                return Opt::validate(storage, ctx, args...);
-            } else {
-                return true;
-            }
-        };
-        bool ok = true;
-        (void)std::initializer_list<int>{
-            (ok = ok && callOne.template operator()<Opts>(), 0)...
-        };
-        return ok;
-    }
-};
 
 
 
@@ -181,6 +163,28 @@ struct map_parsing_finished{};
 
 }
 } //namespace detail
+
+template<auto C>
+struct constant {
+    struct notag{}; // TODO remove!!!
+    using tag = notag; // or multiple tags
+
+
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx) {
+        if constexpr(std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>) {
+            if(v != C) {
+                ctx.addSchemaError(SchemaError::wrong_constant_value);
+                return false;
+            } else {
+                return true;
+            }
+        } else if constexpr(false) { //TODO add others
+        }else {
+            return true;
+        }
+    }
+};
 
 template<auto Min, auto Max>
 struct range {
@@ -213,7 +217,7 @@ struct range {
 template<std::size_t N>
 struct min_length {
     using tag = detail::parsing_events_tags::string_parsing_finished;
-    static constexpr std::size_t value = N;
+
     template<class Storage>
     static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
         if(size >= N) {
@@ -228,7 +232,7 @@ struct min_length {
 template<std::size_t N>
 struct max_length {
     using tag = detail::parsing_events_tags::string_parsed_some_chars;
-    static constexpr std::size_t value = N;
+
     template<class Storage>
     static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
         if(size <= N) {
@@ -305,13 +309,17 @@ struct min_properties {
     using tag = detail::parsing_events_tags::map_parsing_finished;
     static constexpr std::size_t value = N;
     
-    template<class Storage>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
-        if (count >= N) {
-            return true;
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
+            if (count >= N) {
+                return true;
+            } else {
+                ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
+                return false;
+            }
         } else {
-            ctx.addSchemaError(SchemaError::map_properties_count_out_of_range);
-            return false;
+            return true;
         }
     }
 };
@@ -388,32 +396,105 @@ struct max_key_length {
 
 template<ConstString ... Keys>
 struct required_keys {
-    using tag = detail::parsing_events_tags::map_parsing_finished; // or multiple tags
+    struct notag{}; // TODO remove!!!
+    using tag = notag; // or multiple tags
 
     template<class Storage>
     struct state {
         // anything you need for this option *for this Storage*
-        std::bitset<sizeof...(Keys)> seen{};
+        // std::bitset<sizeof...(Keys)> seen{};
         // maybe also a fast mapping from key->index, precomputed in a consteval helper
-        bool staaaate = true;
+        std::map<std::string, bool> seen = [](){
+            std::map<std::string, bool>  ret;
+            ((ret.emplace(Keys.toStringView(), false)), ...);
+            return ret;
+        }();
     };
 
-    template<class Storage>
-    static constexpr bool validate(
-        state<Storage>& st,
-        const Storage&  map,
-        detail::ValidationCtx&  ctx
-        // ,
-        // std::string_view key,        // for "key seen" events
-        ,std::size_t      entry_count // or whatever other args you need
-        ) {
-        // update st.seen as keys are parsed
-        // check st.seen in final event
-        int a = st.staaaate;
-        return false;
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, std::size_t entry_count) {
+        if constexpr(std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>) {
+            for(auto[_,v]: st.seen) {
+                if(!v) {
+                    ctx.addSchemaError(SchemaError::map_missing_required_key);
+                    return false;
+                }
+            }
+            return true;
+        } else {
+            return true;
+        }
+    }
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
+        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
+            if(st.seen.contains(key)) {
+                st.seen[key] = true;
+            }
+            return true;
+        } else {
+            return true;
+        }
     }
 };
 
+template<ConstString ... Keys>
+struct allowed_keys {
+    struct notag{}; // TODO remove!!!
+    using tag = notag; // or multiple tags
+
+    template<class Storage>
+    struct state {
+        std::map<std::string, bool> keys_set = [](){
+            std::map<std::string, bool>  ret;
+            ((ret.emplace(Keys.toStringView(), false)), ...);
+            return ret;
+        }();
+    };
+
+
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
+        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
+            if(!st.keys_set.contains(key)) {
+                ctx.addSchemaError(SchemaError::map_key_not_allowed);
+                return false;
+            }
+            return true;
+        } else {
+            return true;
+        }
+    }
+};
+
+template<ConstString ... Keys>
+struct forbidden_keys {
+    struct notag{}; // TODO remove!!!
+    using tag = notag; // or multiple tags
+
+    template<class Storage>
+    struct state {
+        std::map<std::string, bool> keys_set = [](){
+            std::map<std::string, bool>  ret;
+            ((ret.emplace(Keys.toStringView(), false)), ...);
+            return ret;
+        }();
+    };
+
+
+    template<class Tag, class Storage>
+    static constexpr bool validate(const Tag &, state<Storage>& st, const Storage&  map, detail::ValidationCtx&  ctx, const std::string & key, std::size_t entry_count) {
+        if constexpr (std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>) {
+            if(st.keys_set.contains(key)) {
+                ctx.addSchemaError(SchemaError::map_key_forbidden);
+                return false;
+            }
+            return true;
+        } else {
+            return true;
+        }
+    }
+};
 
 } //namespace validators
 

@@ -181,7 +181,7 @@ struct annotation_meta<std::optional<Annotated<T, Opts...>>> {
 // Annotated<T, Opts...>
 template<class T, class... Opts>
 struct annotation_meta<Annotated<T, Opts...>> {
-    static_assert((requires { typename Opts::tag; } && ...));
+    // static_assert((requires { typename Opts::tag; } && ...));
     using value_t = T;
     using options      = field_options<T, Opts...>;
 
