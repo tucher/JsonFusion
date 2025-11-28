@@ -5,6 +5,9 @@ Parse JSON directly into your structs with validation and no glue code.
 
 #### Strongly typed, macro-free, codegen-free, with no allocations inside the library, zero-recursion on fixed-size containers, single-pass, high-performance JSON parser/serializer with declarative models and validation
 
+Your C++ types are the schema.
+JsonFusion generates a specialized parser for them at compile time.
+
 ## Motivating example
 
 ```cpp
@@ -49,8 +52,6 @@ JsonFusion::Serialize(conf, output);
 | number    | `int`*(all kinds)*, `float`, `double`                 |
 | bool      | `bool`                                                |
 
-**Note on strings**: When parsing into fixed-size char arrays (`std::array<char, N>`), JsonFusion **always null-terminates** the string (if space permits), making them directly usable with C string functions like `strlen()`, `printf()`, etc. This is verified in compile-time tests.
-
 
 ## Table of Contents
 
@@ -84,9 +85,9 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 ## Main features
 
-- High performance, comparable to RapidJSON + manual mapping
+- **High performance**: ~50% faster than RapidJSON + hand-written mapping code in real-world parse-validate-populate workflows (see [Benchmarks](#benchmarks)). What would take ~1200 lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs (which you'd need anyway) and JsonFusion handles the rest.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
-- Validation of JSON shape and structure, field types compatibility and schema, all done in s single parsing pass
+- Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
 - No macros, no codegen, no registration – relies on PFR-driven introspection
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
@@ -269,53 +270,67 @@ Less work means both faster execution *and* smaller binaries.
 
 It is all about avoiding doing the same work multiple times.
 
-JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn’t a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
+JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
 
 ### Binary Size (Embedded Focus)
 
 *Benchmarks coming soon* – measuring stripped binary size on ARM Cortex-M platforms with minimal configs.
 
-**What matters here**: Total code size with JsonFusion vs alternatives, impact of `JSONFUSION_USE_FAST_FLOAT` flag, comparison with hand-written parsing.
 
----
 
 ### Parsing Speed (High-Performance Focus)
 
-Benchmarked on realistic hardware config: nested structs, arrays of floats/ints, optionals, validation constraints. Two variants tested: static containers (`std::array`) vs dynamic containers (`std::vector`, `std::string`, `std::list`).
+**What we're measuring:** The complete real-world workflow of parsing JSON and populating C++ structs with validation. This is what you actually do in production code—not abstract JSON DOM manipulation or raw string parsing in isolation.
 
-📁 **Test model**: [`tests/test_model.hpp`](tests/test_model.hpp)  
-📁 **Benchmark code**: [`benchmarks/comparison_parsing_benchmark.cpp`](benchmarks/comparison_parsing_benchmark.cpp)
+Both libraries perform the same work:
+1. Parse JSON from string
+2. Validate all constraints (type compatibility, ranges, array sizes, string lengths, enum values)
+3. Populate C++ structures with the data
 
-**What matters here**: Time to parse JSON into fully-populated, validated C++ structs.
+For RapidJSON, this requires hand-written mapping code. For JsonFusion, it's automatic via reflection.
 
-**Important:** RapidJSON below is only parsing into a Document DOM, while JsonFusion parses directly into the final struct with validation. JsonFusion shows about the same speed as RapidJSON for static containers (sometimes slightly faster) and 25-30% slower for **`std`** dynamic containers — **but with full mapping and validation in both cases**.
-(As always, benchmarks depend on the model and compiler; see the benchmark sources for details.)
+📁 **Test models**: [`benchmarks/main.cpp`](benchmarks/main.cpp) – 6 realistic scenarios with nested structs, arrays, maps, optionals, validation constraints  
 
-#### RapidJSON DOM parsing
+#### Results
 
-```
-rj::Document doc;
-doc.Parse(kJsonStatic.data(), kJsonStatic.size());
-```
-**2.42 - 2.49 µs**
+| Benchmark Scenario | JsonFusion | RapidJSON | Speedup |
+|-------------------|------------|-----------|---------|
+| **Embedded Config (Static)** | 1.01 µs | 1.36 µs | **~30% faster** |
+| **Embedded Config (Dynamic)** | 1.24 µs | 2.08 µs | **~70% faster** |
+| **Telemetry Samples** | 4.91 µs | 7.79 µs | **~60% faster** |
+| **RPC Commands** | 2.35 µs | 3.87 µs | **~60% faster** |
+| **Log Events** | 3.46 µs | 5.04 µs | **~50% faster** |
+| **Bus Events / Message Payloads** | 4.91 µs | 7.72 µs | **~60% faster** |
+| **Metrics / Time-Series** | 4.26 µs | 5.98 µs | **~40% faster** |
 
-#### JsonFusion with static containers + validation
+*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario*
 
-```
-StaticComplexConfig cfg;
-Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
-```
-**2.40 - 2.44 µs** ✨ (faster than RapidJSON DOM, with validation!)
+#### Key Takeaways
 
-#### JsonFusion with dynamic containers + validation
+**1. Generic template metaprogramming beats hand-written low-level code**
 
-```
-DynamicComplexConfig cfg;
-Parse(cfg, kJsonStatic.data(), kJsonStatic.size());
-```
-**2.97 - 3.07 µs** (still competitive!)
+The **Embedded Config (Static)** benchmark is particularly interesting: it uses RapidJSON's SAX parser (the lowest-level, most performance-oriented API) with hand-written state machine and direct struct population—zero DOM allocations, maximum control. Yet JsonFusion's generic reflection-based approach is **~30% faster** while requiring zero mapping code.
 
-*GCC 13.2, arm64 Apple M1 Max, Ubuntu Linux on Parallels VM*
+This demonstrates that compile-time reflection isn't just convenient—it enables optimizations that are difficult to achieve with manual code.
+
+**2. Consistent performance advantage across all scenarios**
+
+JsonFusion wins every benchmark by 30-70%, with larger gains on:
+- Complex nested structures (70% on dynamic embedded config)
+- Maps and validation-heavy workloads (60% on telemetry, RPC, bus events)
+- Smaller but still significant gains on simpler structures (40% on metrics)
+
+**3. Static vs dynamic containers**
+
+Both libraries show performance differences between static (`std::array`) and dynamic (`std::vector`, `std::string`) containers, but JsonFusion maintains its lead in both cases:
+- Static: 1.01 µs vs 1.36 µs (30% faster)
+- Dynamic: 1.24 µs vs 2.08 µs (70% faster)
+
+The larger dynamic advantage suggests JsonFusion's single-pass design particularly benefits scenarios with memory allocation.
+
+**4. Fair comparison**
+
+The RapidJSON benchmark represents typical usage: parse JSON into DOM, then walk the tree to populate and validate the target C++ structures. For the static embedded case, we use SAX-style parsing with a hand-written state machine to eliminate DOM overhead entirely. Both approaches do the same work as JsonFusion—this is an apples-to-apples comparison of complete parse-validate-populate workflows, not raw parsing speed.
 
 ## Advanced Features
 
