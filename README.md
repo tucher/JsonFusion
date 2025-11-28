@@ -93,10 +93,6 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 - Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
 
-## Performance
-
-### Competitive with hand-written RapidJSON code
-Benchmarks on realistic configs show JsonFusion within the same range as RapidJSON + manual mapping, and sometimes faster, while avoiding the DOM and hand-written conversion code.
 
 ## Positioning
 
@@ -331,6 +327,24 @@ The larger dynamic advantage suggests JsonFusion's single-pass design particular
 **4. Fair comparison**
 
 The RapidJSON benchmark represents typical usage: parse JSON into DOM, then walk the tree to populate and validate the target C++ structures. For the static embedded case, we use SAX-style parsing with a hand-written state machine to eliminate DOM overhead entirely. Both approaches do the same work as JsonFusion—this is an apples-to-apples comparison of complete parse-validate-populate workflows, not raw parsing speed.
+
+**5. Large file performance: canada.json (2.2 MB, 117K+ coordinates)**
+
+The canada.json benchmark tests two distinct workflows on a numeric-heavy GeoJSON file—a pure array/number stress test rather than typical structured configs.
+
+**Classic parse-validate-populate** (production use case):
+- **JsonFusion Parse + Populate**: 5,321 µs  
+- **RapidJSON DOM Parse + Populate**: 5,579 µs (~5% slower)
+
+**JsonFusion wins** where it matters—getting validated C++ structs ready to use.
+
+**Streaming API** (process without materializing coordinate arrays):
+- **RapidJSON SAX** (hand-written state machine): 3,329 µs  
+- **JsonFusion Streaming** (declarative typed consumers): 5,148 µs (~55% slower)
+
+Here RapidJSON SAX wins—it's essentially the fastest possible approach for this simple, regular data. But consider: JsonFusion's typed streaming handles canada.json's trivial structure **the exact same way** it would handle complex schemas like twitter.json—where writing equivalent SAX code becomes prohibitively complex. JsonFusion trades ~2ms on this worst-case scenario for a **fully generic, type-safe, composable API** with zero manual state machines. No CPU hacks, just portable forward-only iterator code.
+
+📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
 ## Advanced Features
 
