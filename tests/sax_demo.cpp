@@ -4,7 +4,9 @@
 #include <format>
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/parser.hpp>
-
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
 void streaming_demo () {
 
@@ -227,8 +229,143 @@ void nested_producers () {
     [[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8]]
     */
 }
-int main() {
-    streaming_demo();
-    sax_demo();
-    nested_producers();
+namespace fs = std::filesystem;
+
+std::string read_file(const fs::path& filepath) {
+
+    std::ifstream file(filepath, std::ios::binary | std::ios::ate);
+    if (!file) {
+        throw std::runtime_error(std::format("Failed to open file: {}", filepath.string()));
+    }
+
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    std::string buffer(size, '\0');
+    if (!file.read(buffer.data(), size)) {
+        throw std::runtime_error(std::format("Failed to read file: {}", filepath.string()));
+    }
+
+    return buffer;
+}
+
+
+void geojson_reader(int argc, char ** argv) {
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <path-to-canada.json>\n";
+        std::cerr << "Download from: https://github.com/miloyip/nativejson-benchmark/blob/master/data/canada.json\n";
+        return;
+    }
+
+    fs::path json_path = argv[1];
+    std::cout << "Reading file: " << json_path << "\n";
+    std::string json_data = read_file(json_path);
+    std::cout << std::format("File size: {:.2f} MB ({} bytes)\n\n",
+                             json_data.size() / (1024.0 * 1024.0),
+                             json_data.size());
+
+    using namespace JsonFusion;
+    using namespace JsonFusion::options;
+    using namespace JsonFusion::validators;
+
+
+
+    struct Point {
+        float x;
+        float y;
+    };
+
+    using PointsAsArray = Annotated<Point, as_array>;
+
+    struct Stats {
+        std::size_t totalPoints = 0;
+        std::size_t totalRings = 0;
+        std::size_t totalFeatures = 0;
+    };
+
+    struct RingConsumer {
+        using value_type = PointsAsArray;
+
+        bool finalize(bool success)  { return true; }
+
+        Stats * stats = nullptr;
+        void reset()  {}
+        bool consume(const Point & r)  {
+            stats->totalPoints ++;
+            return true;
+        }
+        void set_json_fusion_context(Stats * ctx) {
+            stats = ctx;
+        }
+    };
+
+    struct RingsConsumer {
+        using value_type = RingConsumer;
+
+        bool finalize(bool success)  { return true; }
+
+        Stats * stats = nullptr;
+        void reset()  {}
+
+        bool consume(const RingConsumer & ringConsumer)  {
+            stats->totalRings ++;
+            return true;
+        }
+
+        void set_json_fusion_context(Stats * ctx) {
+            stats = ctx;
+        }
+    };
+
+    struct Feature {
+        A<std::string, key<"type">, string_constant<"Feature"> > _;
+        std::map<std::string, std::string> properties;
+
+        struct PolygonGeometry {
+            A<std::string, key<"type">, string_constant<"Polygon"> > _;
+            A<RingsConsumer, key<"coordinates">> rings;
+        };
+
+        PolygonGeometry geometry;
+
+
+    };
+    static_assert(static_schema::is_json_object<Feature>::value);
+    struct FeatureConsumer {
+        using value_type = Feature;
+        bool finalize(bool success)  { return true; }
+
+        Stats * stats = nullptr;
+        void reset() { }
+        bool consume(const Feature & f)  {
+            stats->totalFeatures ++;
+            return true;
+        }
+        void set_json_fusion_context(Stats * ctx) {
+            stats = ctx;
+        }
+    };
+
+    struct CanadaStatsCounter {
+        A<std::string, key<"type">, string_constant<"FeatureCollection"> > _;
+        FeatureConsumer features;
+    };
+    Stats stats;
+    CanadaStatsCounter canada;
+    canada.features.set_json_fusion_context(&stats);
+
+    auto r = ParseWithContext(canada, json_data, &stats);
+    assert(r);
+
+    std::cout << std::format("Features: {}, rings: {}, points: {}", stats.totalFeatures, stats.totalRings, stats.totalPoints) << std::endl;
+
+
+    static_assert(ConsumingStreamerLike<FeatureConsumer>, "Incompatible consumer");
+}
+
+int main(int argc, char ** argv) {
+    // streaming_demo();
+    // sax_demo();
+    // nested_producers();
+    geojson_reader(argc, argv);
 }
