@@ -99,17 +99,19 @@ public:
 namespace  parser_details {
 
 
-template <CharInputIterator InpIter>
+template <CharInputIterator InpIter, class UserCtx = void>
 class DeserializationContext {
 
     ParseError error = ParseError::NO_ERROR;
     InpIter m_begin;
     InpIter m_pos;
     validators::detail::ValidationCtx _validationCtx;
+    UserCtx * m_user_Ctx = nullptr;
 public:
-    constexpr DeserializationContext(InpIter b) {
-        m_begin = b;
-        m_pos = b;
+    using UserContextType = UserCtx;
+    constexpr DeserializationContext(InpIter b, UserCtx * userCtx = nullptr):
+        m_begin(b), m_pos(b), m_user_Ctx(userCtx) {
+
     }
     constexpr void setError(ParseError err, InpIter pos) {
         error = err;
@@ -120,6 +122,7 @@ public:
         return ParseResult<InpIter>(error, _validationCtx.result(), m_begin, m_pos);
     }
     constexpr validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    constexpr UserCtx * userCtx() { return m_user_Ctx;}
 };
 
 constexpr inline bool isSpace(char a) {
@@ -147,8 +150,8 @@ constexpr inline bool isPlainEnd(char a) {
     return false;
 }
 
-template <CharInputIterator It, CharSentinelFor<It> Sent>
-constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It> & ctx) {
+template <CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
+constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It, UserCTX> & ctx) {
     while (currentPos != end && isSpace(*currentPos)) {
         ++currentPos;
     }
@@ -169,9 +172,9 @@ constexpr bool match_literal(auto& it, const auto& end, const std::string_view &
     return true;
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonBool<ObjT>
-constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     if(currentPos == end) {
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
@@ -194,10 +197,10 @@ constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, D
 }
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent>
+template <CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
 constexpr bool read_number_token(It& currentPos,
                        const Sent& end,
-                       DeserializationContext<It>& ctx,
+                       DeserializationContext<It, UserCTX>& ctx,
                        char (&buf)[fp_to_str_detail::NumberBufSize],
                        std::size_t& index,
                        bool& seenDot,
@@ -382,9 +385,9 @@ constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept 
 
 // Strategy: custom integer parsing (no deps), delegated float parsing (configurable)
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     char buf[fp_to_str_detail::NumberBufSize];
     std::size_t index = 0;
     bool seenDot = false;
@@ -442,8 +445,8 @@ concept DynamicContainerTypeConcept = requires (T  v) {
     v.clear();
 };
 
-template <CharInputIterator It, CharSentinelFor<It> Sent>
-constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It> &ctx, std::uint16_t &out) {
+template <CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
+constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It, UserCTX> &ctx, std::uint16_t &out) {
     out = 0;
     for (int i = 0; i < 4; ++i) {
         if (currentPos == end) [[unlikely]] {
@@ -468,8 +471,8 @@ constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<
     return true;
 }
 
-template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent>
-constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It> &ctx, 
+template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
+constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx,
                           bool continueOnInserterFailure = false) {
     bool stopInserting = false;
     
@@ -641,9 +644,9 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
 }
 
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonString<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     std::size_t parsedSize = 0;
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -685,9 +688,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     }
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonParsableArray<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
@@ -703,7 +706,19 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     bool has_trailing_comma = false;
 
     using FH   = static_schema::array_write_cursor<ObjT>;
-    FH cursor{ obj };
+
+    FH cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+            if(auto c = ctx.userCtx(); c) {
+                return FH(obj, c );
+            } else {
+                return FH(obj );
+            }
+        } else {
+            return FH{ obj };
+        }
+    }();
+
     cursor.reset();
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
@@ -779,11 +794,23 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonParsableMap<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     using FH = static_schema::map_write_cursor<ObjT>;
-    FH cursor{ obj };
+
+    FH cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+            if(auto c = ctx.userCtx(); c) {
+                return FH(obj, c );
+            } else {
+                return FH(obj );
+            }
+        } else {
+            return FH{ obj };
+        }
+    }();
+
     cursor.reset();
     
     if(*currentPos != '{') {
@@ -957,10 +984,10 @@ constexpr int MAX_SKIP_NESTING = JSONFUSION_MAX_SKIP_NESTING;
 #endif
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent>
+template <CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
 bool matchLiteralTail(It& currentPos, const Sent& end,
                       const char* tail, std::size_t len,
-                      ParseError err, DeserializationContext<It>& ctx)
+                      ParseError err, DeserializationContext<It, UserCTX>& ctx)
 {
     for (std::size_t i = 0; i < len; ++i) {
         if (currentPos == end || *currentPos != tail[i]) {
@@ -973,8 +1000,8 @@ bool matchLiteralTail(It& currentPos, const Sent& end,
 }
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent>
-bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+template <CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
+bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     if (!skipWhiteSpace(currentPos, end, ctx)) {
         return false;
     }
@@ -1351,9 +1378,9 @@ struct AdaptiveFieldSearch {
 };
 
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonObject<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
     if(*currentPos != '{') {
@@ -1495,11 +1522,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
 
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */ //TODO may be better to implement with additional helper, to precalculate holes somehow?
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     if(*currentPos != '[') {
         ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
         return false;
@@ -1621,8 +1648,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent>
-constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It> &ctx) {
+template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
+constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
@@ -1703,6 +1730,28 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, const char* data, st
     return res;
 }
 
+template<static_schema::JsonParsableValue InputObjectT, class UserCtx>
+constexpr ParseResult<const char*> ParseWithContext(InputObjectT& obj, const char* data, std::size_t size, UserCtx * userCtx) {
+    const char* begin = data;
+    const char* end   = data + size;
+
+    parser_details::DeserializationContext<const char*, UserCtx> ctx(begin, userCtx);
+
+    const char* cur = begin;
+    parser_details::ParseValue(obj, cur, end, ctx);
+
+    auto res = ctx.result();
+    if(!res) {
+    } else {
+        if(parser_details::skipWhiteSpace(cur, end, ctx)) {
+            ctx.setError(ParseError::EXCESS_DATA, cur);
+        } else {
+            ctx.setError(ParseError::NO_ERROR, cur);
+        }
+    }
+    return res;
+}
+
 // string_view front-end
 template<static_schema::JsonParsableValue InputObjectT>
 constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view && sv) {
@@ -1712,6 +1761,11 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view && 
 template<static_schema::JsonParsableValue InputObjectT>
 constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string_view & sv) {
     return Parse(obj, sv.data(), sv.size());
+}
+
+template<static_schema::JsonParsableValue InputObjectT, class UserCtx>
+constexpr ParseResult<const char*> ParseWithContext(InputObjectT& obj, const std::string_view & sv, UserCtx * userCtx) {
+    return ParseWithContext(obj, sv.data(), sv.size(), userCtx);
 }
 // string front-end TODO
 // template<static_schema::JsonParsableValue InputObjectT>

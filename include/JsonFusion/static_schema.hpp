@@ -67,6 +67,7 @@ template<class Field>
 using AnnotatedValue = typename annotation_meta_getter<Field>::value_t;
 
 
+
 template<class C>
 struct array_read_cursor{};
 
@@ -89,6 +90,7 @@ struct array_read_cursor<C> {
     decltype(c.begin()) it = c.begin();
     decltype(c.begin()) b = c.begin();
     bool first = true;
+
     constexpr const element_type& get() const {
         return *it;
     }
@@ -776,6 +778,20 @@ concept ProducingMapStreamerLike =
 
 namespace static_schema {
 
+template<class Streamer, class Ctx>
+constexpr void streamer_context_setter(const Streamer & s, Ctx * ctx) {
+    if constexpr( requires{s.set_json_fusion_context(ctx);} ) {
+        s.set_json_fusion_context(ctx);
+    }
+}
+
+template<class Streamer, class Ctx>
+constexpr void streamer_context_setter(Streamer & s, Ctx * ctx) {
+    if constexpr( requires{s.set_json_fusion_context(ctx);} ) {
+        s.set_json_fusion_context(ctx);
+    }
+}
+
 // streaming source
 template<ProducingStreamerLike Streamer>
 struct array_read_cursor<Streamer> {
@@ -784,6 +800,18 @@ struct array_read_cursor<Streamer> {
     element_type buffer;
     bool first_read = false;
     bool has_more = false;
+
+    constexpr array_read_cursor(const Streamer& s)
+        : streamer(s)
+        , buffer{} {}
+
+    template<class Ctx>
+    constexpr array_read_cursor(const Streamer& s, Ctx * ctx)
+        : streamer(s)
+        , buffer{} {
+        streamer_context_setter(s, ctx);
+    }
+
     constexpr const element_type& get() {
         return buffer;
     }
@@ -805,6 +833,17 @@ struct array_write_cursor<Streamer> {
     Streamer & streamer;
     element_type buffer{};
     bool first_read = true;
+
+    constexpr array_write_cursor(Streamer& s)
+        : streamer(s)
+        , buffer{} {}
+
+    template<class Ctx>
+    constexpr array_write_cursor(Streamer& s, Ctx * ctx)
+        : streamer(s)
+        , buffer{} {
+        streamer_context_setter(s, ctx);
+    }
 
     constexpr stream_write_result allocate_slot() {
         if(first_read) {
@@ -851,6 +890,17 @@ struct map_write_cursor<Streamer> {
     typename Streamer::value_type buffer{};
     bool first = true;
     
+    constexpr map_write_cursor(Streamer& s)
+        : streamer(s)
+        , buffer{} {}
+
+    template<class Ctx>
+    constexpr map_write_cursor(Streamer& s, Ctx& ctx)
+        : streamer(s)
+        , buffer{} {
+        streamer_context_setter(s, ctx);
+    }
+
     constexpr stream_write_result allocate_key() {
         buffer = typename Streamer::value_type{};
         return stream_write_result::slot_allocated;
@@ -893,6 +943,17 @@ struct map_read_cursor<Streamer> {
     mutable typename Streamer::value_type buffer{};
     mutable bool first = true;
     
+    constexpr map_read_cursor(const Streamer& s)
+        : streamer(s)
+        , buffer{} {}
+
+    template<class Ctx>
+    constexpr map_read_cursor(const Streamer& s, const Ctx& ctx)
+        : streamer(s)
+        , buffer{} {
+        streamer_context_setter(s, ctx);
+    }
+
     constexpr stream_read_result read_more() const {
         auto result = streamer.read(buffer);
         if (first) first = false;

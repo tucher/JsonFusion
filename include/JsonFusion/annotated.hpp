@@ -12,11 +12,21 @@ template <class T, typename... Options>
 struct Annotated {
     T value{};
     using value_type = T;
+
+
+    template<class Ctx>
+    constexpr void set_json_fusion_context(Ctx * ctx) {
+        if constexpr( requires{value.set_json_fusion_context(ctx);} ) {
+            value.set_json_fusion_context(ctx);
+        }
+    }
     // Conversions/forwarding so parser can treat Annotated<T> like T
 
 
     // defaulted special members
     constexpr Annotated() = default;
+
+
     constexpr Annotated(const Annotated&) = default;
     constexpr Annotated(Annotated&&) = default;
     constexpr Annotated& operator=(const Annotated&) = default;
@@ -178,4 +188,6 @@ constexpr bool operator!=(const U& lhs,
     return lhs != rhs.value;
 }
 
+template<class T, class ... O>
+    using A = JsonFusion::Annotated<T, O...>;
 } // namespace JsonFusion
