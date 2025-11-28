@@ -7,6 +7,7 @@
 
 #include "options.hpp"
 #include "struct_introspection.hpp"
+#include "static_schema.hpp"
 #include <iostream>
 #include <map>
 namespace JsonFusion {
@@ -353,22 +354,61 @@ struct map_parsing_finished{};
 }
 } //namespace detail
 
+
 template<auto C>
 struct constant {
+    static_assert(!is_const_string<decltype(C)>::value, "Use string_constant instead");
     template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>
     static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx) {
-        if constexpr(std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>) {
-            if(v != C) {
-                ctx.addSchemaError(SchemaError::wrong_constant_value);
-                return false;
-            } else {
-                return true;
-            }
-        } else if constexpr(false) { //TODO add others
-        }else {
+        static_assert(std::is_same_v<decltype(C), bool>, "Constant is not bool");
+        if(v != C) {
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        } else {
             return true;
         }
     }
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
+    static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx) {
+        static_assert(static_schema::JsonNumber<decltype(C)>, "Constant is not number");
+        if(v != C) {
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
+    static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+        static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
+        if(value != C.toStringView()) {
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+};
+
+template<ConstString C>
+struct string_constant {
+    template<class Tag, class Storage>
+        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
+    static constexpr bool validate(const Tag &,  const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+        static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
+        if(value != C.toStringView()) {
+            ctx.addSchemaError(SchemaError::wrong_constant_value);
+            return false;
+        } else {
+            return true;
+        }
+    }
+
 };
 
 // ============================================================================
@@ -409,7 +449,7 @@ struct enum_values {
     // Final validation after string is fully parsed
     template<class Tag, class Storage>
     static constexpr bool validate(const Tag&, state<Storage>& st, const Storage& str, 
-                                   detail::ValidationCtx& ctx, std::size_t parsed_size)
+                                   detail::ValidationCtx& ctx, std::size_t parsed_size, const std::string_view & value)
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
     {
         auto result = st.searcher.result();
@@ -464,7 +504,7 @@ template<std::size_t N>
 struct min_length {
     template<class Tag, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, std::size_t size) {
+    static constexpr bool validate(const Tag&, const Storage& val, detail::ValidationCtx&ctx, std::size_t size, const std::string_view & value) {
         if(size >= N) {
             return true;
         } else {

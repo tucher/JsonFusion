@@ -674,7 +674,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             if(parsedSize < obj.size())
                 obj[parsedSize] = 0;
         }
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
@@ -1705,16 +1705,24 @@ constexpr ParseResult<const char*> Parse(InputObjectT& obj, const char* data, st
 
 // string_view front-end
 template<static_schema::JsonParsableValue InputObjectT>
-constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view sv) {
+constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string_view && sv) {
     return Parse(obj, sv.data(), sv.size());
 }
 
-
-// string front-end
 template<static_schema::JsonParsableValue InputObjectT>
-constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string & sv) {
+constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string_view & sv) {
     return Parse(obj, sv.data(), sv.size());
 }
+// string front-end TODO
+// template<static_schema::JsonParsableValue InputObjectT>
+// constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string & sv) {
+//     return Parse(obj, sv.data(), sv.size());
+// }
+
+// template<static_schema::JsonParsableValue InputObjectT>
+// constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string && sv) {
+//     return Parse(obj, sv.data(), sv.size());
+// }
 
 template <class T>
     requires (!static_schema::JsonParsableValue<T>)

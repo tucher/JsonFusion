@@ -13,6 +13,27 @@ struct Annotated {
     T value{};
     using value_type = T;
     // Conversions/forwarding so parser can treat Annotated<T> like T
+
+
+    // defaulted special members
+    constexpr Annotated() = default;
+    constexpr Annotated(const Annotated&) = default;
+    constexpr Annotated(Annotated&&) = default;
+    constexpr Annotated& operator=(const Annotated&) = default;
+    constexpr Annotated& operator=(Annotated&&) = default;
+
+    // construct from T or anything convertible to T
+    template<class U>
+        requires std::convertible_to<U, T>
+    constexpr Annotated(U&& u) : value(std::forward<U>(u)) {}
+
+    template<class U>
+        requires std::convertible_to<U, T>
+    constexpr Annotated& operator=(U&& u) {
+        value = std::forward<U>(u);
+        return *this;
+    }
+
     constexpr operator T&()             { return value; }
     constexpr operator const T&() const { return value; }
 

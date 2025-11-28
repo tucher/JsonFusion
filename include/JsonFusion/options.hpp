@@ -32,7 +32,11 @@ template <typename CharT, std::size_t N> struct ConstString
 template <typename CharT, std::size_t N>
 ConstString(const CharT (&str)[N])->ConstString<CharT, N-1>;
 
+template<class Template>
+struct is_const_string : std::false_type {};
 
+template<typename CharT, std::size_t N>
+struct is_const_string<ConstString<CharT, N>> : std::true_type {};
 
 namespace options {
 
