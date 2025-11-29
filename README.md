@@ -1,5 +1,7 @@
 # JsonFusion, yet another C++ JSON library
 
+disclaimer: under heavy development
+
 Parse JSON directly into your structs with validation and no glue code.
 
 
