@@ -33,7 +33,9 @@ struct Config {
 
 Config conf;
 
-std::string input = R"({"drives":[{"id":0,"max_speed":4.1,"active":true}],"network":{"name":"1","address":"0.0.0.0","port":8081}})";
+std::string input = R"({"drives":[{"id":0,"max_speed":4.1,"active":true}],
+                    "network":{"name":"1","address":"0.0.0.0","port":8081}})";
+
 auto parseResult = JsonFusion::Parse(conf, input);
 // error checking omitted for brevity
 
