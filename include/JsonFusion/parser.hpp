@@ -396,46 +396,50 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     if (!read_number_token(currentPos, end, ctx, buf, index, seenDot, seenExp)) {
         return false;
     }
-    if constexpr (std::is_integral_v<ObjT>) {
-        // Reject decimals/exponents for integer fields
-        if (seenDot || seenExp) {
-            ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, currentPos);
-            return false;
-        }
+    if constexpr (Opts::template has_option<options::detail::skip_materializing_tag>) {
+        return true;
+    } else {
+        if constexpr (std::is_integral_v<ObjT>) {
+            // Reject decimals/exponents for integer fields
+            if (seenDot || seenExp) {
+                ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, currentPos);
+                return false;
+            }
 
-        ObjT value{};
-        if(!parse_decimal_integer<ObjT>(buf, value)) {
-            ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
-            return false;
-        }
-
-        obj = value;
-    } else if constexpr (std::is_floating_point_v<ObjT>) {
-        double x;
-        if(fp_to_str_detail::parse_number_to_double(buf, x)) {
-            if(static_cast<double>(std::numeric_limits<ObjT>::lowest()) > x
-                || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
+            ObjT value{};
+            if(!parse_decimal_integer<ObjT>(buf, value)) {
                 ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
                 return false;
             }
-            obj = static_cast<ObjT>(x);
+
+            obj = value;
+        } else if constexpr (std::is_floating_point_v<ObjT>) {
+            double x;
+            if(fp_to_str_detail::parse_number_to_double(buf, x)) {
+                if(static_cast<double>(std::numeric_limits<ObjT>::lowest()) > x
+                    || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
+                    ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
+                    return false;
+                }
+                obj = static_cast<ObjT>(x);
+            } else {
+                ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
+                return false;
+            }
         } else {
+            // Should never happen if JsonNumber is correct
+            static_assert(std::is_integral_v<ObjT> || std::is_floating_point_v<ObjT>,
+                          "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
             ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
             return false;
         }
-    } else {
-        // Should never happen if JsonNumber is correct
-        static_assert(std::is_integral_v<ObjT> || std::is_floating_point_v<ObjT>,
-                      "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
-        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-        return false;
+        validators::detail::validator_state<Opts, ObjT> validatorsState;
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            return false;
+        }
+        return true;
     }
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
-    if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
-        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
-        return false;
-    }
-    return true;
 }
 
 template <typename T>
@@ -1652,31 +1656,37 @@ template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSent
 constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
-    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-        return false;
-    }
-    if constexpr(static_schema::JsonNullableParsableValue<Field>) {
 
-        if (currentPos == end) {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+
+    if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
+        return SkipValue(currentPos, end, ctx);
+    } else {
+        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
         }
-        if(*currentPos == 'n') {
-            currentPos++;
-            if(!match_literal(currentPos, end, "ull")) {
-                ctx.setError(ParseError::ILLFORMED_NULL, currentPos);
+        if constexpr(static_schema::JsonNullableParsableValue<Field>) {
+
+            if (currentPos == end) {
+                ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
                 return false;
             }
-            static_schema::setNull(field);
-            return true;
+            if(*currentPos == 'n') {
+                currentPos++;
+                if(!match_literal(currentPos, end, "ull")) {
+                    ctx.setError(ParseError::ILLFORMED_NULL, currentPos);
+                    return false;
+                }
+                static_schema::setNull(field);
+                return true;
+            }
+        } else {
+            if (currentPos != end && *currentPos == 'n') {
+                ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, currentPos);
+                return false;
+            }
         }
-    } else {
-        if (currentPos != end && *currentPos == 'n') {
-            ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, currentPos);
-            return false;
-        }
+        return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), currentPos, end, ctx);
     }
-    return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), currentPos, end, ctx);
 }
 
 } // namespace parser_details

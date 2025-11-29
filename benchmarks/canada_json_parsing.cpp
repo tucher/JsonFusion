@@ -29,6 +29,10 @@ namespace fs = std::filesystem;
 
 using namespace JsonFusion;
 using namespace JsonFusion::options;
+using namespace JsonFusion::validators;
+
+
+
 struct Canada {
     std::string type;
 
@@ -49,6 +53,101 @@ struct Canada {
         Geometry geometry;
     };
     std::vector<Feature> features;
+};
+
+
+struct Stats {
+    std::size_t totalPoints = 0;
+    std::size_t totalRings = 0;
+    std::size_t totalFeatures = 0;
+};
+
+struct Point {
+    float x;
+    float y;
+};
+
+struct PointSkippedXY {
+    A<float, skip_json> x;
+    A<float, skip_json> y;
+};
+
+struct PointUnmaterializedXY {
+    A<float, skip_materializing> x;
+    A<float, skip_materializing> y;
+};
+
+template<typename PT>
+using PointAsArray = Annotated<PT, as_array>;
+
+
+template<typename PT>
+struct RingConsumer {
+    using value_type = PointAsArray<PT>;
+
+    bool finalize(bool success)  { return true; }
+
+    Stats * stats = nullptr;
+    void reset()  { }
+    bool consume(const PT & r)  {
+        stats->totalPoints ++;
+        return true;
+    }
+    void set_json_fusion_context(Stats * ctx) {
+        stats = ctx;
+    }
+};
+
+template<typename PT>
+struct RingsConsumer {
+    using value_type = RingConsumer<PT>;
+
+    bool finalize(bool success)  { return true; }
+
+    Stats * stats = nullptr;
+    void reset()  { }
+
+    bool consume(const RingConsumer<PT> & ringConsumer)  {
+        stats->totalRings ++;
+        return true;
+    }
+    void set_json_fusion_context(Stats * ctx) {
+        stats = ctx;
+    }
+};
+
+template<typename PT>
+struct Feature {
+    A<std::string, key<"type">, string_constant<"Feature"> > _;
+    std::map<std::string, std::string> properties;
+
+    struct PolygonGeometry {
+        A<std::string, key<"type">, string_constant<"Polygon"> > _;
+        A<RingsConsumer<PT>, key<"coordinates">> rings;
+    };
+    PolygonGeometry geometry;
+};
+
+template<typename PT>
+struct FeatureConsumer {
+    using value_type = Feature<PT>;
+    bool finalize(bool success)  { return true; }
+
+    Stats * stats = nullptr;
+    void reset()  {  }
+    bool consume(const Feature<PT> & f)  {
+        stats->totalFeatures ++;
+        return true;
+    }
+    void set_json_fusion_context(Stats * ctx) {
+        stats = ctx;
+    }
+};
+
+template<typename PT>
+struct CanadaStatsCounter {
+    A<std::string, key<"type">, string_constant<"FeatureCollection"> > _;
+    FeatureConsumer<PT> features;
 };
 
 std::string read_file(const fs::path& filepath) {
@@ -86,7 +185,7 @@ double benchmark(const std::string& label, int iterations, Func&& func) {
     auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     double avg_us = static_cast<double>(total_us) / iterations;
     
-    std::cout << std::format("{:<40} {:>8.2f} µs/iter  ({} iterations)\n", 
+    std::cout << std::format("{:<70} {:>8.2f} µs/iter  ({} iterations)\n",
                             label, avg_us, iterations);
     
     return avg_us;
@@ -403,103 +502,51 @@ int main(int argc, char* argv[]) {
                 }
             });
         }
+       
 
-        // JsonFusion typed streaming + count objects
-        {
-            struct Stats {
-                std::size_t totalPoints = 0;
-                std::size_t totalRings = 0;
-                std::size_t totalFeatures = 0;
-            };
+        benchmark("JsonFusion Stream + count objects", iterations, [&]() {
+            std::string copy = json_data;
 
-            using namespace validators;
-            struct Point {
-                float x;
-                float y;
-            };
-
-            using PointsAsArray = Annotated<Point, as_array>;
+            Stats stats;
+            CanadaStatsCounter<Point> canada;
+            canada.features.set_json_fusion_context(&stats);
 
 
-            struct RingConsumer {
-                using value_type = PointsAsArray;
-
-                bool finalize(bool success)  { return true; }
-
-                Stats * stats = nullptr;
-                void reset()  { }
-                bool consume(const Point & r)  {
-                    stats->totalPoints ++;
-                    return true;
-                }
-                void set_json_fusion_context(Stats * ctx) {
-                    stats = ctx;
-                }
-            };
-
-            struct RingsConsumer {
-                using value_type = RingConsumer;
-
-                bool finalize(bool success)  { return true; }
-
-                Stats * stats = nullptr;
-                void reset()  { }
-
-                bool consume(const RingConsumer & ringConsumer)  {
-                    stats->totalRings ++;
-                    return true;
-                }
-                void set_json_fusion_context(Stats * ctx) {
-                    stats = ctx;
-                }
-            };
-
-            struct Feature {
-                A<std::string, key<"type">, string_constant<"Feature"> > _;
-                std::map<std::string, std::string> properties;
-
-                struct PolygonGeometry {
-                    A<std::string, key<"type">, string_constant<"Polygon"> > _;
-                    A<RingsConsumer, key<"coordinates">> rings;
-                };
-                PolygonGeometry geometry;
-            };
-
-            struct FeatureConsumer {
-                using value_type = Feature;
-                bool finalize(bool success)  { return true; }
-
-                Stats * stats = nullptr;
-                void reset()  {  }
-                bool consume(const Feature & f)  {
-                    stats->totalFeatures ++;
-                    return true;
-                }
-                void set_json_fusion_context(Stats * ctx) {
-                    stats = ctx;
-                }
-            };
-
-            struct CanadaStatsCounter {
-                A<std::string, key<"type">, string_constant<"FeatureCollection"> > _;
-                FeatureConsumer features;
-
-            };
-            static_assert(std::is_aggregate_v<CanadaStatsCounter>);
-            benchmark("JsonFusion Stream + count objects", iterations, [&]() {
-                std::string copy = json_data;
-
-                Stats stats;
-                CanadaStatsCounter canada;
-                canada.features.set_json_fusion_context(&stats);
+            auto res = ParseWithContext(canada, copy, &stats);
+            if (!res) {
+                throw std::runtime_error(std::format("JsonFusion parse error"));
+            }
+        });
 
 
-                auto res = ParseWithContext(canada, copy, &stats);
-                if (!res) {
-                    throw std::runtime_error(std::format("JsonFusion parse error"));
-                }
-            });
-        }
+        benchmark("JsonFusion Stream + count objects + skip unneeded parsing", iterations, [&]() {
+            std::string copy = json_data;
+
+            Stats stats;
+            CanadaStatsCounter<PointSkippedXY> canada;
+            canada.features.set_json_fusion_context(&stats);
+
+
+            auto res = ParseWithContext(canada, copy, &stats);
+            if (!res) {
+                throw std::runtime_error(std::format("JsonFusion parse error"));
+            }
+        });
+
+
+        benchmark("JsonFusion Stream + count objects + numbers-tokenizing-only", iterations, [&]() {
+            std::string copy = json_data;
+
+            Stats stats;
+            CanadaStatsCounter<PointUnmaterializedXY> canada;
+            canada.features.set_json_fusion_context(&stats);
+
+
+            auto res = ParseWithContext(canada, copy, &stats);
+            if (!res) {
+                throw std::runtime_error(std::format("JsonFusion parse error"));
+            }
+        });
         
         std::cout << "\nBenchmark complete.\n";
         

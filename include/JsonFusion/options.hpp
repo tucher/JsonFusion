@@ -51,12 +51,21 @@ struct description_tag{};
 
 struct float_decimals_tag {};
 struct as_array_tag {};
+struct skip_json_tag {};
+struct skip_materializing_tag{};
 }
 
 struct not_json {
     using tag = detail::not_json_tag;
 };
 
+struct skip_json {
+    using tag = detail::skip_json_tag;
+};
+
+struct skip_materializing {
+    using tag = detail::skip_materializing_tag;
+};
 
 template<ConstString Desc>
 struct key {
