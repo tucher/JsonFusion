@@ -57,9 +57,9 @@ JsonFusion::Serialize(conf, output);
 
 - [Installation](#installation)
 - [Main Features](#main-features)
-- [Performance](#performance)
+- [Types as Performance Hints](#types-as-performance-hints)
 - [Positioning](#positioning)
-  - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-same-performance)
+  - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-better-performance)
   - [You Own Your Containers](#you-own-your-containers)
   - [Embedded-Friendliness](#embedded-friendliness)
   - [C Interoperability](#c-interoperability)
@@ -93,10 +93,28 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
 - Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
 
+## Types as Performance Hints
+
+Your type definitions aren't just schema—they're compile-time instructions to the parser.
+
+On canada.json (2.15 MB), a hand-written RapidJSON SAX handler that counts features/rings/points runs in ~3.37 ms/iteration.
+
+The equivalent JsonFusion streaming model with:
+
+```cpp
+struct Point {
+    Annotated<float, skip_json> x;
+    Annotated<float, skip_json> y;
+};
+```
+
+runs in ~1.86 ms/iteration — **about 1.8× faster** — simply because the type system tells the parser "these values exist, but we don't need them." JsonFusion skips float parsing entirely while still validating the JSON structure.
+
+RapidJSON's APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it with a single annotation. The same declarative type system that eliminates boilerplate also exposes high-level control over low-level optimizations.
 
 ## Positioning
 
-### No extra handwritten mapping/validation layer, with the same performance
+### No extra handwritten mapping/validation layer, with better performance
 
 Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JsonFusion fuses parsing, mapping, and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
 
