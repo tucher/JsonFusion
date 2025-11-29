@@ -65,13 +65,15 @@ public:
 namespace  serializer_details {
 
 
-template <CharOutputIterator OutIter>
+template <CharOutputIterator OutIter, class UserCtx = void>
 class SerializationContext {
 
     SerializeError error = SerializeError::NO_ERROR;
     OutIter m_pos;
+
+    UserCtx * m_user_Ctx = nullptr;
 public:
-    constexpr SerializationContext(OutIter b): m_pos(b) {
+    constexpr SerializationContext(OutIter b, UserCtx * userCtx = nullptr): m_pos(b), m_user_Ctx(userCtx) {
 
     }
     constexpr void setError(SerializeError err, OutIter pos) {
@@ -84,6 +86,7 @@ public:
                    ? SerializeResult<OutIter>(SerializeError::NO_ERROR, current)
                    : SerializeResult<OutIter>(error, m_pos);
     }
+    constexpr UserCtx * userCtx() { return m_user_Ctx;}
 };
 
 constexpr bool serialize_literal(auto& it, const auto& end, const std::string_view & lit) {
@@ -144,9 +147,9 @@ constexpr SerializeError outputEscapedString(It & outputPos, const Sent &end, co
 }
 
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonBool<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     if(obj) {
         if(!serialize_literal(currentPos, end, "true")) {
             ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
@@ -226,9 +229,9 @@ constexpr inline char* format_decimal_integer(Int value,
     return first + len;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     char buf[fp_to_str_detail::NumberBufSize];
     if constexpr (std::is_integral_v<ObjT>) {
         char* p = format_decimal_integer<ObjT>(obj, buf, buf + sizeof(buf));
@@ -283,9 +286,9 @@ concept DynamicContainerTypeConcept = requires (T  v) {
     v.clear();
 };
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonString<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
 
     if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), !DynamicContainerTypeConcept<ObjT>); err != SerializeError::NO_ERROR) {
         ctx.setError(err, currentPos);
@@ -294,9 +297,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonSerializableArray<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -305,7 +308,17 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     bool first = true;
 
     using FH   = static_schema::array_read_cursor<ObjT>;
-    FH cursor{ obj };
+    FH cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+            if(auto c = ctx.userCtx(); c) {
+                return FH(obj, c );
+            } else {
+                return FH(obj );
+            }
+        } else {
+            return FH{ obj };
+        }
+    }();
     cursor.reset();
     while(true) {
         stream_read_result res = cursor.read_more();
@@ -339,9 +352,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonSerializableMap<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -350,7 +363,17 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     bool first = true;
 
     using FH = static_schema::map_read_cursor<ObjT>;
-    FH cursor{ obj };
+    FH cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+            if(auto c = ctx.userCtx(); c) {
+                return FH(obj, c );
+            } else {
+                return FH(obj );
+            }
+        } else {
+            return FH{ obj };
+        }
+    }();
     cursor.reset();
     
     while(true) {
@@ -400,9 +423,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonObject<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
 
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -472,10 +495,10 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonObject<ObjT>
         && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -522,8 +545,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent>
-constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It> &ctx) {
+template <static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
     using Meta    = options::detail::annotation_meta_getter<Field>;
     if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
 
@@ -539,6 +562,13 @@ constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & e
 template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent>
 constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, const Sent & end) {
     serializer_details::SerializationContext<It> ctx(begin);
+    serializer_details::SerializeValue(obj, begin, end, ctx);
+    return ctx.result(begin);
+}
+
+template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx>
+constexpr SerializeResult<It> SerializeWithContext(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx) {
+    serializer_details::SerializationContext<It, UserCtx> ctx(begin, userCtx);
     serializer_details::SerializeValue(obj, begin, end, ctx);
     return ctx.result(begin);
 }
@@ -599,6 +629,20 @@ constexpr auto Serialize(const InputObjectT& obj, std::string& out)
 
     return Serialize(obj, it, end);  // calls the iterator-based core
 }
+
+template<static_schema::JsonSerializableValue InputObjectT, class UserCtx>
+constexpr auto SerializeWithContext(const InputObjectT& obj, std::string& out, UserCtx * ctx)
+{
+    using serializer_details::limitless_sentinel;
+
+    out.clear();
+
+    auto it  = std::back_inserter(out);
+    limitless_sentinel end{};
+
+    return SerializeWithContext(obj, it, end, ctx);  // calls the iterator-based core
+}
+
 template <class T>
 requires (!static_schema::JsonSerializableValue<T>)
 constexpr auto Serialize(T obj, auto C) {

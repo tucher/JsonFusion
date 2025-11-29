@@ -193,11 +193,16 @@ void nested_producers () {
                 }
                 counter ++;
                 v = counter;
+                (*ctx_int) --;
                 return JsonFusion::stream_read_result::value;
             }
 
             void reset() const {
                 counter = 0;
+            }
+            mutable int * ctx_int;
+            void set_json_fusion_context(int * ctx) const {
+                ctx_int = ctx;
             }
         };
 
@@ -212,18 +217,28 @@ void nested_producers () {
             }
             counter ++;
             v.count = counter;
+            (*ctx_int) --;
             return JsonFusion::stream_read_result::value;
         }
 
         void reset() const {
             counter = 0;
         }
+
+        mutable int * ctx_int;
+        void set_json_fusion_context(int * ctx) const {
+            ctx_int = ctx;
+        }
     };
 
     std::string out;
-    JsonFusion::Serialize(StreamerOuter{}, out);
+    int ctx = 100;
+    StreamerOuter s {};
+    s.ctx_int = &ctx;
+    JsonFusion::SerializeWithContext(s, out, &ctx);
 
     std::cout << out << std::endl;
+    std::cout << ctx << std::endl;
 
     /*
     [[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8]]
@@ -270,12 +285,7 @@ void geojson_reader(int argc, char ** argv) {
 
 
 
-    struct Point {
-        float x;
-        float y;
-    };
 
-    using PointsAsArray = Annotated<Point, as_array>;
 
     struct Stats {
         std::size_t totalPoints = 0;
@@ -283,72 +293,88 @@ void geojson_reader(int argc, char ** argv) {
         std::size_t totalFeatures = 0;
     };
 
-    struct RingConsumer {
-        using value_type = PointsAsArray;
-
-        bool finalize(bool success)  { return true; }
-
-        Stats * stats = nullptr;
-        void reset()  {}
-        bool consume(const Point & r)  {
-            stats->totalPoints ++;
-            return true;
-        }
-        void set_json_fusion_context(Stats * ctx) {
-            stats = ctx;
-        }
-    };
-
-    struct RingsConsumer {
-        using value_type = RingConsumer;
-
-        bool finalize(bool success)  { return true; }
-
-        Stats * stats = nullptr;
-        void reset()  {}
-
-        bool consume(const RingConsumer & ringConsumer)  {
-            stats->totalRings ++;
-            return true;
-        }
-
-        void set_json_fusion_context(Stats * ctx) {
-            stats = ctx;
-        }
-    };
-
-    struct Feature {
-        A<std::string, key<"type">, string_constant<"Feature"> > _;
-        std::map<std::string, std::string> properties;
-
-        struct PolygonGeometry {
-            A<std::string, key<"type">, string_constant<"Polygon"> > _;
-            A<RingsConsumer, key<"coordinates">> rings;
-        };
-
-        PolygonGeometry geometry;
 
 
-    };
-    static_assert(static_schema::is_json_object<Feature>::value);
-    struct FeatureConsumer {
-        using value_type = Feature;
-        bool finalize(bool success)  { return true; }
 
-        Stats * stats = nullptr;
-        void reset() { }
-        bool consume(const Feature & f)  {
-            stats->totalFeatures ++;
-            return true;
-        }
-        void set_json_fusion_context(Stats * ctx) {
-            stats = ctx;
-        }
-    };
+
+
+    // static_assert(static_schema::is_json_object<Feature>::value);
+
 
     struct CanadaStatsCounter {
         A<std::string, key<"type">, string_constant<"FeatureCollection"> > _;
-        FeatureConsumer features;
+
+        struct FeatureConsumer {
+            struct Feature {
+                A<std::string, key<"type">, string_constant<"Feature"> > _;
+
+                std::map<std::string, std::string> properties;
+
+
+                struct RingsConsumer {
+
+                    struct RingConsumer {
+
+                        struct Point {
+                            A<float, skip_json> x;
+                            A<float, skip_json> y;
+                        };
+
+                        using PointsAsArray = Annotated<Point, as_array>;
+
+                        using value_type = PointsAsArray;
+
+                        bool finalize(bool success)  { return true; }
+
+                        Stats * stats = nullptr;
+                        void reset()  {}
+                        bool consume(const Point & r)  {
+                            stats->totalPoints ++;
+                            return true;
+                        }
+                        void set_json_fusion_context(Stats * ctx) {
+                            stats = ctx;
+                        }
+                    };
+
+                    using value_type = RingConsumer;
+
+                    bool finalize(bool success)  { return true; }
+
+                    Stats * stats = nullptr;
+                    void reset()  {}
+
+                    bool consume(const RingConsumer & ringConsumer)  {
+                        stats->totalRings ++;
+                        return true;
+                    }
+
+                    void set_json_fusion_context(Stats * ctx) {
+                        stats = ctx;
+                    }
+                };
+
+                struct PolygonGeometry {
+                    A<std::string, key<"type">, string_constant<"Polygon"> > _;
+                    A<RingsConsumer, key<"coordinates">> rings;
+                } geometry;
+            };
+
+            using value_type = Feature;
+
+            bool finalize(bool success)  { return true; }
+
+            Stats * stats = nullptr;
+            void reset() { }
+            bool consume(const Feature & f)  {
+                stats->totalFeatures ++;
+                return true;
+            }
+            void set_json_fusion_context(Stats * ctx) {
+                stats = ctx;
+            }
+        } features;
+
     };
     Stats stats;
     CanadaStatsCounter canada;
@@ -360,12 +386,12 @@ void geojson_reader(int argc, char ** argv) {
     std::cout << std::format("Features: {}, rings: {}, points: {}", stats.totalFeatures, stats.totalRings, stats.totalPoints) << std::endl;
 
 
-    static_assert(ConsumingStreamerLike<FeatureConsumer>, "Incompatible consumer");
+    // static_assert(ConsumingStreamerLike<FeatureConsumer>, "Incompatible consumer");
 }
 
 int main(int argc, char ** argv) {
-    // streaming_demo();
-    // sax_demo();
-    // nested_producers();
+    streaming_demo();
+    sax_demo();
+    nested_producers();
     geojson_reader(argc, argv);
 }

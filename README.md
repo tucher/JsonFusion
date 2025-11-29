@@ -47,7 +47,7 @@ std::string output;
 JsonFusion::Serialize(conf, output);
 
 ```
-*No macros, no registration, no JSON DOM, no inheritance*
+*No registration macros , no JSON DOM, no inheritance*
 
 | JSON Type | C++ Type                                              |
 |-----------|-------------------------------------------------------|
@@ -91,7 +91,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 ## Main features
 
-- **Zero boilerplate**: The main motivation behind the design is to make working with JSON similar to how it is usually done in Python, Java, Go, etc..
+- **No glue code**: The main motivation behind the design is to make working with JSON similar to how it is usually done in Python, Java, Go, etc..
 - **High performance**: ~50% faster than RapidJSON + hand-written mapping code in real-world parse-validate-populate workflows (see [Benchmarks](#benchmarks)). What would take ~1200 lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs (which you'd need anyway) and JsonFusion handles the rest.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
@@ -221,27 +221,27 @@ Declarative compile-time schema and options, runtime validation in the same pars
 Turn your C++ structs into a static schema, decouple variable names from JSON keys, and add parsing rules by annotating fields:
 
 ```cpp
-using JsonFusion::Annotated;
+using JsonFusion::A;
 using namespace JsonFusion::options;
 using std::string; using std::vector, std::optional;
 struct GPSTrack {
-    Annotated<int,
+    A<int,
         key<"id">,
         range<1, 8>>             more_convenient_descriptive_id;
 
-    Annotated<string,
+    A<string,
         min_length<1>,
         max_length<32>>          name;
 
-    Annotated<bool, not_json>    m_is_handled;
+    A<bool, not_json>    m_is_handled;
 
     struct Point {
         float x;
         float y;
         float z;
     };
-    Annotated<std::vector<
-            Annotated<Point, as_array>>,
+    A<std::vector<
+            A<Point, as_array>>,
         max_items<4096>>         points;
 };
 
@@ -255,7 +255,7 @@ JsonFusion::Parse(tracks, string_view(R"JSON(
 )JSON"));
 ```
 
-### Behaviour of Annotated<> class
+### Behaviour of Annotated<> (has A<> alias) class
 Tiny wrapper around your types, without inheritance, but with some glue to make it work as "natural" as possible.
 
 ```cpp
@@ -396,7 +396,7 @@ Instead of materializing all elements in memory, fill them on demand:
 ```cpp
 struct Streamer {
     struct Vector { float x, y, z; };
-    using value_type = Annotated<Vector, as_array>;
+    using value_type = A<Vector, as_array>;
 
     mutable int counter = 0;
     int count;
@@ -466,7 +466,7 @@ struct PointsConsumer {
 static_assert(ConsumingStreamerLike<PointsConsumer>);
 
 struct TopLevel {
-    Annotated<PointsConsumer, key<"points">> consumer;
+    A<PointsConsumer, key<"points">> consumer;
 };
 
 Parse(toplevel, R"({"points": [[1,2,3], [4,5,6], ...]})");
@@ -484,7 +484,7 @@ StartArray, Key("foo"), String("bar"), Int(42), EndObject, …
 You manually maintain state and assemble typed objects yourself.
 
 **JsonFusion's approach:**
-- You declare `value_type` (using the same `Annotated<>` system as normal fields)
+- You declare `value_type` (using the same `Annotated<>` system, just as for normal fields)
 - JsonFusion parses each element into a **fully-typed C++ object**
 - Your callbacks receive complete, validated structures—not raw tokens
 - The abstraction **composes naturally**—streamers can contain structs, which contain other streamers
