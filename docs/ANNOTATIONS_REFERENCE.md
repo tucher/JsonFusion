@@ -55,6 +55,8 @@ forbidden_keys<"k1", ...>    // These keys are FORBIDDEN (streaming)
 key<"jsonName">              // Override JSON key name (use "jsonName" instead of C++ field name)
 not_json                     // Exclude field from JSON serialization/deserialization
 description<"text">          // Documentation metadata for schema generation
+skip_json                    // Fast-skip this value without underlying JSON
+skip_materializing           // Where applicable, do as less C++-side work as possible. For doubles: skip string->float conversion. Does not affect JSON validness checking
 ```
 
 #### Struct-Level Options

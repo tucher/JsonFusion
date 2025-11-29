@@ -14,19 +14,23 @@ JsonFusion generates a specialized parser for them at compile time.
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/serializer.hpp>
 
+using JsonFusion::A;
+
 struct Config {
     struct Network {
-        std::string name;
-        std::string address;
-        int port = 8080;
+        std::string                name;
+        std::string                address;
+
+        A<int, range<8000, 9000> > port;
+/*      ↑ more on this later ↑       */
     };
 
     Network network;
 
     struct Drive {
         int   id;
-        float max_speed = 0;
-        bool active = false;
+        float max_speed;
+        bool  active;
     };
     std::vector<Drive> drives;
 };
@@ -43,11 +47,11 @@ std::string output;
 JsonFusion::Serialize(conf, output);
 
 ```
-*No macros, no registration, no JSON DOM, no inheritance or wrapping*
+*No macros, no registration, no JSON DOM, no inheritance*
 
 | JSON Type | C++ Type                                              |
 |-----------|-------------------------------------------------------|
-| object    | `struct`,  `map<string-like, Any>`, *streamers*       |
+| object    | `struct`,  `map<string, Any>`, *streamers*            |
 | array     | `list<...>`, `vector<...>`, `array<...>`, *streamers* |
 | null      | `optional<...>`                                       |
 | string    | `string`, `vector<char>`, `array<char, N>`, ...       |
@@ -87,6 +91,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 ## Main features
 
+- **Zero boilerplate**: The main motivation behind the design is to make working with JSON similar to how it is usually done in Python, Java, Go, etc..
 - **High performance**: ~50% faster than RapidJSON + hand-written mapping code in real-world parse-validate-populate workflows (see [Benchmarks](#benchmarks)). What would take ~1200 lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs (which you'd need anyway) and JsonFusion handles the rest.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
@@ -99,45 +104,55 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 Your type definitions aren't just schema—they're compile-time instructions to the parser.
 
-On canada.json (2.15 MB), a hand-written RapidJSON SAX handler that counts features/rings/points runs in ~3.37 ms/iteration.
-
-The equivalent JsonFusion streaming model with:
-
+Assume you want to count primitives in GeoJSON data, but don't need actual values. With JsonFusion you can model coordinates pair as
 ```cpp
-struct Point {
-    Annotated<float, skip_json> x;
-    Annotated<float, skip_json> y;
+struct Pt_ {
+    A<float, skip_json> x;
+    A<float, skip_json> y;
 };
+using Point = A<Pt_, as_array>;
 ```
+- On canada.json (2.15 MB classic benchmarking data), a hand-written RapidJSON SAX handler that counts 
+features/rings/points runs in **~3.4 ms/iteration** on test machine.
+- JsonFusion Streaming-based objects counting
+runs in ~1.8 ms/iteration — **1.8× faster** — simply because the type system tells the parser "these values exist, 
+but we don't need them." JsonFusion skips float parsing entirely while still validating the JSON structure.
 
-runs in ~1.86 ms/iteration — **about 1.8× faster** — simply because the type system tells the parser "these values exist, but we don't need them." JsonFusion skips float parsing entirely while still validating the JSON structure.
-
-RapidJSON's APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it with a single annotation. The same declarative type system that eliminates boilerplate also exposes high-level control over low-level optimizations.
+RapidJSON's-like APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it 
+with a single annotation. The same declarative type system that eliminates boilerplate also exposes 
+high-level control over low-level optimizations.
 
 ## Positioning
 
-### No extra handwritten mapping/validation layer, with better performance
+### No extra handwritten mapping/validation layer, often with better performance
 
-Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written mapping into your C++ types. JsonFusion fuses parsing, mapping, and validation into a single pass, so it behaves like a thin, typed layer on top of a fast parser — without the manual glue code.
+Traditional setups use a fast JSON parser (RapidJSON, simdjson, etc.) and then a second layer of hand-written 
+mapping into your C++ types. JsonFusion fuses parsing, mapping, and validation into a single pass 
+— without the manual glue code.
 
-You would have to do this work anyway; JsonFusion just helps automate it. So it doesn’t just optimize raw string parsing; it optimizes development effort, debugging time, and lowers the maintenance burden of endless boilerplate that just moves bytes around.
+You would have to do this work anyway; JsonFusion just helps automate it. So it doesn’t just optimize raw string
+parsing; it optimizes development effort, debugging time, and lowers the maintenance burden of endless 
+boilerplate that just moves bytes around.
 
 You can think of it as a code generator that automatically produces a good parser/serializer tailored to your models.
 
 ### You own your containers
 
-JsonFusion never dictates what containers or strings you must use. It works with any type that behaves like a standard C++ container:
+JsonFusion never dictates what containers or strings you must use. It works with any type that behaves like a 
+standard C++ container:
 
 - strings: `std::string`, `std::array<char, N>`, your own fixed buffers…
 - arrays/lists: `std::vector<T>`, `std::list<T>`, `std::array<T, N>`, etc.
 
-JsonFusion does **not** install custom allocators, memory pools, or arenas. It simply reads JSON and writes into the storage you provide.
+JsonFusion does **not** install custom allocators, memory pools, or arenas. It simply reads JSON and writes 
+into the storage you provide. 
 
 This has a few consequences:
 
 - You keep full control over memory behavior (heap vs stack, fixed-size vs dynamic).
 - Integration with existing C++ and even C structs is straightforward.
 - There are no hidden allocation tricks inside the library.
+- There are very few global options/knobs-not needed.
 
 It also explains part of the performance story: libraries like RapidJSON use highly tuned internal DOM structures and custom allocators, which can squeeze out more speed for dynamic, DOM-heavy workloads. JsonFusion chooses instead to be a thin, strongly typed layer over *your* containers, while still staying competitive in raw parsing speed.
 
@@ -151,7 +166,7 @@ Works with forward-only input/output iterators: you can parse from a stream or b
 
 Plays well with -fno-exceptions / -fno-rtti style builds.
 
-**Configurable dependencies**: By default uses state-of-the-art float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to depend only on PFR + C stdlib for floats handling, reducing binary size for embedded builds.
+**Configurable dependencies**: By default uses external fast float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to depend only on PFR + C stdlib for floats handling, reducing binary size for embedded builds.
 
 **Your structs define everything**: On tiny microcontrollers without floating-point support, just don’t use float/double in your struct definitions. In that case the float parsing code is never instantiated or compiled into the binary; there is no special global configuration needed. The same applies to dynamic lists/strings.
 
@@ -240,17 +255,6 @@ JsonFusion::Parse(tracks, string_view(R"JSON(
 )JSON"));
 ```
 
-### Supported options include:
-
-- `key<"...">` – JSON field name
-- `range<min,max>` – numeric range checks
-- `min_length<N>` / `max_length<N>` – string length
-- `min_items<N>` / `max_items<N>` – array size
-- `not_required` – optional field without having to use std::optional<T>
-- `not_json` – internal/derived fields that are invisible to JSON
-- `allow_excess_fields` – per-object policy for skipping unknown fields 
-- `as_array` – array destructuring for objects (treat struct as JSON array)
-
 ### Behaviour of Annotated<> class
 Tiny wrapper around your types, without inheritance, but with some glue to make it work as "natural" as possible.
 
@@ -281,9 +285,9 @@ JsonFusion targets two distinct scenarios with different priorities:
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
 *eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
-With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack is fully portable C stdlib. 
-Less work means both faster execution *and* smaller binaries.
+With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack external runtime dependency is portable C stdlib strod/snprintf. 
 
+Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.
 
 JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
@@ -311,13 +315,13 @@ For RapidJSON, this requires hand-written mapping code. For JsonFusion, it's aut
 
 | Benchmark Scenario | JsonFusion | RapidJSON | Speedup |
 |-------------------|------------|-----------|---------|
-| **Embedded Config (Static)** | 1.01 µs | 1.36 µs | **~30% faster** |
-| **Embedded Config (Dynamic)** | 1.24 µs | 2.08 µs | **~70% faster** |
-| **Telemetry Samples** | 4.91 µs | 7.79 µs | **~60% faster** |
-| **RPC Commands** | 2.35 µs | 3.87 µs | **~60% faster** |
-| **Log Events** | 3.46 µs | 5.04 µs | **~50% faster** |
-| **Bus Events / Message Payloads** | 4.91 µs | 7.72 µs | **~60% faster** |
-| **Metrics / Time-Series** | 4.26 µs | 5.98 µs | **~40% faster** |
+| **Embedded Config (Static)** | 1 µs | 1.3 µs | **~30% faster** |
+| **Embedded Config (Dynamic)** | 1.2 µs | 2 µs | **~70% faster** |
+| **Telemetry Samples** | 4.9 µs | 7.8 µs | **~60% faster** |
+| **RPC Commands** | 2.3 µs | 3.9 µs | **~60% faster** |
+| **Log Events** | 3.5 µs | 5 µs | **~50% faster** |
+| **Bus Events / Message Payloads** | 4.9 µs | 7.7 µs | **~60% faster** |
+| **Metrics / Time-Series** | 4.3 µs | 6 µs | **~40% faster** |
 
 *Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario*
 
@@ -339,8 +343,8 @@ JsonFusion wins every benchmark by 30-70%, with larger gains on:
 **3. Static vs dynamic containers**
 
 Both libraries show performance differences between static (`std::array`) and dynamic (`std::vector`, `std::string`) containers, but JsonFusion maintains its lead in both cases:
-- Static: 1.01 µs vs 1.36 µs (30% faster)
-- Dynamic: 1.24 µs vs 2.08 µs (70% faster)
+- Static: 1 µs vs 1.4 µs (30% faster)
+- Dynamic: 1.2 µs vs 2 µs (70% faster)
 
 The larger dynamic advantage suggests JsonFusion's single-pass design particularly benefits scenarios with memory allocation.
 
@@ -353,16 +357,21 @@ The RapidJSON benchmark represents typical usage: parse JSON into DOM, then walk
 The canada.json benchmark tests two distinct workflows on a numeric-heavy GeoJSON file—a pure array/number stress test rather than typical structured configs.
 
 **Classic parse-validate-populate** (production use case):
-- **JsonFusion Parse + Populate**: 5,321 µs  
-- **RapidJSON DOM Parse + Populate**: 5,579 µs (~5% slower)
+- **JsonFusion Parse + Populate**: 5350 µs  
+- **RapidJSON DOM Parse + Populate**: 5650 µs (~5% slower)
 
 **JsonFusion wins** where it matters—getting validated C++ structs ready to use.
 
-**Streaming API** (process without materializing coordinate arrays):
-- **RapidJSON SAX** (hand-written state machine): 3,329 µs  
-- **JsonFusion Streaming** (declarative typed consumers): 5,148 µs (~55% slower)
+**Streaming API for counting objects** :
+- **RapidJSON SAX** (hand-written state machine): 3400 µs  
+- **JsonFusion Streaming** : 5150 µs (~50% slower)
 
 Here RapidJSON SAX wins—it's essentially the fastest possible approach for this simple, regular data. But consider: JsonFusion's typed streaming handles canada.json's trivial structure **the exact same way** it would handle complex schemas like twitter.json—where writing equivalent SAX code becomes prohibitively complex. JsonFusion trades ~2ms on this worst-case scenario for a **fully generic, type-safe, composable API** with zero manual state machines. No CPU hacks, just portable forward-only iterator code.
+But next
+- **JsonFusion Streaming without materializing floats** : 3400 µs (same speed as handwritten SAX RapidJSON) Tokenize and validate JSON correctness, but don't parse. Not needed for counting objects, still basic correctness is validated
+- **JsonFusion Streaming with skipping each of 2 float numbers inside points** : 1800 µs (**190% faster than handwritten SAX RapidJSON**) Just don't parse, if don't need the value.
+
+
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
@@ -370,7 +379,7 @@ Here RapidJSON SAX wins—it's essentially the fastest possible approach for thi
 
 ### Constexpr Parsing & Serialization
 
-For models using fixed-size containers (`std::array`, char buffers) and  types, both
+For models using compatible containers (`std::string`, `std::vector` are compatible) and  types (everything except FP numbers), both
 `Parse` and `Serialize` are fully `constexpr`-compatible. This enables compile-time JSON 
 validation, zero-cost embedded configs, and proves no hidden allocations or runtime 
 dependencies. See the compile-time test suite [`tests/constexpr/*`](tests/constexpr) for 
@@ -479,14 +488,16 @@ You manually maintain state and assemble typed objects yourself.
 - JsonFusion parses each element into a **fully-typed C++ object**
 - Your callbacks receive complete, validated structures—not raw tokens
 - The abstraction **composes naturally**—streamers can contain structs, which contain other streamers
+- API to pass local (both at types and runtime level) typed context pointer via ParseWithContext/SerializeWithContext
+No need to use any global variables/singletons
 
 **Unified mechanism:**
 - **Producers**: `read()` fills elements on demand (serialization)
 - **Consumers**: `consume()` receives fully-parsed elements (parsing) at the moment last input char of primitive parsed
-- Library uses only a small per-field stack buffer; all dynamic memory is under your control
+- Library uses only a single buffer object of corresponding type; all dynamic memory is under your control
 
-📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition
-
+📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition, 
+[`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp) for Context Propagation.
 ### Compile-Time Testing
 
 JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using `static_assert`. No test framework, no runtime: the compiler is the test runner.
@@ -495,18 +506,7 @@ JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing a
 - **Proves zero hidden allocations**: If it compiles in `constexpr`, no dynamic allocation happened
 - **Validates correctness before any runtime**: Catches bugs at compile time
 - **Tests the actual user-facing API**: Same `Parse`/`Serialize` calls users make
-- **Perfect for embedded**: Demonstrates the code works in the most constrained environments
 
-**Current coverage** ([`tests/constexpr/`](tests/constexpr)):
-- All primitive types (booleans, integers, strings with escaping/Unicode)
-- Overflow detection for all integer types
-- Error handling and error codes
-- Type system validation (concepts, streaming protocols)
-- Both fixed-size (`std::array`, char buffers) and dynamic containers (`std::vector`, `std::string`)
-- Deeply nested types: `std::vector<std::optional<std::vector<std::string>>>`
-- Nested structs with mixed container types
-- Optional fields (including in nested containers)
-- Streaming producers and consumers
 
 **Example** (this runs at compile time):
 ```cpp
