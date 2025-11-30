@@ -93,14 +93,22 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 
 ## Main features
 
-- **No glue code**: The main motivation behind the design is to make working with JSON similar to how it is usually done in Python, Java, Go, etc..
-- **High performance**: ~50% faster than RapidJSON + hand-written mapping code in real-world parse-validate-populate workflows (see [Benchmarks](#benchmarks)). What would take ~1200 lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs (which you'd need anyway) and JsonFusion handles the rest.
+- **No glue code**: The main motivation behind the design is to make working with JSON similar to 
+how it is usually done in Python, Java, Go, etc..
+- **High performance**: ~50% faster than RapidJSON + hand-written mapping code in real-world parse-validate-populate
+ workflows (see [Benchmarks](#benchmarks)). What would take hundreds and thousands  lines of 
+ manual mapping/validation code collapses into a single `Parse()` call—you just define your structs 
+ (which you'd need anyway) and JsonFusion handles the rest.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
 - No macros, no codegen, no registration – relies on PFR-driven introspection
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
-- No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only fixed-size containers, there is no unbounded stack growth.
-- Error handling via a result object convertible to bool, with access to an error code and offset. C++ exceptions are not used.
+- No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only
+ fixed-size containers, there is no unbounded stack growth.
+- **Rich error reporting**: Diagnostics with JSON path tracking (e.g., `$.statuses[3].user.name`),
+input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
+compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
+and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration.
 
 ## Types as Performance Hints
 

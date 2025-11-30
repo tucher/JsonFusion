@@ -385,6 +385,55 @@ This is very different from a DOM-based approach, where:
 
 **With JsonFusion, mapping and validation happen while parsing, in one pass, with no DOM in between.**
 
+## Types Propagate: Unexpected Benefits
+
+When you commit to "types as schema," the benefits ripple into places you didn't initially anticipate. A concrete example: error reporting.
+
+### The Error Reporting Discovery
+
+When implementing error diagnostics, the obvious question arises: how do we track the current position in the JSON structure to report meaningful error paths like `$.statuses[3].user.name` instead of just "error at byte 45231"?
+
+Traditional approaches:
+- **Dynamic allocation**: `std::vector<PathElement>` grows as you descend into nested structures. Simple, but allocates on every parse.
+- **Fixed buffer**: Pre-allocate a large buffer (e.g., 128 levels deep). Wasteful for simple structs, might overflow for deep ones.
+- **No path tracking**: Just report byte offsets. Fast but user-hostile.
+
+**But we have types.** And types already encode the structure.
+
+The realization: we can walk the type structure at **compile time** and calculate the maximum nesting depth. Not the JSON depth (which is data-dependent), but the **schema depth** - how deep can this particular type structure possibly nest?
+
+```cpp
+consteval std::size_t calc_type_depth<Type, SeenTypes...>()
+```
+
+This function:
+- Walks your struct definitions recursively
+- Counts fields, nested objects, array elements
+- **Detects cycles** in recursive types (by tracking `SeenTypes`)
+- Returns the maximum possible depth
+
+Result: for a `TwitterData` structure with moderate nesting, the compiler determines at compile time: "worst case is 8 levels deep." So we allocate a `std::array<PathElement, 8>` on the stack. No runtime allocation. No arbitrary limits. **The type told us the exact size we need.**
+
+For schemas with cyclic recursive types (like tree structures), the analysis detects the cycle and can switch to dynamic allocation via a macro flag - but only when actually needed.
+
+### The Cascading Benefits
+
+This wasn't planned from the start. It emerged from taking "types as schema" seriously:
+
+1. **Zero-overhead error tracking**: Path tracking costs nothing when parsing succeeds (the common case). Just incrementing a counter in a stack-allocated array + assigning array index / string view key name
+
+2. **Constexpr-compatible**: Because the depth calculation is `consteval`, error reporting works in compile-time parsing tests. You can write `static_assert` tests that verify specific error paths.
+
+3. **Type safety in error messages**: The path `$.statuses[3].user.name` corresponds **directly** to your `struct TwitterData { vector<Status> statuses; }` and `struct Status { User user; }`. The semantic meaning comes from the types.
+
+4. **Automatic optimization**: Simple flat structs get tiny error stacks (3-4 levels). Deep recursive structures get what they need. No configuration, no tuning - the types determine the optimal strategy.
+
+None of this required separate schema definition, configuration files, or runtime introspection. **The types contained all the information needed to build sophisticated error reporting with zero runtime overhead.**
+
+This is the deeper promise of "types as intent": when you encode your intent in the type system, the compiler becomes your ally in ways you didn't predict. Features that seem unrelated to parsing (like error reporting infrastructure) naturally derive optimal implementations from the same type information.
+
+The type system isn't just describing your data model. It's a rich source of compile-time knowledge that propagates through the entire system, enabling optimizations and features that would require explicit configuration in less type-driven designs.
+
 ## Embedded Philosophy: Pay for What You Use
 
 JsonFusion is intentionally structured so that features are pay-as-you-go:
@@ -639,12 +688,27 @@ This approach has real upsides, but also real costs.
 - Ability to express semantic intent (skip_json, ranges, etc.) that drives real optimizations.
 - Validation and constraints are checked during parsing, not as a separate step.
 
-**Note on error handling**: JsonFusion's error reporting and recovery mechanisms are under active development. Current focus has been on the happy path and compile-time validation. Production-grade error messages with line/column information, partial parsing recovery, and flexible error handling strategies are roadmap items.
+JsonFusion provides rich error reporting with:
+- Current input iterator (precise byte offset in the JSON stream)
+- JSON path tracking (e.g., `$.statuses[3].user.name`, encoded inside a `JsonPath` object)
+- Parse error codes
+- Validator error codes with failed validator option index
+
+The path tracking is compile-time sized based on schema depth analysis, avoiding runtime allocation overhead. This works in
+both runtime and constexpr contexts. Schemas with recursive types can be handled: non-cyclic recursive structures use
+fixed-size stacks, while cyclic structures can explicitly enable `std::vector` usage via macro option for dynamic path
+tracking.
 
 ⚠️ Trade-offs
 - `Annotated` is clearly a workaround, a way to attach metainfo to types. We just don't have a less-intrusive way in the language to create something like annotations, which behaves the way we need.
 
-- **Compile times**: Heavy template instantiation and constexpr logic are not free. This is a real cost and can be significant in large projects. However, JsonFusion's design helps contain this: all template instantiation happens at `Parse()` and `Serialize()` call sites, which are naturally scoped. You can easily isolate these calls in separate translation units (e.g., a dedicated `config_parser.cpp`), preventing the template machinery from "poisoning" your entire codebase. The rest of your code just works with the plain C++ types. That said, if you have dozens of complex models and parse them in many places, compile times will add up — there's no magic solution, just good hygiene about where and how often you instantiate the machinery.
+- **Compile times**: Heavy template instantiation and constexpr logic are not free. This is a real cost and can be 
+significant in large projects. However, JsonFusion's design helps contain this: all template instantiation happens 
+at `Parse()` and `Serialize()` call sites, which are naturally scoped. You can easily isolate these calls in separate
+translation units (e.g., a dedicated `config_parser.cpp`), preventing the template machinery from "poisoning" your entire
+codebase. The rest of your code just works with the plain C++ types. That said, if you have dozens of complex models and
+parse them in many places, compile times will add up — there's no magic solution, just good hygiene about where and how
+often you instantiate the machinery.
 
 - Binary size: poor factoring or excessive inlining can bloat code if you're not careful (JsonFusion is designed to avoid this, but physics still apply). With proper linker optimization (LTO) and thoughtful model design, binary size typically scales with the semantic complexity of your models rather than the depth of metaprogramming. Still, each instantiation does generate code, and you'll want to monitor this on resource-constrained platforms.
 
