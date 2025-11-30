@@ -1252,9 +1252,6 @@ struct FieldsHelper {
     }
 };
 
-// Thresholds for selecting search strategy at compile time
-inline constexpr std::size_t MaxFieldsCountForLinearSearch = 8;
-inline constexpr std::size_t MaxFieldLengthForLinearSearch = 32;
 
 // Binary search strategy: incrementally narrows candidate range per character
 struct IncrementalBinaryFieldSearch {
@@ -1353,13 +1350,11 @@ struct BufferedLinearFieldSearch {
 };
 
 // Adapter that selects strategy at compile time based on field count and max length
-template<std::size_t FieldCount, std::size_t MaxFieldLen>
+template<bool useBinarySearch, std::size_t MaxFieldLen>
 struct AdaptiveFieldSearch {
     using It = const FieldDescr*;
     
-    static constexpr bool useLinear = 
-        (FieldCount <= MaxFieldsCountForLinearSearch) && 
-        (MaxFieldLen <= MaxFieldLengthForLinearSearch);
+    static constexpr bool useLinear = !useBinarySearch;
 
     using SearchImpl = std::conditional_t<
         useLinear,
@@ -1428,8 +1423,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
             return false;
         }
-
-        AdaptiveFieldSearch<FH::fieldsCount, FH::maxFieldNameLength> searcher{
+        
+        AdaptiveFieldSearch<Opts::template has_option<options::detail::allow_excess_fields_tag>, FH::maxFieldNameLength> searcher{
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
@@ -1655,8 +1650,6 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent, class UserCTX>
 constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, UserCTX> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
-
-
 
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
         return SkipValue(currentPos, end, ctx);

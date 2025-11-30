@@ -6,7 +6,7 @@
 #include <optional>
 #include <limits>
 #include <utility>
-
+#include <memory>
 #include "annotated.hpp"
 
 namespace JsonFusion {
@@ -47,6 +47,7 @@ namespace detail {
 struct not_json_tag{};
 struct key_tag{};
 struct allow_excess_fields_tag{};
+struct binary_fields_search_tag{};
 struct description_tag{};
 
 struct float_decimals_tag {};
@@ -97,6 +98,10 @@ struct as_array {
 
 struct allow_excess_fields{
     using tag = detail::allow_excess_fields_tag;
+};
+
+struct binary_fields_search{
+    using tag = detail::binary_fields_search_tag;
 };
 
 namespace detail {
@@ -191,6 +196,11 @@ struct annotation_meta {
 template<class T, class... Opts>
 struct annotation_meta<std::optional<Annotated<T, Opts...>>> {
     static_assert(!sizeof(T), "[[[ JsonFusion ]]] Use Annotated<std::optional<T>, ...> instead of std::optional<Annotated<T, ...>>");
+};
+
+template<class T, class... Opts>
+struct annotation_meta<std::unique_ptr<Annotated<T, Opts...>>> {
+    static_assert(!sizeof(T), "[[[ JsonFusion ]]] Use Annotated<std::unique_ptr<T>, ...> instead of std::unique_ptr<Annotated<T, ...>>");
 };
 
 // Annotated<T, Opts...>

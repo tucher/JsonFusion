@@ -148,9 +148,11 @@ template<std::size_t NameCount, std::size_t MaxNameLen>
 struct AdaptiveNameSearch {
     using It = const NameDescr*;
     
-    static constexpr bool useLinear = 
-        (NameCount <= MaxNamesCountForLinearSearch) && 
-        (MaxNameLen <= MaxNameLengthForLinearSearch);
+    // static constexpr bool useLinear =
+    //     (NameCount <= MaxNamesCountForLinearSearch) &&
+    //     (MaxNameLen <= MaxNameLengthForLinearSearch);
+
+    static constexpr bool useLinear = true;
 
     using SearchImpl = std::conditional_t<
         useLinear,

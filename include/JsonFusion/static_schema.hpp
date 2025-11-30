@@ -454,6 +454,10 @@ struct is_nullable_json_serializable_value {
             using Inner = typename AV::value_type;
             // Inner must itself be a non-null JSON value type
             return is_non_null_json_serializable_value<Inner>::value;
+        } else if constexpr (is_specialization_of<AV, std::unique_ptr>::value) {
+            using Inner = typename AV::element_type;
+            // Inner must itself be a non-null JSON value type
+            return is_non_null_json_serializable_value<Inner>::value;
         } else {
             return false;
         }
@@ -531,6 +535,10 @@ struct is_nullable_json_parsable_value {
             using Inner = typename AV::value_type;
             // Inner must itself be a non-null JSON value type
             return is_non_null_json_parsable_value<Inner>::value;
+        } else if constexpr (is_specialization_of<AV, std::unique_ptr>::value) {
+            using Inner = typename AV::element_type;
+            // Inner must itself be a non-null JSON value type
+            return is_non_null_json_parsable_value<Inner>::value;
         } else {
             return false;
         }
@@ -603,20 +611,38 @@ concept JsonSerializableMap = is_json_serializable_map<C>::value;
 
 template <JsonNullableParsableValue Field>
 constexpr void setNull(Field &f) {
-    annotation_meta_getter<Field>::getRef(f).reset();
+    annotation_meta_getter<Field>::getRef(f).reset(); // same for std::optional and std::unique_ptr
 }
 
 template <JsonNullableSerializableValue Field>
 constexpr bool isNull(const Field &f) {
-    return !annotation_meta_getter<Field>::getRef(f).has_value();
+    if constexpr (is_specialization_of<Field, std::optional>::value) {
+        return !annotation_meta_getter<Field>::getRef(f).has_value();
+    } else if constexpr (is_specialization_of<Field, std::unique_ptr>::value) {
+        return annotation_meta_getter<Field>::getRef(f).get() == nullptr;
+    } else {
+        static_assert(false, "JsonNullableSerializableValue must be std::optional or std::unique_ptr");
+        return false;
+    }
 }
 
 template<JsonNullableParsableValue Field>
 constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
-    auto& opt = S::getRef(f);
-    if(!opt) return opt.emplace();
-    else return *opt;
+    if constexpr (is_specialization_of<typename S::value_t, std::optional>::value) {
+        auto& opt = S::getRef(f);
+        if(!opt) 
+            return opt.emplace();
+        else return *opt;
+    } else if constexpr (is_specialization_of<typename S::value_t, std::unique_ptr>::value) {
+        auto& opt = S::getRef(f);
+        if(opt == nullptr)
+            opt = std::make_unique<typename S::value_t::element_type>();
+        return *opt;
+    } else {
+        static_assert(false, "JsonNullableParsableValue must be std::optional or std::unique_ptr");
+        return false;
+    }
 }
 
 template<JsonNullableSerializableValue Field>
