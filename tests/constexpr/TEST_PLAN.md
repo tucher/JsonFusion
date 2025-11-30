@@ -8,6 +8,9 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - **Multiple `static_assert`s per file** - Related test cases grouped together
 - **Naming convention**: `test_<category>_<feature>.cpp`
 - **Each test is self-contained** - Minimal dependencies, clear purpose
+- **Streaming for complex types** - Use streamers for types with limited constexpr support (e.g., `std::map`)
+- **Incremental validation testing** - Verify early rejection paths work correctly
+- **Comprehensive validator coverage** - Test each validator individually and in combination
 
 ---
 
@@ -128,6 +131,68 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - `null` vs `"null"` (string)
   - Optional in various positions (first, middle, last field)
 
+### 2.4 Dynamic Containers (`std::string`, `std::vector<T>`)
+
+**Status**: ✅ Constexpr-compatible in C++23!
+
+- `test_parse_string.cpp`
+  - `std::string` with various lengths
+  - Empty string
+  - Very long strings
+  - Strings with special characters
+  - Round-trip: parse → serialize → parse
+
+- `test_parse_vector_primitives.cpp`
+  - `std::vector<int>` with various sizes
+  - `std::vector<bool>`
+  - Empty vectors
+  - Large vectors (100+ elements)
+
+- `test_parse_vector_nested.cpp`
+  - `std::vector<NestedStruct>`
+  - `std::vector<std::vector<int>>` (2D)
+  - `std::vector<std::string>`
+  - Mixed with fixed arrays
+
+- `test_parse_vector_edge_cases.cpp`
+  - Vector growth during parsing
+  - Memory allocation in constexpr
+  - Vector with optional elements: `std::vector<std::optional<int>>`
+
+### 2.5 Map Types (`std::map`, `std::unordered_map`)
+
+**Status**: ⚠️ `std::map` limited constexpr support; use streamers for testing
+
+- `test_parse_map_basic.cpp`
+  - `std::map<std::string, int>`
+  - `std::map<std::string, NestedStruct>`
+  - Empty maps
+  - Single entry
+  - Multiple entries
+
+- `test_parse_map_key_types.cpp`
+  - `std::array<char, N>` keys (fixed-size)
+  - `std::string` keys (dynamic)
+  - Key ordering (sorted for `std::map`)
+
+- `test_parse_map_value_types.cpp`
+  - Primitive values: int, bool, string
+  - Struct values
+  - Array values: `std::map<std::string, std::array<int, 3>>`
+  - Optional values: `std::map<std::string, std::optional<int>>`
+
+- `test_parse_map_nested.cpp`
+  - Nested maps: `std::map<std::string, std::map<std::string, int>>`
+  - Maps in structs
+  - Maps in arrays
+  - Structs containing maps
+
+- `test_parse_map_edge_cases.cpp`
+  - Duplicate keys (error detection)
+  - Keys with special characters
+  - Very long keys
+  - Many entries (performance)
+
 ---
 
 ## 3. JSON Standard Compliance
@@ -173,7 +238,14 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ## 4. Validation Constraints
 
-### 4.1 Range Validation
+### 4.1 Primitive Validators
+
+- `test_validation_constant.cpp`
+  - `constant<42>` - bool constants
+  - Rejects non-matching values
+  - With different primitive types
+
+### 4.2 Number Range Validation
 
 - `test_validation_range_int.cpp`
   - `Annotated<int, range<0, 100>>` - valid values at boundaries
@@ -182,25 +254,115 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Negative ranges: `range<-100, -10>`
   - Single-value range: `range<42, 42>`
 
-- `test_validation_range_float.cpp` (if floats become constexpr-compatible)
-  - Fractional boundaries
-  - Very small ranges
+- `test_validation_range_signed.cpp`
+  - All signed integer types: `int8_t`, `int16_t`, `int32_t`, `int64_t`
+  - Type-specific min/max values
+  - Overflow detection
 
-### 4.2 Length Validation
+- `test_validation_range_unsigned.cpp`
+  - All unsigned integer types
+  - Zero boundaries
+  - Max value boundaries
+
+### 4.3 String Validators
+
+**Status**: ✅ `test_parse_strings_escaping.cpp` partially covers this
 
 - `test_validation_string_length.cpp`
   - `min_length<N>`, `max_length<N>`
   - Empty string with `min_length<1>` (error)
   - Exactly at boundaries
   - Both constraints together: `min_length<5>, max_length<10>`
+  - Early rejection with `max_length` (incremental validation)
 
-### 4.3 Array Size Validation
+- `test_validation_string_enum.cpp`
+  - `enum_values<"red", "green", "blue">`
+  - Valid enum values
+  - Invalid value rejection
+  - Empty string rejection
+  - Case sensitivity
+  - Prefix/partial matches (should reject)
+  - Many values (10+) - binary search
+  - In structs, arrays, with other validators
+
+### 4.4 Array/Vector Validators
 
 - `test_validation_array_items.cpp`
   - `min_items<N>`, `max_items<N>`
   - Empty array constraints
   - Exactly at boundaries
   - Both constraints together
+  - With `std::array<T, N>` and `std::vector<T>`
+  - Early rejection with `max_items`
+
+### 4.5 Object Validators (not_required)
+
+- `test_validation_not_required.cpp`
+  - `not_required<"field1", "field2">` at object level
+  - Field can be absent from JSON
+  - All fields absent
+  - Some required, some not
+  - Interaction with `std::optional`
+  - Nested objects with different requirements
+  - Error when required field is missing
+
+### 4.6 Map Property Count Validators
+
+- `test_validation_map_properties.cpp`
+  - `min_properties<N>`, `max_properties<N>`
+  - Empty maps
+  - Exactly at boundaries
+  - Both constraints together
+  - Early rejection with `max_properties`
+
+### 4.7 Map Key Validators
+
+- `test_validation_map_key_length.cpp`
+  - `min_key_length<N>`, `max_key_length<N>`
+  - All keys within bounds
+  - One key violates constraint
+  - Exact boundaries
+  - Both constraints together
+
+- `test_validation_map_required_keys.cpp`
+  - `required_keys<"id", "name">`
+  - All required keys present
+  - One or more missing
+  - Extra keys beyond required
+  - Empty map with required keys (error)
+  - Incremental tracking with `std::bitset`
+
+- `test_validation_map_allowed_keys.cpp`
+  - `allowed_keys<"x", "y", "z">`
+  - All keys in whitelist
+  - One key not allowed (error)
+  - Early rejection on invalid prefix
+  - Empty allowed list (rejects all)
+  - Many allowed keys (20+) - binary search
+
+- `test_validation_map_forbidden_keys.cpp`
+  - `forbidden_keys<"__proto__", "constructor">`
+  - No forbidden keys present
+  - One forbidden key (error)
+  - Similar but non-matching keys (e.g., "badge" vs "bad")
+  - Empty forbidden list (allows all)
+
+### 4.8 Combined Validators
+
+- `test_validation_combined_string.cpp`
+  - `min_length` + `max_length` + `enum_values`
+  - Multiple constraints, all pass
+  - One constraint fails
+
+- `test_validation_combined_array.cpp`
+  - `min_items` + `max_items` with element validators
+  - Nested validation
+
+- `test_validation_combined_map.cpp`
+  - `min_properties` + `max_properties` + `required_keys` + `allowed_keys`
+  - All three key validators together
+  - `allowed_keys` + `forbidden_keys` (forbidden takes precedence)
+  - Key length + key set validators
 
 ---
 
@@ -231,13 +393,17 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Derived/computed fields
   - Internal state fields
 
-### 5.4 not_required
+### 5.4 not_required (Object-Level Annotation)
 
 - `test_annotated_not_required.cpp`
-  - Field can be absent from JSON
-  - Default value is used
+  - Annotated at object level: `Annotated<MyStruct, not_required<"field1", "field2">>`
+  - Specified fields can be absent from JSON
+  - Default values are used for absent fields
   - Present vs absent behavior
-  - Difference from `std::optional`
+  - All fields not_required
+  - Mix of required and not_required fields
+  - Difference from `std::optional` (field-level)
+  - Nested objects with different not_required annotations
 
 ### 5.5 allow_excess_fields
 
@@ -332,11 +498,40 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - 3D arrays via nested producers
   - Jagged arrays
 
-### 7.3 Streamer Concepts
+### 7.3 Map Streamers
+
+**Status**: ✅ `test_map_streaming.cpp` (basic coverage)
+
+- `test_streamer_map_consumer.cpp`
+  - `ConsumingMapStreamerLike` concept verification
+  - Consumer with key-value pairs
+  - `value_type = MapEntry<K, V>`
+  - `consume()`, `finalize()`, `reset()` lifecycle
+  - Duplicate key detection in consumer
+  - Empty map
+  - Single entry
+  - Many entries
+
+- `test_streamer_map_producer.cpp`
+  - `ProducingMapStreamerLike` concept verification
+  - Producer generating key-value pairs
+  - Lifecycle with `reset()`, `read_key()`, `read_value()`
+  - Nested maps via producers
+  - Different key/value types
+
+- `test_streamer_map_with_validators.cpp`
+  - Map streamers with `min_properties`, `max_properties`
+  - Map streamers with `required_keys`, `allowed_keys`, `forbidden_keys`
+  - Map streamers with key length constraints
+  - Validation failures during streaming
+
+### 7.4 Streamer Concepts
 
 - `test_streamer_concepts.cpp`
   - `ConsumingStreamerLike` concept verification
   - `ProducingStreamerLike` concept verification
+  - `ConsumingMapStreamerLike` concept verification
+  - `ProducingMapStreamerLike` concept verification
   - Compilation errors for non-conforming types (negative tests)
 
 ---
@@ -351,6 +546,7 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Array where object expected
   - Object where array expected
   - Null where non-optional expected
+  - **Verify JSON path points to correct location for each error**
 
 ### 8.2 Malformed JSON
 
@@ -360,33 +556,148 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Invalid escape sequences
   - Truncated JSON
   - Invalid UTF-8 (if applicable)
+  - **Verify error offset and JSON path for each malformed input**
 
 ### 8.3 Validation Failures
 
 - `test_error_validation_range.cpp`
   - Value outside `range<>`
-  - Error position reported correctly
+  - `result.validationResult()` contains schema errors
+  - `result.validationResult().hasSchemaError(SchemaError::number_out_of_range)`
+  - Parse error vs validation error distinction
+  - **Verify `result.errorJsonPath()` shows correct field path (e.g., `$.config.port`)**
 
 - `test_error_validation_length.cpp`
   - String too short/long
   - Array too short/long
+  - `SchemaError::string_length_out_of_range`
+  - `SchemaError::array_items_count_out_of_range`
+  - **Verify JSON path for nested validation errors**
+
+- `test_error_validation_map.cpp`
+  - `SchemaError::map_properties_count_out_of_range`
+  - `SchemaError::map_key_length_out_of_range`
+  - `SchemaError::map_key_not_allowed`
+  - `SchemaError::map_key_forbidden`
+  - `SchemaError::map_missing_required_key`
+  - **Verify JSON path includes map key context**
+
+- `test_error_validation_enum.cpp`
+  - String not in `enum_values`
+  - `SchemaError::wrong_constant_value`
+  - Early rejection during parsing
+  - **Verify JSON path to enum field**
 
 ### 8.4 Buffer Overflow
 
 - `test_error_string_overflow.cpp`
   - String longer than `std::array<char, N>`
   - Behavior: truncate, error, or undefined?
+  - **JSON path should point to the overflowing string field**
 
 - `test_error_array_overflow.cpp`
   - JSON array longer than `std::array<T, N>`
+  - **JSON path includes array index where overflow occurred**
 
 ### 8.5 Error Result Object
 
 - `test_error_result_object.cpp`
-  - `result.error()` returns correct error code
-  - `result.pos()` points to error location
-  - Boolean conversion: `!result` for errors
-  - Different error codes for different failures
+  - Parse errors: `result.error()` returns `ParseError` enum
+  - Parse error position: `result.offset()` points to error location in byte stream
+  - Boolean conversion: `!result` for errors, `result` for success
+  - Different error codes for different parse failures
+
+- `test_error_validation_result.cpp`
+  - Validation errors: `result.validationResult()` returns `ValidationResult`
+  - `result.validationResult().schema_errors()` returns bitmask
+  - `result.validationResult().hasSchemaError(SchemaError::...)` checks specific error
+  - `ValidationResult` boolean conversion
+  - Parse succeeds but validation fails
+  - Both parse and validation errors
+
+- `test_error_result_combinations.cpp`
+  - Success: no parse error, no validation error
+  - Parse error only (malformed JSON)
+  - Validation error only (well-formed but invalid)
+  - Error position tracking with validation errors
+
+### 8.6 JSON Path Tracking
+
+- `test_error_json_path_primitives.cpp`
+  - Error in primitive field: `$.field`
+  - Error in nested object field: `$.outer.inner.field`
+  - Error in array element: `$.items[3]`
+  - Error in deeply nested structure: `$.a.b.c.d.e`
+  - Path for root-level errors: `$`
+
+- `test_error_json_path_arrays.cpp`
+  - Error in first array element: `$.array[0]`
+  - Error in middle element: `$.array[5]`
+  - Error in nested array: `$.matrix[2][3]`
+  - Error in array of objects: `$.users[10].name`
+  - 3D array paths: `$.tensor[1][2][3]`
+
+- `test_error_json_path_maps.cpp`
+  - Error in map value: `$.config["server"]`
+  - Error in nested map: `$.config["db"]["host"]`
+  - Map key validation error shows key context
+  - Dynamic map keys vs struct field names
+
+- `test_error_json_path_mixed.cpp`
+  - Complex paths: `$.statuses[3].user.entities.urls[0].display_url`
+  - Arrays of maps: `$.items[5]["metadata"]`
+  - Maps of arrays: `$.groups["admins"][2]`
+  - Annotated fields with `key<>` remapping show JSON key, not C++ name
+
+- `test_error_json_path_depth_calculation.cpp`
+  - Compile-time depth calculation: `calc_type_depth<Type>()`
+  - Simple flat struct: depth = 1
+  - Nested struct: depth = max(field depths) + 1
+  - Array increases depth: `vector<T>` → depth(T) + 1
+  - Recursive type detection with `SeenTypes` tracking
+  - Cyclic recursive types return `SCHEMA_UNBOUNDED`
+
+- `test_error_json_path_storage.cpp`
+  - `JsonStaticPath<N>` for non-cyclic schemas
+  - Stack-allocated, compile-time sized from `calc_type_depth`
+  - `JsonDynamicPath` for cyclic schemas (with macro flag)
+  - Path operations: `push_child()`, `pop()`, `currentLength`
+  - `PathElement` structure: `array_index`, `field_name`
+
+- `test_error_json_path_constexpr.cpp`
+  - JSON path tracking works in constexpr parsing
+  - Verify path at compile time in `static_assert`
+  - Example: `result.errorJsonPath().storage[1].field_name == "name"`
+  - Constexpr path depth calculation
+  - Zero runtime allocation overhead
+
+- `test_error_json_path_formatting.cpp`
+  - Path to string conversion: `ParseResultToString()`
+  - Format: `$.field`, `$.array[3]`, `$.obj.nested`
+  - Context window around error: `...before😖after...`
+  - Integration with `error_formatting.hpp`
+  - Human-readable error messages
+
+### 8.7 Error Path Correctness
+
+- `test_error_path_validation.cpp`
+  - Every error type has correct JSON path
+  - Path matches actual location in JSON
+  - Nested errors at correct depth
+  - Array indices are accurate
+  - Map keys are tracked correctly
+
+- `test_error_path_incremental.cpp`
+  - Path is maintained during incremental parsing
+  - Path updates as parser descends into structures
+  - Path restored correctly on backtracking (if applicable)
+  - Early validation rejection has correct path
+
+- `test_error_path_annotations.cpp`
+  - Fields with `key<"json_name">` show JSON name in path
+  - `as_array` structures show field names, not array indices (JSON path reflects C++ structure)
+  - `not_json` fields don't appear in paths
+  - Optional fields show in path when present
 
 ---
 
@@ -476,6 +787,28 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Verify PFR handles correctly
   - Compilation time acceptable
 
+### 11.4 Validator Performance
+
+- `test_limits_many_validators.cpp`
+  - Multiple validators on same field
+  - 5+ validators combined
+  - Compilation time impact
+  - Zero runtime overhead
+
+- `test_limits_map_many_keys.cpp`
+  - `allowed_keys` with 50+ keys
+  - Binary search vs linear search threshold
+  - `required_keys` with many keys
+  - `std::bitset` size limits
+
+### 11.5 Constexpr Evaluation Limits
+
+- `test_limits_constexpr_steps.cpp`
+  - Complex nested structures in constexpr
+  - Large data structures (1000+ elements)
+  - `-fconstexpr-steps` requirements
+  - Incremental validation reduces constexpr steps
+
 ---
 
 ## 12. Integration Tests
@@ -484,18 +817,37 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 - `test_integration_server_config.cpp`
   - Realistic server config structure
-  - Mix of primitives, nested objects, arrays
-  - Validation constraints
+  - Mix of primitives, nested objects, arrays, maps
+  - Validation constraints: `range`, `enum_values`, `required_keys`
+  - Environment-specific configs with `enum_values<"dev", "staging", "prod">`
+  - Connection pools with min/max constraints
 
 - `test_integration_sensor_data.cpp`
   - Embedded sensor data format
-  - Fixed-size buffers
+  - Fixed-size buffers (`std::array`)
   - Timestamps, readings, metadata
+  - Arrays of sensor readings
+  - Validation: `range` for sensor values
 
 - `test_integration_ui_state.cpp`
   - UI state serialization
   - Optional fields (not all UI elements present)
   - Nested components
+  - Maps for dynamic UI elements: `std::map<std::string, UIComponent>`
+
+- `test_integration_api_response.cpp`
+  - REST API response models
+  - Status codes with `enum_values`
+  - Headers as maps: `std::map<std::string, std::string>`
+  - Nested data payload
+  - Error responses with validation
+
+- `test_integration_json_schema.cpp`
+  - Implementing JSON Schema patterns
+  - Complex validation rules
+  - `required_keys` + `allowed_keys` + `forbidden_keys`
+  - `min`/`max` constraints on numbers, strings, arrays, maps
+  - Enum values for restricted strings
 
 ### 12.2 Edge-to-Edge
 
@@ -561,46 +913,77 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ## Priority Levels
 
-### P0 - Critical (Implement First)
-- All primitive types (integers, bool, char arrays)
-- Basic nested structs
-- Fixed-size arrays
-- Optionals
-- Basic serialization + round-trips
-- Core validation (range, length, items)
-- Key annotations
+### P0 - Critical (Mostly Complete ✅)
+- ✅ All primitive types (integers, bool, char arrays)
+- ✅ Basic nested structs
+- ✅ Fixed-size arrays
+- ✅ Optionals
+- ✅ Basic serialization + round-trips
+- ✅ Core validation (range, length, items)
+- ✅ Map support (parse, serialize, validate)
+- ✅ String enum validation
+- ✅ Map key validators (required, allowed, forbidden)
+- ⚠️ Key annotations (partial)
 
-### P1 - High Priority
-- Error handling (malformed JSON, type mismatches)
-- JSON spec compliance (whitespace, escaping, numbers)
-- Advanced annotations (as_array, not_json, not_required)
-- Streaming consumers/producers
-- Field ordering independence
+### P1 - High Priority (Partially Complete)
+- ⚠️ Error handling (malformed JSON, type mismatches)
+- ✅ JSON spec compliance (whitespace, escaping partially done)
+- ⚠️ Advanced annotations (as_array, not_json, not_required)
+- ✅ Streaming consumers/producers (including maps)
+- ⚠️ Field ordering independence
+- 🔲 `std::string` and `std::vector` comprehensive testing
+- 🔲 Round-trip tests for all types
 
-### P2 - Medium Priority
-- Edge cases (zero-sized, alignment, defaults)
-- Deep nesting, large arrays
-- Integration tests
-- Less common integer types
+### P2 - Medium Priority (To Do)
+- 🔲 Edge cases (zero-sized, alignment, defaults)
+- 🔲 Deep nesting, large arrays
+- 🔲 Integration tests (real-world configs)
+- 🔲 Less common integer types
+- 🔲 Validation error result object testing
+- 🔲 Combined validators testing
 
 ### P3 - Nice to Have
-- Performance tests (compilation time)
-- Negative tests (compilation failures)
-- Exhaustive Unicode testing
-- Exotic type combinations
+- 🔲 Performance tests (compilation time)
+- 🔲 Negative tests (compilation failures)
+- 🔲 Exhaustive Unicode testing
+- 🔲 Exotic type combinations
+- 🔲 Constexpr limits exploration
 
 ---
 
 ## Current Status Summary
 
-### Implemented (5 tests)
+### Implemented Tests
+**Primitives**:
 - ✅ `test_parse_int.cpp` - Basic int parsing
 - ✅ `test_parse_bool.cpp` - Boolean parsing
 - ✅ `test_parse_char_array.cpp` - String parsing with null-termination
+- ✅ `test_parse_integers_overflow.cpp` - Integer overflow detection
+- ✅ `test_parse_strings_escaping.cpp` - String escape sequences
+
+**Serialization**:
 - ✅ `test_serialize_int.cpp` - Integer serialization
 - ✅ `test_serialize_bool.cpp` - Boolean serialization
 
-### Estimated Total: **150-200 test files**
+**Streaming**:
+- ✅ `test_map_streaming.cpp` - Map consumer/producer streamers
+
+**Validation**:
+- ✅ `test_map_validators.cpp` - All map validators (45 tests)
+  - `min_properties`, `max_properties`
+  - `min_key_length`, `max_key_length`
+  - `required_keys`, `allowed_keys`, `forbidden_keys`
+- ✅ `test_string_enum.cpp` - String enum validation (17 tests)
+  - `enum_values<...>` with incremental validation
+
+### Key Achievements
+- ✅ **Map support**: Full map parsing, serialization, and validation
+- ✅ **Incremental validation**: Early rejection for performance
+- ✅ **Stateful validators**: Generic state mechanism for complex validation
+- ✅ **Adaptive search**: Binary/linear search selection at compile time
+- ✅ **String enums**: Comprehensive enum validation with early rejection
+
+### Estimated Total: **180-220 test files**
 
 This comprehensive coverage would:
 - Verify every JsonFusion feature works at compile time
@@ -608,18 +991,47 @@ This comprehensive coverage would:
 - Catch regressions immediately
 - Prove zero hidden runtime dependencies
 - Serve as living documentation
+- Cover 95%+ of typical C++ JSON use cases
 
 ---
 
 ## Next Steps
 
-1. **Implement P0 tests** (~40 files)
-2. **Set up CI integration** (compile all tests in parallel)
-3. **Implement P1 tests** (~50 files)
-4. **Add test coverage metrics** (track which features are tested)
-5. **Implement P2 tests** (~40 files)
-6. **Document learnings** (update main docs with constexpr examples)
-7. **Implement P3 tests** (~20 files)
+### Immediate (Complete P0)
+1. **Test `std::string` and `std::vector`** (~8 files)
+   - Basic parsing, nested, edge cases
+   - Serialization and round-trips
+2. **Complete primitive coverage** (~5 files)
+   - All integer types systematically
+   - More edge cases
 
-Each test takes ~5 minutes to write and provides permanent, zero-cost verification!
+### Short Term (P1 Priority)
+3. **Error handling tests** (~10 files)
+   - Malformed JSON detection
+   - Type mismatch errors
+   - Validation error result object
+4. **Round-trip tests** (~8 files)
+   - All types: primitives, structs, arrays, maps
+   - With validators, annotations
+5. **JSON spec compliance** (~8 files)
+   - Number formats, string escaping
+   - Whitespace, syntax edge cases
+
+### Medium Term (P2 Priority)
+6. **Integration tests** (~5 files)
+   - Real-world config files
+   - API responses
+   - JSON Schema patterns
+7. **Combined validator tests** (~5 files)
+   - Multiple validators together
+   - Complex validation scenarios
+8. **Set up CI integration** (compile all tests in parallel)
+
+### Long Term (P3 & Documentation)
+9. **Performance & limits tests** (~10 files)
+10. **Document learnings** (update main docs with constexpr examples)
+11. **Add test coverage metrics** (track which features are tested)
+
+**Progress**: ~12/200 files complete (~6%)
+Each test takes ~5-10 minutes to write and provides permanent, zero-cost verification!
 
