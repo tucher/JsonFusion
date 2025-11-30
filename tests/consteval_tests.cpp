@@ -8,7 +8,10 @@
 #include <cassert>
 #include <format>
 #include <iostream>
-
+#include <map>
+#include <variant>
+#include "JsonFusion/json_path.hpp"
+#include "JsonFusion/error_formatting.hpp"
 auto printErr = [](auto res, std::string_view js_sv) {
     int pos = res.pos() - js_sv.data();
     int wnd = 20;
@@ -70,6 +73,7 @@ int main() {
                && a.vec_of_opt_vecs[1] && *a.vec_of_opt_vecs[1] == std::vector<std::string>{"a", "b", "c"}
             ;
     }());
+
     static_assert([]() constexpr {
         A a{};
         a.b = true;
@@ -154,7 +158,187 @@ int main() {
         bool r = JsonFusion::Serialize(t, out_pos, en);
         return r;
     }());
+    static_assert([]() constexpr {
+        struct Tst21{
+            JsonFusion::Annotated<bool, JsonFusion::validators::constant<true>> bool_const_t;
+            JsonFusion::Annotated<bool, JsonFusion::validators::constant<false>> bool_const_f;
+            JsonFusion::Annotated<std::array<char, 5>, JsonFusion::validators::string_constant<"fu">> string_c;
+            JsonFusion::Annotated<int, JsonFusion::validators::constant<42>> number_const;
+        } a;
+        return JsonFusion::Parse(a, R"JSON(
+                    {
+                        "bool_const_t": true,
+                        "bool_const_f": false,
+                        "string_c": "fu",
+                        "number_const": 42
+            }
+            )JSON")
+            ;
+    }());
+
+    static_assert([]() constexpr {
+        struct Root {
+            int field;
+
+            struct Inner1 {
+                int field;
+
+                struct Inner2 {
+                    int field;
+                };
+                std::array<Inner2, 3> inners;
+            };
+
+            std::vector<Inner1> inners;
+        };
+        /*
+         Inner1 [0]
+        Inner1.field [1]
+        Inner1.inners [1]
+        Inner1.inners[0] [2]
+        Inner1.inners[1][0] [3]
+         */
+        static_assert(JsonFusion::json_path::calc_type_depth<Root::Inner1::Inner2>() == 2);
+        static_assert(JsonFusion::json_path::calc_type_depth<Root::Inner1>() == 4);
+        static_assert(JsonFusion::json_path::calc_type_depth<Root>() == 6);
+        return 1;
+    }());
+    static_assert([]() constexpr {
+        struct Root1 {
+            int field;
+            std::vector<Root1> inners;
+            std::unique_ptr<Root1> child;
+        };
+
+        struct Root2 {
+            int field;
+            std::vector<Root1> inners;
+            std::unique_ptr<Root1> child;
+        };
+        static_assert(JsonFusion::json_path::calc_type_depth<Root1>() == JsonFusion::json_path::SCHEMA_UNBOUNDED);
+        static_assert(JsonFusion::json_path::calc_type_depth<Root2>() == JsonFusion::json_path::SCHEMA_UNBOUNDED);
+        return 1;
+    }());
+
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::required_keys<"1", "text">,
+                              JsonFusion::validators::min_properties<2>
+
+                              > t;
+        auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"1": 1, "text": 2, "fuu": 3}
 
 
+            )JSON"));
+        assert(res);
+    }
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::required_keys<"1", "text">,
+                              JsonFusion::validators::min_properties<2>
+
+                              > t;
+        auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"1": 1,  "fuu": 3}
+
+
+            )JSON"));
+        assert(!res);
+    }
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::allowed_keys<"1", "text">
+
+                              > t;
+        assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"1": 1, "text": 2, "fuu": 3}
+
+
+            )JSON")));
+    }
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::allowed_keys<"1", "text", "fuu">
+
+                              > t;
+        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"1": 1, "text": 2}
+
+
+            )JSON")));
+    }
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::forbidden_keys<"1", "text", "fuu">
+
+                              > t;
+        assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"1": 1, "text": 2}
+
+
+            )JSON")));
+    }
+    {
+        JsonFusion::Annotated<std::map<std::string, int>,
+                              JsonFusion::validators::forbidden_keys<"1", "text", "fuu">
+
+                              > t;
+        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
+                {"11": 1, "text1": 2}
+
+
+            )JSON")));
+    }
+    {
+        JsonFusion::Annotated<bool,
+                              JsonFusion::validators::constant<true>
+
+                              > t;
+        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
+                true
+
+
+            )JSON")));
+    }
+    {
+        JsonFusion::Annotated<bool,
+                              JsonFusion::validators::constant<false>
+
+                              > t;
+        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
+                false
+
+
+            )JSON")));
+    }
+    {
+        struct A{
+            JsonFusion::Annotated<bool, JsonFusion::validators::constant<true>> bool_const_t;
+            JsonFusion::Annotated<bool, JsonFusion::validators::constant<false>> bool_const_f;
+            JsonFusion::Annotated<std::array<char, 5>, JsonFusion::validators::string_constant<"v">> string_c;
+            JsonFusion::Annotated<int, JsonFusion::validators::constant<42>> number_const;
+            struct Inner{
+                double f;
+            };
+            std::vector<Inner> inner;
+        } a;
+        std::string_view sv{R"JSON(
+                {
+                    "bool_const_t": true,
+                    "bool_const_f": false,
+                    "string_c": "v",
+                    "number_const": 42,
+                    "inner": [{"f": 4.3},{"f": true}]
+        }
+        )JSON"
+        };
+        auto r = JsonFusion::Parse(a, sv);
+        if(!r) {
+            std::cerr << ParseResultToString(r, sv.begin(), sv.end()) << std::endl;
+
+        }
+
+    }
 
 }

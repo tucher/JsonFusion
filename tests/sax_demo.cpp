@@ -380,7 +380,7 @@ void geojson_reader(int argc, char ** argv) {
     CanadaStatsCounter canada;
     canada.features.set_json_fusion_context(&stats);
 
-    auto r = ParseWithContext(canada, json_data, &stats);
+    auto r = Parse(canada, json_data, &stats);
     assert(r);
 
     std::cout << std::format("Features: {}, rings: {}, points: {}", stats.totalFeatures, stats.totalRings, stats.totalPoints) << std::endl;
