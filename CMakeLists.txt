@@ -22,7 +22,6 @@ add_executable(rapidjson_comparison_parsing_benchmark
 )
 target_include_directories(rapidjson_comparison_parsing_benchmark PRIVATE
   ../Downloads/rapidjson-master/include
-  ../Downloads/json-develop/single_include
 )
 
 target_compile_options(rapidjson_comparison_parsing_benchmark PRIVATE
@@ -41,10 +40,13 @@ add_executable(consteval_tests
 
 add_executable(sax_demo
     tests/sax_demo.cpp
+    # benchmarks/canada_json_parsing.cpp
     ${JSON_FUSION}
 
 )
-
+target_include_directories(sax_demo PRIVATE
+  ../Downloads/rapidjson-master/include
+)
 
 add_executable(benchmarks
     benchmarks/main.cpp
@@ -66,3 +68,17 @@ target_compile_options(benchmarks PRIVATE
 target_link_options(benchmarks PRIVATE
   $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto>
 )
+
+
+add_executable(twitter_json_parsing
+    benchmarks/twitter_model.hpp
+    benchmarks/twitter_json_parsing.cpp
+    benchmarks/rapidjson_populate.hpp
+    ${JSON_FUSION}
+
+)
+target_include_directories(twitter_json_parsing PRIVATE
+  ../Downloads/rapidjson-master/include
+)
+
+

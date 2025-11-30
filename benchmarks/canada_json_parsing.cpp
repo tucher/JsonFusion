@@ -512,7 +512,7 @@ int main(int argc, char* argv[]) {
             canada.features.set_json_fusion_context(&stats);
 
 
-            auto res = ParseWithContext(canada, copy, &stats);
+            auto res = Parse(canada, copy, &stats);
             if (!res) {
                 throw std::runtime_error(std::format("JsonFusion parse error"));
             }
@@ -527,7 +527,7 @@ int main(int argc, char* argv[]) {
             canada.features.set_json_fusion_context(&stats);
 
 
-            auto res = ParseWithContext(canada, copy, &stats);
+            auto res = Parse(canada, copy, &stats);
             if (!res) {
                 throw std::runtime_error(std::format("JsonFusion parse error"));
             }
@@ -542,7 +542,7 @@ int main(int argc, char* argv[]) {
             canada.features.set_json_fusion_context(&stats);
 
 
-            auto res = ParseWithContext(canada, copy, &stats);
+            auto res = Parse(canada, copy, &stats);
             if (!res) {
                 throw std::runtime_error(std::format("JsonFusion parse error"));
             }

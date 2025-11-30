@@ -1,2 +1,3 @@
-/opt/homebrew/bin/g++-15 -I../include -I ../../Downloads/rapidjson-master/include -I . -std=c++23 -O3 -flto -march=native -c main.cpp -o main.o && /opt/homebrew/bin/g++-15 -flto main.o -o json_fusion_benchmark
+/opt/homebrew/bin/g++-15 -I../include -I ../../Downloads/rapidjson-master/include -I . -std=c++23 -O3 -flto -march=native -c main.cpp -o main.o && /opt/homebrew/bin/g++-15 -flto main.o -o json_fusion_benchmark && rm main.o
 /opt/homebrew/bin/g++-15 -I../include -I ../../Downloads/rapidjson-master/include -I . -std=c++23 -O3 -flto -march=native -c canada_json_parsing.cpp -o main.o && /opt/homebrew/bin/g++-15 -flto main.o -o canada_json_parsing && rm main.o
+/opt/homebrew/bin/g++-15 -I../include -I ../../Downloads/rapidjson-master/include -I . -std=c++23 -O3 -flto -march=native -c twitter_json_parsing.cpp -o main.o && /opt/homebrew/bin/g++-15 -flto main.o -o twitter_json_parsing && rm main.o
