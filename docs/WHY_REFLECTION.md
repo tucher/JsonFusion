@@ -405,7 +405,7 @@ Similar analysis detects map-like containers (`schema_analyzis::has_maps<T>()`).
 
 ### The Cascading Benefits
 
-1. **Zero overhead**: Path tracking on success is just counter increments in a stack array
+1. **Zero overhead**: Path tracking on success is just counter increments in a stack array + std::string_view assignments
 2. **Constexpr-compatible**: Error paths work in compile-time tests (`static_assert`)
 3. **Type-safe messages**: `$.statuses[3].user.name` maps directly to your struct definitions
 4. **Programmatic navigation**: `visit_by_path()` provides type-safe access to any location—a compile-time-aware analog to `std::variant::visit`, useful for applying defaults or inspecting partial state after errors

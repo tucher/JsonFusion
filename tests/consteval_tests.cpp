@@ -399,28 +399,7 @@ int main() {
         auto r = JsonFusion::Parse(a, sv);
         if(!r) {
             std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
-            assert(jp.currentLength == 3);
-
-
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 123.456;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
-
-
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 1.4;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
+           
         }
 
     }
@@ -456,28 +435,7 @@ int main() {
         auto r = JsonFusion::Parse(a, sv);
         if(!r) {
             std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
-            assert(jp.currentLength == 3);
-
-
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 123.456;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
-
-
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 1.4;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
+          
         }
 
     }
