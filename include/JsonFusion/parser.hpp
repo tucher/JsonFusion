@@ -56,6 +56,30 @@ enum class ParseError {
     DUPLICATE_KEY_IN_MAP
 };
 
+constexpr std::string_view error_to_string(ParseError e) {
+    switch(e) {
+        case ParseError::NO_ERROR: return "NO_ERROR"; break;
+        case ParseError::ILLFORMED_NUMBER: return "ILLFORMED_NUMBER"; break;
+        case ParseError::ILLFORMED_NULL: return "ILLFORMED_NULL"; break;
+        case ParseError::ILLFORMED_STRING: return "ILLFORMED_STRING"; break;
+        case ParseError::ILLFORMED_ARRAY: return "ILLFORMED_ARRAY"; break;
+        case ParseError::ILLFORMED_OBJECT: return "ILLFORMED_OBJECT"; break;
+        case ParseError::ILLFORMED_MAP: return "ILLFORMED_MAP"; break;
+        case ParseError::UNEXPECTED_END_OF_DATA: return "UNEXPECTED_END_OF_DATA"; break;
+        case ParseError::FIXED_SIZE_CONTAINER_OVERFLOW: return "FIXED_SIZE_CONTAINER_OVERFLOW"; break;
+        case ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE: return "NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE"; break;
+        case ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE: return "FLOAT_VALUE_IN_INTEGER_STORAGE"; break;
+        case ParseError::ILLFORMED_BOOL: return "ILLFORMED_BOOL"; break;
+        case ParseError::EXCESS_FIELD: return "EXCESS_FIELD"; break;
+        case ParseError::NULL_IN_NON_OPTIONAL: return "NULL_IN_NON_OPTIONAL"; break;
+        case ParseError::EXCESS_DATA: return "EXCESS_DATA"; break;
+        case ParseError::SKIPPING_STACK_OVERFLOW: return "SKIPPING_STACK_OVERFLOW"; break;
+        case ParseError::SCHEMA_VALIDATION_ERROR: return "SCHEMA_VALIDATION_ERROR"; break;
+        case ParseError::ARRAY_DESTRUCRING_SCHEMA_ERROR: return "ARRAY_DESTRUCRING_SCHEMA_ERROR"; break;
+        case ParseError::DATA_CONSUMER_ERROR: return "DATA_CONSUMER_ERROR"; break;
+        case ParseError::DUPLICATE_KEY_IN_MAP: return "DUPLICATE_KEY_IN_MAP"; break;
+    }
+}
 
 // 1) Iterator you can:
 //    - read as *it   (convertible to char)

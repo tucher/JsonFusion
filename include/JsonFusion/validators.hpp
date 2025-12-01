@@ -206,7 +206,7 @@ struct KeySetHelper {
 // ============================================================================
 
 enum class SchemaError  {
-    none                     ,
+    none                             ,
     number_out_of_range              ,
     string_length_out_of_range       ,
     array_items_count_out_of_range   ,
@@ -219,7 +219,21 @@ enum class SchemaError  {
     map_missing_required_key
 };
 
-
+constexpr std::string_view validator_error_to_string(SchemaError e) {
+    switch(e) {
+    case SchemaError::none                             : return "none"; break;
+    case SchemaError::number_out_of_range              : return "number_out_of_range"; break;
+    case SchemaError::string_length_out_of_range       : return "string_length_out_of_range"; break;
+    case SchemaError::array_items_count_out_of_range   : return "array_items_count_out_of_range"; break;
+    case SchemaError::missing_required_fields          : return "missing_required_fields"; break;
+    case SchemaError::map_properties_count_out_of_range: return "map_properties_count_out_of_range"; break;
+    case SchemaError::map_key_length_out_of_range      : return "map_key_length_out_of_range"; break;
+    case SchemaError::wrong_constant_value             : return "wrong_constant_value"; break;
+    case SchemaError::map_key_not_allowed              : return "map_key_not_allowed"; break;
+    case SchemaError::map_key_forbidden                : return "map_key_forbidden"; break;
+    case SchemaError::map_missing_required_key         : return "map_missing_required_key"; break;
+    }
+}
 
 struct ValidationResult {
     SchemaError  m_error  = SchemaError::none;
@@ -420,7 +434,7 @@ struct constant {
         }
     }
     static constexpr std::string_view to_string() {
-        return "constant does not match";
+        return "constant";
     }
 };
 
@@ -438,7 +452,7 @@ struct string_constant {
         }
     }
     static constexpr std::string_view to_string() {
-        return "constant does not match";
+        return "string_constant";
     }
 };
 
@@ -504,7 +518,7 @@ struct enum_values {
     }
 
     static constexpr std::string_view to_string() {
-        return "string value is not in enum list";
+        return "enum_values";
     }
 };
 
@@ -534,7 +548,7 @@ struct range {
     }
 
     static constexpr std::string_view to_string() {
-        return "number value is outside of range";
+        return "range";
     }
 };
 
@@ -552,7 +566,7 @@ struct min_length {
         }
     }
     static constexpr std::string_view to_string() {
-        return "string length is less than required";
+        return "min_length";
     }
 };
 
@@ -577,7 +591,7 @@ struct max_length {
         return true;
     }
     static constexpr std::string_view to_string() {
-        return "string length is greater than required";
+        return "max_length";
     }
 };
 
@@ -594,7 +608,7 @@ struct min_items {
         }
     }
     static constexpr std::string_view to_string() {
-        return "too few elements in array";
+        return "min_items";
     }
 };
 
@@ -611,7 +625,7 @@ struct max_items {
         }
     }
     static constexpr std::string_view to_string() {
-        return "too many elements in array";
+        return "max_items";
     }
 };
 
@@ -641,7 +655,7 @@ struct not_required {
         return true;
     }
     static constexpr std::string_view to_string() {
-        return "missing field in struct ,not marked as not-requried";
+        return "not_required";
     }
 };
 
@@ -664,7 +678,7 @@ struct min_properties {
         }
     }
     static constexpr std::string_view to_string() {
-        return "too few kv pairs in map";
+        return "min_properties";
     }
 };
 
@@ -683,7 +697,7 @@ struct max_properties {
         }
     }
     static constexpr std::string_view to_string() {
-        return "too many kv pairs in map";
+        return "max_properties";
     }
 };
 
@@ -715,7 +729,7 @@ struct min_key_length {
         }
     }
     static constexpr std::string_view to_string() {
-        return "map key length is too short";
+        return "min_key_length";
     }
 };
 
@@ -743,7 +757,7 @@ struct max_key_length {
         }
     }
     static constexpr std::string_view to_string() {
-        return "map key length is too long";
+        return "max_key_length";
     }
 };
 
@@ -806,7 +820,7 @@ struct required_keys {
         return true;
     }
     static constexpr std::string_view to_string() {
-        return "no required key";
+        return "required_keys";
     }
 };
 
@@ -859,7 +873,7 @@ struct allowed_keys {
         return true;
     }
     static constexpr std::string_view to_string() {
-        return "key is not allowed";
+        return "allowed_keys";
     }
 };
 
@@ -905,7 +919,7 @@ struct forbidden_keys {
         return true;
     }
     static constexpr std::string_view to_string() {
-        return "key is forbidden";
+        return "forbidden_keys";
     }
 
 };

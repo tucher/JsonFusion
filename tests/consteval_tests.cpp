@@ -1,4 +1,5 @@
 #define JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS
+#define JSONFUSION_ALLOW_DYNAMIC_ERROR_STACK
 
 #include <string_view>
 #include <array>
@@ -390,6 +391,63 @@ int main() {
                 },
                 {
                     "bools": {"счмчсм": false, "чсм": false, "кеи": true}
+                }
+            ]
+        }
+        )JSON"
+        };
+        auto r = JsonFusion::Parse(a, sv);
+        if(!r) {
+            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
+            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
+            assert(jp.currentLength == 3);
+
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 123.456;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
+
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 1.4;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
+        }
+
+    }
+    {
+        using namespace JsonFusion;
+        using JsonFusion::A;
+        using namespace validators;
+        struct TS{
+            struct Inner{
+                double f;
+                std::map<std::string, TS> children;
+            };
+            std::vector<Inner> inner;
+        } a;
+
+        static_assert (JsonFusion::schema_analyzis::has_maps<TS>());
+        std::string_view sv{R"JSON(
+        {
+
+            "inner": [
+                {
+                    "f": 4.3,
+                    "children": {"first1": {"inner": []}, "first2": {"inner": []}}
+                },
+                {
+                    "f": 4.8,
+                    "children": {"second1": {"inner": [{"f": 5.4, "children": null}]}, "second2": {"inner": []}}
                 }
             ]
         }

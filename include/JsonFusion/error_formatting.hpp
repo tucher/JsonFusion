@@ -73,13 +73,13 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
     error_formatting_detail::trim(before);
     error_formatting_detail::trim(after);
     if(res.error() != ParseError::SCHEMA_VALIDATION_ERROR) {
-        return std::format("When parsing {}, parsing error {}: '...{}😖{}...'", jsonPath, int(res.error()), before, after);
+        return std::format("When parsing {}, parsing error '{}': '...{}😖{}...'", jsonPath, error_to_string(res.error()), before, after);
     } else {
         auto validationResult = res.validationErrors();
         std::size_t index = res.validationErrors().validator_index();
         validators::SchemaError err = res.validationErrors().error();
 
-        std::string valInfo = std::format("validator #{} error: {}", index, int(err));
+
         std::string valDetail = "";
         if(!jp.template visit_options<C> ([&]<class Opts>(Opts){
                 if constexpr (!std::is_same_v<Opts, options::detail::no_options>) {
@@ -87,10 +87,10 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
                     valDetail = " (" + std::string(s) + ")";
                 }
         })) {
-            valDetail = " (details N/A)";
-        }
 
-        return std::format("When parsing {}, {}{}: '...{}😖{}...'", jsonPath, valInfo, valDetail, before, after);
+        }
+        std::string valInfo = std::format("validator #{}{} error: '{}'", index, valDetail, validators::validator_error_to_string(err));
+        return std::format("When parsing {}, {}: '...{}😖{}...'", jsonPath, valInfo, before, after);
     }
 }
 }
