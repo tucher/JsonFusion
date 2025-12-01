@@ -71,6 +71,7 @@ JsonFusion::Serialize(conf, output);
   - [You Own Your Containers](#you-own-your-containers)
   - [Embedded-Friendliness](#embedded-friendliness)
   - [C Interoperability](#c-interoperability)
+  - [Comparison with Glaze and reflect-cpp]()
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)

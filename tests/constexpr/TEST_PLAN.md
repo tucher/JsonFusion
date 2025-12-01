@@ -12,6 +12,23 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - **Incremental validation testing** - Verify early rejection paths work correctly
 - **Comprehensive validator coverage** - Test each validator individually and in combination
 
+## ⚠️ Important Constexpr Limitations
+
+**Floating-Point Types Are NOT Constexpr-Compatible:**
+- Floating-point parsing (`float`, `double`) is **NOT** constexpr-compatible in JsonFusion
+- Floating-point serialization is **NOT** constexpr-compatible
+- Tests marked with ⚠️ **NO FLOATING-POINT** or ⚠️ **RUNTIME ONLY** should use integer types only
+- `range<>` validator works only with integer types in constexpr tests
+- `constant<>` validator works only with bool and integer types (not float/double)
+- `float_decimals<>` and `skip_materializing` options are runtime-only features
+
+**What IS Constexpr-Compatible:**
+- All integer types (`int`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, unsigned variants)
+- `bool`, `char`, `std::array<char, N>` (strings)
+- `std::string`, `std::vector<T>` (C++23)
+- `std::optional<T>`, `std::array<T, N>`
+- All validators and options except those explicitly marked as runtime-only
+
 ---
 
 ## 1. Primitive Types
@@ -240,12 +257,15 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ### 4.1 Primitive Validators
 
-- `test_validation_constant.cpp`
-  - `constant<42>` - bool constants
+- `test_validation_constant.cpp` ⚠️ **INTEGER/BOOL ONLY (no floating-point)**
+  - `constant<true>` - bool constants
+  - `constant<42>` - number constants (int only, **no float/double** - not constexpr-compatible)
+  - `string_constant<"value">` - string constants
   - Rejects non-matching values
-  - With different primitive types
+  - With different primitive types (integers and bools only)
+  - Early rejection for string constants (incremental validation)
 
-### 4.2 Number Range Validation
+### 4.2 Number Range Validation ⚠️ **INTEGER ONLY (no floating-point)**
 
 - `test_validation_range_int.cpp`
   - `Annotated<int, range<0, 100>>` - valid values at boundaries
@@ -253,16 +273,19 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Exactly at min, exactly at max
   - Negative ranges: `range<-100, -10>`
   - Single-value range: `range<42, 42>`
+  - **Note: Floating-point types (float, double) are NOT constexpr-compatible**
 
 - `test_validation_range_signed.cpp`
   - All signed integer types: `int8_t`, `int16_t`, `int32_t`, `int64_t`
   - Type-specific min/max values
   - Overflow detection
+  - **Note: No float/double - not constexpr-compatible**
 
 - `test_validation_range_unsigned.cpp`
   - All unsigned integer types
   - Zero boundaries
   - Max value boundaries
+  - **Note: No float/double - not constexpr-compatible**
 
 ### 4.3 String Validators
 
@@ -411,6 +434,57 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Object with extra JSON fields that aren't in struct
   - Per-object policy vs global
   - Nested objects with different policies
+  - `allow_excess_fields<MaxSkipDepth>` with depth limit
+
+### 5.6 skip_json
+
+- `test_annotated_skip_json.cpp`
+  - `skip_json<MaxSkipDepth>` - Fast-skip JSON value without parsing
+  - Handles nested structures up to `MaxSkipDepth` levels
+  - Performance optimization for unused fields
+  - Depth limit behavior when exceeded
+
+### 5.7 json_sink
+
+- `test_annotated_json_sink.cpp`
+  - `json_sink<MaxSkipDepth, MaxStringLength>` - Capture raw JSON as string
+  - Deferred parsing or pass-through scenarios
+  - String length limit behavior
+  - Depth limit behavior
+  - Integration with `std::string` fields
+
+### 5.8 skip_materializing ⚠️ **NOT FOR CONSTEXPR TESTS**
+
+- `test_annotated_skip_materializing.cpp` ⚠️ **RUNTIME ONLY (floating-point not constexpr-compatible)**
+  - `skip_materializing` - Skip C++-side work (e.g., string->float conversion)
+  - Performance optimization for validation-only scenarios
+  - Does not affect JSON validity checking
+  - Works with floating-point types (float, double)
+  - **Note: Floating-point operations are NOT constexpr-compatible in JsonFusion**
+
+### 5.9 float_decimals ⚠️ **NOT FOR CONSTEXPR TESTS**
+
+- `test_annotated_float_decimals.cpp` ⚠️ **RUNTIME ONLY (floating-point not constexpr-compatible)**
+  - `float_decimals<N>` - Control decimal precision in serialization
+  - Rounding behavior
+  - Different precision values
+  - Integration with serialization
+  - **Note: Floating-point serialization is NOT constexpr-compatible in JsonFusion**
+
+### 5.10 binary_fields_search
+
+- `test_annotated_binary_fields_search.cpp`
+  - `binary_fields_search` - Use binary search for field lookup
+  - Performance optimization for structs with many fields
+  - Comparison with default linear search
+  - Threshold behavior
+
+### 5.11 description (Metadata)
+
+- `test_annotated_description.cpp` (optional - metadata only)
+  - `description<"text">` - Documentation metadata
+  - Schema generation use cases
+  - No runtime behavior, documentation only
 
 ---
 
@@ -734,16 +808,17 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ## 10. JSON Spec Compliance (RFC 8259)
 
-### 10.1 Numbers
+### 10.1 Numbers ⚠️ **INTEGER ONLY FOR CONSTEXPR TESTS**
 
-- `test_json_numbers_format.cpp`
+- `test_json_numbers_format.cpp` ⚠️ **INTEGER PARSING ONLY (no floating-point)**
   - Integer: `123`, `-123`, `0`
-  - Decimal: `123.456`, `-123.456`
-  - Exponent: `1e10`, `1E10`, `1e+10`, `1e-10`
-  - Combined: `1.23e-4`
-  - Leading zeros (should reject): `01`, `00.5`
-  - Trailing decimal (should reject): `1.`
-  - Leading decimal (should reject): `.5`
+  - **Decimal: `123.456`, `-123.456` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - **Exponent: `1e10`, `1E10`, `1e+10`, `1e-10` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - **Combined: `1.23e-4` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - Leading zeros (should reject): `01`, `00.5` (integer part only)
+  - **Trailing decimal (should reject): `1.` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - **Leading decimal (should reject): `.5` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - **Note: Floating-point number parsing is NOT constexpr-compatible in JsonFusion**
 
 ### 10.2 Strings
 
@@ -916,8 +991,9 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 ### P0 - Critical (Mostly Complete ✅)
 - ✅ All primitive types (integers, bool, char arrays)
 - ✅ Basic nested structs
-- ✅ Fixed-size arrays
-- ✅ Optionals
+- ✅ Fixed-size arrays (`std::array<T, N>`)
+- ✅ Optionals (`std::optional<T>`)
+- ✅ Dynamic containers (`std::string`, `std::vector<T>`) - **COMPLETE**
 - ✅ Basic serialization + round-trips
 - ✅ Core validation (range, length, items)
 - ✅ Map support (parse, serialize, validate)
@@ -926,12 +1002,13 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - ⚠️ Key annotations (partial)
 
 ### P1 - High Priority (Partially Complete)
-- ⚠️ Error handling (malformed JSON, type mismatches)
+- ✅ **JSON path tracking** (6 files complete: primitives, arrays, maps, mixed, depth, annotations)
+- ⚠️ Error handling (malformed JSON, type mismatches) - **IN PROGRESS**
+- ⚠️ Validation error result object testing
 - ✅ JSON spec compliance (whitespace, escaping partially done)
 - ⚠️ Advanced annotations (as_array, not_json, not_required)
 - ✅ Streaming consumers/producers (including maps)
 - ⚠️ Field ordering independence
-- 🔲 `std::string` and `std::vector` comprehensive testing
 - 🔲 Round-trip tests for all types
 
 ### P2 - Medium Priority (To Do)
@@ -961,6 +1038,24 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - ✅ `test_parse_integers_overflow.cpp` - Integer overflow detection
 - ✅ `test_parse_strings_escaping.cpp` - String escape sequences
 
+**Composite Types** (8 files - **COMPLETE**):
+- ✅ `test_parse_nested_flat.cpp` - Flat and multi-level nested structs
+- ✅ `test_parse_array_primitives.cpp` - `std::array<T, N>` with primitives
+- ✅ `test_parse_array_nested.cpp` - `std::array` with nested structs and multi-dimensional arrays
+- ✅ `test_parse_optional_primitives.cpp` - `std::optional<T>` with primitives
+- ✅ `test_parse_optional_nested.cpp` - `std::optional` with nested structs and arrays
+- ✅ `test_parse_string.cpp` - `std::string` parsing (various lengths, special chars, nested)
+- ✅ `test_parse_vector_primitives.cpp` - `std::vector<T>` with primitives
+- ✅ `test_parse_vector_nested.cpp` - `std::vector<T>` with nested types (structs, arrays, vectors)
+
+**Error Handling - JSON Path Tracking** (6 files - **COMPLETE**):
+- ✅ `test_error_json_path_primitives.cpp` - Path tracking for primitive field errors
+- ✅ `test_error_json_path_arrays.cpp` - Path tracking for array element errors
+- ✅ `test_error_json_path_maps.cpp` - Path tracking for map value errors
+- ✅ `test_error_json_path_mixed.cpp` - Complex nested path tracking (real-world scenarios)
+- ✅ `test_error_json_path_depth_calculation.cpp` - Compile-time depth calculation and recursive type detection
+- ✅ `test_error_path_annotations.cpp` - Path tracking with `key<>` and `as_array` annotations
+
 **Serialization**:
 - ✅ `test_serialize_int.cpp` - Integer serialization
 - ✅ `test_serialize_bool.cpp` - Boolean serialization
@@ -982,6 +1077,9 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - ✅ **Stateful validators**: Generic state mechanism for complex validation
 - ✅ **Adaptive search**: Binary/linear search selection at compile time
 - ✅ **String enums**: Comprehensive enum validation with early rejection
+- ✅ **Composite types**: Complete coverage of nested structs, arrays, optionals, strings, vectors
+- ✅ **JSON path tracking**: Full compile-time path tracking with depth analysis and recursive type detection
+- ✅ **Error path verification**: Generic test helpers for comprehensive path validation
 
 ### Estimated Total: **180-220 test files**
 
@@ -997,23 +1095,25 @@ This comprehensive coverage would:
 
 ## Next Steps
 
-### Immediate (Complete P0)
-1. **Test `std::string` and `std::vector`** (~8 files)
-   - Basic parsing, nested, edge cases
-   - Serialization and round-trips
-2. **Complete primitive coverage** (~5 files)
+### Immediate (Complete P0/P1)
+1. ✅ **Test `std::string` and `std::vector`** (~8 files) - **COMPLETE**
+   - ✅ Basic parsing, nested, edge cases
+   - 🔲 Serialization and round-trips (still needed)
+2. ✅ **JSON path tracking** (~6 files) - **COMPLETE**
+   - ✅ Primitives, arrays, maps, mixed, depth, annotations
+3. **Error handling tests** (~4-6 files remaining)
+   - 🔲 Malformed JSON detection
+   - 🔲 Type mismatch errors
+   - 🔲 Validation error result object
+4. **Complete primitive coverage** (~5 files)
    - All integer types systematically
    - More edge cases
 
 ### Short Term (P1 Priority)
-3. **Error handling tests** (~10 files)
-   - Malformed JSON detection
-   - Type mismatch errors
-   - Validation error result object
-4. **Round-trip tests** (~8 files)
+5. **Round-trip tests** (~8 files)
    - All types: primitives, structs, arrays, maps
    - With validators, annotations
-5. **JSON spec compliance** (~8 files)
+6. **JSON spec compliance** (~8 files)
    - Number formats, string escaping
    - Whitespace, syntax edge cases
 
@@ -1032,6 +1132,14 @@ This comprehensive coverage would:
 10. **Document learnings** (update main docs with constexpr examples)
 11. **Add test coverage metrics** (track which features are tested)
 
-**Progress**: ~12/200 files complete (~6%)
+**Progress**: ~24/200 files complete (~12%)
+- ✅ Composite types foundation: 8 files (100% complete)
+- ✅ JSON path tracking: 6 files (100% complete)
+- ✅ Primitives: 5 files
+- ✅ Error handling (path tracking): 6 files
+- ✅ Serialization: 2 files
+- ✅ Streaming: 1 file
+- ✅ Validation: 2 files
+
 Each test takes ~5-10 minutes to write and provides permanent, zero-cost verification!
 

@@ -60,7 +60,6 @@ StructEqual(a, b)                      // Deep compare (handles nested/optionals
 ParseAndCompare(obj, json, expected)   // Parse + StructEqual
 ParseAndVerify(obj, json, lambda)      // Parse + custom lambda
 
-SerializeSucceeds(obj, out, end)       // Just check serialization works
 ```
 
 ## How It Works
@@ -169,13 +168,6 @@ See `CHECKLIST.md` for detailed progress tracking.
 - Error handling (all error codes)
 - Edge cases (zero-sized, alignment, limits)
 
-## Why Constexpr Tests?
-
-1. **Zero runtime overhead** - Tests run at compile time only
-2. **Proof of purity** - If it works in constexpr, no hidden allocations/globals
-3. **Fast CI** - Just compile, no test binary execution
-4. **Type-safe** - Compiler catches all errors
-5. **Self-documenting** - Shows exactly what works at compile time
 
 ## Examples
 
@@ -237,7 +229,6 @@ static_assert(TestRoundTrip(R"({"port":8080,"enabled":true})",
 ## Notes
 
 - **C++23 required** - Takes advantage of improved constexpr support
-- **Only fixed-size containers** - `std::array` works, `std::vector` doesn't (dynamic allocation)
 - **Floats tested separately** - Not constexpr-compatible with current implementation
 - **Null-termination guaranteed** - Char arrays are always null-terminated by parser
 
@@ -245,4 +236,3 @@ static_assert(TestRoundTrip(R"({"port":8080,"enabled":true})",
 
 - `TEST_PLAN.md` - Comprehensive test coverage plan
 - `CHECKLIST.md` - Implementation progress
-- `test_error_demo.cpp` - Examples of error testing patterns

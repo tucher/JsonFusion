@@ -433,8 +433,6 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     }
     *outputPos ++ = '{';
 
-    bool is_first = true;
-
 
     bool first = true;
     auto  outputOne = [&outputPos, &end, &ctx, &first,&obj]<std::size_t I>() -> bool {

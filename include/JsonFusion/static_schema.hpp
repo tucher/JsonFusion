@@ -1057,16 +1057,19 @@ consteval std::size_t calc_type_depth() {
                             return calc_type_depth<FeildT, T, SeenTypes...>();
                         }
                     };
-
-                    std::size_t r = [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
-                        return std::max({fieldDepthGetter(std::integral_constant<std::size_t, I>{})...});
-                    }(std::make_index_sequence<introspection::structureElementsCount<T>>{});
-                    if(r == SCHEMA_UNBOUNDED) {
-                        return r;
+                    constexpr std::size_t struct_elements_count = introspection::structureElementsCount<T>;
+                    if constexpr (struct_elements_count == 0) {
+                        return 1;
                     } else {
-                        return 1 +r;
+                        std::size_t r = [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
+                            return std::max({fieldDepthGetter(std::integral_constant<std::size_t, I>{})...});
+                        }(std::make_index_sequence<struct_elements_count>{});
+                        if(r == SCHEMA_UNBOUNDED) {
+                            return r;
+                        } else {
+                            return 1 +r;
+                        }
                     }
-
                 }
             }
         }

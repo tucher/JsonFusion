@@ -60,74 +60,27 @@ constexpr bool ParseFailsAt(T& obj, std::string_view json,
         && actual_pos <= (expected_pos_approx + tolerance);
 }
 
-// ============================================================================
-// Serialize Helpers
-// ============================================================================
-
-/// Check that serialization succeeds
-template<typename T, typename OutIter>
-constexpr bool SerializeSucceeds(const T& obj, OutIter& out, OutIter end) {
-    return JsonFusion::Serialize(obj, out, end);
-}
-
-/// Check that serialization fails
-template<typename T, typename OutIter>
-constexpr bool SerializeFails(const T& obj, OutIter& out, OutIter end) {
-    return !JsonFusion::Serialize(obj, out, end);
-}
 
 // ============================================================================
 // Round-Trip Helpers
 // ============================================================================
 
 /// Parse JSON, serialize back, compare byte-by-byte
-template<typename T, std::size_t BufferSize = 1024>
+template<typename T>
 constexpr bool RoundTripEquals(T& obj, std::string_view original_json) {
     // Parse
     if (!JsonFusion::Parse(obj, original_json)) {
         return false;
     }
     
-    // Serialize
-    std::array<char, BufferSize> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    if (!JsonFusion::Serialize(obj, out, end)) {
+    std::string result;
+    if (!JsonFusion::Serialize(obj, result)) {
         return false;
     }
-    
-    // Compare
-    std::string_view serialized(buf.data(), out - buf.data());
-    return serialized == original_json;
+    return result == original_json;
 }
 
-/// Parse JSON, serialize back, parse again, verify fields unchanged
-template<typename T, std::size_t BufferSize = 1024>
-constexpr bool RoundTripPreservesFields(T& obj1, T& obj2, std::string_view json) {
-    // First parse
-    if (!JsonFusion::Parse(obj1, json)) {
-        return false;
-    }
-    
-    // Serialize
-    std::array<char, BufferSize> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    if (!JsonFusion::Serialize(obj1, out, end)) {
-        return false;
-    }
-    
-    // Second parse
-    std::string_view serialized(buf.data(), out - buf.data());
-    if (!JsonFusion::Parse(obj2, serialized)) {
-        return false;
-    }
-    
-    // Fields must match (caller compares specific fields)
-    return true;
-}
+
 
 // ============================================================================
 // String Comparison Helpers
@@ -195,11 +148,15 @@ constexpr bool ArrayEqual(const std::array<T, N>& arr, const T (&expected)[N]) {
 // ============================================================================
 
 /// Compare two values field-by-field (constexpr-safe)
-/// Handles nested structs, arrays, optionals
+/// Handles nested structs, arrays, optionals, Annotated types
 template<typename T>
 constexpr bool DeepEqual(const T& a, const T& b) {
+    // For Annotated<T> types, unwrap and compare underlying value
+    if constexpr (JsonFusion::options::detail::is_annotated_v<T>) {
+        return DeepEqual(a.get(), b.get());
+    }
     // For primitive types, use operator==
-    if constexpr (std::is_arithmetic_v<T> || std::is_enum_v<T>) {
+    else if constexpr (std::is_arithmetic_v<T> || std::is_enum_v<T>) {
         return a == b;
     }
     // For optionals
@@ -301,26 +258,308 @@ constexpr bool TestParseError(const char* json_str, JsonFusion::ParseError expec
 }
 
 /// One-line serialize test: TestSerialize(obj, expected_json)
-template<typename T, std::size_t BufferSize = 512>
-constexpr bool TestSerialize(const T& obj, const char* expected_json) {
-    std::array<char, BufferSize> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    if (!JsonFusion::Serialize(obj, out, end)) {
+template<typename T>
+constexpr bool TestSerialize(const T& obj, std::string_view expected_json) {
+
+    std::string result;
+    if (!JsonFusion::Serialize(obj, result)) {
         return false;
     }
-    
-    std::string_view result(buf.data(), out - buf.data());
-    std::string_view expected(expected_json);
-    return result == expected;
+
+    return result == expected_json;
 }
 
-/// One-line round-trip test
+/// One-line round-trip test (byte-by-byte JSON comparison)
 template<typename T>
 constexpr bool TestRoundTrip(const char* json_str, const T& expected) {
     T obj{};
     return RoundTripEquals(obj, std::string_view(json_str));
+}
+
+/// Semantic round-trip test: Parse → Serialize → Parse → Compare objects
+/// More robust than byte-by-byte comparison (handles whitespace/formatting differences)
+template<typename T>
+constexpr bool TestRoundTripSemantic(const char* json_str) {
+    // Step 1: Parse original JSON
+    T obj1{};
+    if (!JsonFusion::Parse(obj1, std::string_view(json_str))) {
+        return false;
+    }
+    
+    // Step 2: Serialize to JSON string
+    std::string serialized;
+    if (!JsonFusion::Serialize(obj1, serialized)) {
+        return false;
+    }
+    
+    // Step 3: Parse serialized JSON
+    T obj2{};
+    if (!JsonFusion::Parse(obj2, serialized)) {
+        return false;
+    }
+    
+    // Step 4: Compare objects semantically
+    return DeepEqual(obj1, obj2);
+}
+
+/// Semantic round-trip test with expected value verification
+template<typename T>
+constexpr bool TestRoundTripSemantic(const char* json_str, const T& expected) {
+    // Step 1: Parse original JSON and verify it matches expected
+    T obj1{};
+    if (!JsonFusion::Parse(obj1, std::string_view(json_str))) {
+        return false;
+    }
+    if (!DeepEqual(obj1, expected)) {
+        return false;
+    }
+    
+    // Step 2: Serialize to JSON string
+    std::string serialized;
+    if (!JsonFusion::Serialize(obj1, serialized)) {
+        return false;
+    }
+    
+    // Step 3: Parse serialized JSON
+    T obj2{};
+    if (!JsonFusion::Parse(obj2, serialized)) {
+        return false;
+    }
+    
+    // Step 4: Compare objects semantically
+    return DeepEqual(obj1, obj2);
+}
+
+// ============================================================================
+// JSON Path Helpers (for error tracking tests)
+// ============================================================================
+
+/// Check if path element matches expected field name (for struct fields)
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementHasField(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    std::string_view expected_field) 
+{
+    return elem.field_name == expected_field;
+}
+
+/// Check if path element matches expected array index
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementHasIndex(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    std::size_t expected_index) 
+{
+    return elem.array_index == expected_index;
+}
+
+/// Check if path element is a field (not array index)
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementIsField(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem) 
+{
+    return elem.array_index == std::numeric_limits<std::size_t>::max() 
+        && !elem.field_name.empty();
+}
+
+/// Check if path element is an array index (not field)
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementIsIndex(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem) 
+{
+    return elem.array_index != std::numeric_limits<std::size_t>::max();
+}
+
+/// Compare path element with expected field name OR array index
+/// Usage: PathElementMatches(elem, "field") or PathElementMatches(elem, 3)
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementMatches(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    std::string_view expected_field) 
+{
+    return PathElementHasField(elem, expected_field);
+}
+
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementMatches(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    std::size_t expected_index) 
+{
+    return PathElementHasIndex(elem, expected_index);
+}
+
+/// Test parsing fails with specific error and JSON path depth
+/// Example: TestParseErrorWithPathDepth<Config>(json, ParseError::..., 3)
+template<typename T>
+constexpr bool TestParseErrorWithPathDepth(
+    const char* json_str, 
+    JsonFusion::ParseError expected_error,
+    std::size_t expected_depth) 
+{
+    T obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(json_str));
+    return !result 
+        && result.error() == expected_error
+        && result.errorJsonPath().currentLength == expected_depth;
+}
+
+/// Test parsing fails with specific error and verify path element at given index
+/// Example: TestParseErrorWithPathElement<Config>(json, error, 0, "field")
+template<typename T, typename... PathCheck>
+constexpr bool TestParseErrorWithPathElement(
+    const char* json_str, 
+    JsonFusion::ParseError expected_error,
+    std::size_t element_index,
+    PathCheck... checks) 
+{
+    T obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(json_str));
+    if (result || result.error() != expected_error) {
+        return false;
+    }
+    
+    const auto& path = result.errorJsonPath();
+    if (element_index >= path.currentLength) {
+        return false;
+    }
+    
+    // Check each path component
+    return (... && PathElementMatches(path.storage[element_index], checks));
+}
+
+/// Test parsing fails and verify entire path chain
+/// Usage: TestParseErrorWithPath<T>(json, error, "field1", 3, "field2")
+/// This builds a path like $.field1[3].field2 and verifies it
+template<typename T, typename... PathComponents>
+constexpr bool TestParseErrorWithPath(
+    const char* json_str,
+    JsonFusion::ParseError expected_error,
+    PathComponents... expected_path)
+{
+    T obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(json_str));
+    if (result || result.error() != expected_error) {
+        return false;
+    }
+    
+    const auto& path = result.errorJsonPath();
+    constexpr std::size_t expected_length = sizeof...(PathComponents);
+    
+    if (path.currentLength != expected_length) {
+        return false;
+    }
+    
+    // Verify each path element matches expected
+    std::size_t index = 0;
+    return (... && [&]() {
+        bool matches = PathElementMatches(path.storage[index], expected_path);
+        ++index;
+        return matches;
+    }());
+}
+
+
+
+// ============================================================================
+// JSON Path Comparison (Generic, Type-Driven)
+// ============================================================================
+
+/// Compare two PathElement objects for equality
+template<std::size_t InlineKeyCapacity>
+constexpr bool PathElementsEqual(
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& a,
+    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& b)
+{
+    // Check array index
+    if (a.array_index != b.array_index) {
+        return false;
+    }
+    
+    // Check field name
+    if (a.field_name.size() != b.field_name.size()) {
+        return false;
+    }
+    
+    for (std::size_t i = 0; i < a.field_name.size(); ++i) {
+        if (a.field_name[i] != b.field_name[i]) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/// Compare two JsonPath objects for equality
+template<std::size_t SchemaDepth, bool SchemaHasMaps>
+constexpr bool JsonPathsEqual(
+    const JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>& actual,
+    const JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>& expected)
+{
+    // 1. Check lengths are the same
+    if (actual.currentLength != expected.currentLength) {
+        return false;
+    }
+    
+    // 2. Check each segment pair is equal
+    for (std::size_t i = 0; i < actual.currentLength; ++i) {
+        if (!PathElementsEqual(actual.storage[i], expected.storage[i])) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/// Test parsing fails with specific error and expected JSON path
+/// Uses type-driven JsonPath construction for compile-time verification
+/// Example: TestParseErrorWithJsonPath<Config>(json, ParseError::..., "field", 3, "nested")
+template<typename T, typename... PathComponents>
+constexpr bool TestParseErrorWithJsonPath(
+    const char* json_str,
+    JsonFusion::ParseError expected_error,
+    PathComponents... expected_path_components)
+{
+    T obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(json_str));
+    
+    if (result || result.error() != expected_error) {
+        return false;
+    }
+    
+    // Calculate SchemaDepth and SchemaHasMaps for T (same as parser does)
+    constexpr std::size_t SchemaDepth = JsonFusion::schema_analyzis::calc_type_depth<T>();
+    constexpr bool SchemaHasMaps = JsonFusion::schema_analyzis::has_maps<T>();
+    
+    // Construct expected path directly from components
+    using PathT = JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
+    PathT expected_path(expected_path_components...);
+    
+    // Compare paths
+    return JsonPathsEqual(result.errorJsonPath(), expected_path);
+}
+
+/// Test validation error with expected JSON path
+template<typename T, typename... PathComponents>
+constexpr bool TestValidationErrorWithJsonPath(
+    const char* json_str,
+    PathComponents... expected_path_components)
+{
+    T obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(json_str));
+    
+    if (result || static_cast<bool>(result.validationErrors())) {
+        return false;
+    }
+    
+    // Calculate SchemaDepth and SchemaHasMaps for T
+    constexpr std::size_t SchemaDepth = JsonFusion::schema_analyzis::calc_type_depth<T>();
+    constexpr bool SchemaHasMaps = JsonFusion::schema_analyzis::has_maps<T>();
+    
+    // Construct expected path
+    using PathT = JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
+    PathT expected_path(expected_path_components...);
+    
+    // Compare paths
+    return JsonPathsEqual(result.errorJsonPath(), expected_path);
 }
 
 } // namespace TestHelpers
