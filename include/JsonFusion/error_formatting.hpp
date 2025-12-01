@@ -52,11 +52,10 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
     std::string jsonPath = "$";
     const auto & jp = res.errorJsonPath();
     for(int i = 0; i < jp.currentLength; i ++) {
-        jsonPath += ".";
         if(jp.storage[i].array_index == std::numeric_limits<std::size_t>::max()) {
-            jsonPath += jp.storage[i].field_name;
+            jsonPath += "." + std::string(jp.storage[i].field_name);
         } else {
-            jsonPath += std::to_string(jp.storage[i].array_index);
+            jsonPath += "["+std::to_string(jp.storage[i].array_index)+"]";
         }
     }
 

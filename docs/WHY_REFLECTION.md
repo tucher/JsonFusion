@@ -387,52 +387,33 @@ This is very different from a DOM-based approach, where:
 
 ## Types Propagate: Unexpected Benefits
 
-When you commit to "types as schema," the benefits ripple into places you didn't initially anticipate. A concrete example: error reporting.
+When you commit to "types as schema," benefits ripple into unexpected places. Error reporting is a concrete example.
 
-### The Error Reporting Discovery
+### Discovery: Types Enable Zero-Overhead Error Paths
 
-When implementing error diagnostics, the obvious question arises: how do we track the current position in the JSON structure to report meaningful error paths like `$.statuses[3].user.name` instead of just "error at byte 45231"?
+How do you report `$.statuses[3].user.name` instead of "error at byte 45231"? Traditional approaches allocate dynamically (`std::vector<PathElement>`), pre-allocate wastefully (128-level fixed buffer), or skip path tracking entirely.
 
-Traditional approaches:
-- **Dynamic allocation**: `std::vector<PathElement>` grows as you descend into nested structures. Simple, but allocates on every parse.
-- **Fixed buffer**: Pre-allocate a large buffer (e.g., 128 levels deep). Wasteful for simple structs, might overflow for deep ones.
-- **No path tracking**: Just report byte offsets. Fast but user-hostile.
-
-**But we have types.** And types already encode the structure.
-
-The realization: we can walk the type structure at **compile time** and calculate the maximum nesting depth. Not the JSON depth (which is data-dependent), but the **schema depth** - how deep can this particular type structure possibly nest?
+**But we have types.** Walk the type structure at compile time to calculate maximum schema depth:
 
 ```cpp
 consteval std::size_t calc_type_depth<Type, SeenTypes...>()
 ```
 
-This function:
-- Walks your struct definitions recursively
-- Counts fields, nested objects, array elements
-- **Detects cycles** in recursive types (by tracking `SeenTypes`)
-- Returns the maximum possible depth
+For a `TwitterData` structure, the compiler determines: "worst case is 8 levels deep" and allocates `std::array<PathElement, 8>` on the stack. **No runtime allocation. No arbitrary limits. The type told us the exact size.** Cyclic recursive types are detected automatically; only then does a macro flag switch to dynamic allocation.
 
-Result: for a `TwitterData` structure with moderate nesting, the compiler determines at compile time: "worst case is 8 levels deep." So we allocate a `std::array<PathElement, 8>` on the stack. No runtime allocation. No arbitrary limits. **The type told us the exact size we need.**
-
-For schemas with cyclic recursive types (like tree structures), the analysis detects the cycle and can switch to dynamic allocation via a macro flag - but only when actually needed.
+Similar analysis detects map-like containers (`schema_analyzis::has_maps<T>()`). If your model has no maps, the path tracking needs no key buffers—buffer size is set to 1 byte. **Pay for what you use, automatically, with no configuration.**
 
 ### The Cascading Benefits
 
-This wasn't planned from the start. It emerged from taking "types as schema" seriously:
+1. **Zero overhead**: Path tracking on success is just counter increments in a stack array
+2. **Constexpr-compatible**: Error paths work in compile-time tests (`static_assert`)
+3. **Type-safe messages**: `$.statuses[3].user.name` maps directly to your struct definitions
+4. **Programmatic navigation**: `visit_by_path()` provides type-safe access to any location—a compile-time-aware analog to `std::variant::visit`, useful for applying defaults or inspecting partial state after errors
+5. **Automatic optimization**: Simple structs get 3-4 level stacks; deep structures get what they need
 
-1. **Zero-overhead error tracking**: Path tracking costs nothing when parsing succeeds (the common case). Just incrementing a counter in a stack-allocated array + assigning array index / string view key name
+None of this required configuration. **The types contained all the information** for sophisticated error reporting with zero runtime overhead.
 
-2. **Constexpr-compatible**: Because the depth calculation is `consteval`, error reporting works in compile-time parsing tests. You can write `static_assert` tests that verify specific error paths.
-
-3. **Type safety in error messages**: The path `$.statuses[3].user.name` corresponds **directly** to your `struct TwitterData { vector<Status> statuses; }` and `struct Status { User user; }`. The semantic meaning comes from the types.
-
-4. **Automatic optimization**: Simple flat structs get tiny error stacks (3-4 levels). Deep recursive structures get what they need. No configuration, no tuning - the types determine the optimal strategy.
-
-None of this required separate schema definition, configuration files, or runtime introspection. **The types contained all the information needed to build sophisticated error reporting with zero runtime overhead.**
-
-This is the deeper promise of "types as intent": when you encode your intent in the type system, the compiler becomes your ally in ways you didn't predict. Features that seem unrelated to parsing (like error reporting infrastructure) naturally derive optimal implementations from the same type information.
-
-The type system isn't just describing your data model. It's a rich source of compile-time knowledge that propagates through the entire system, enabling optimizations and features that would require explicit configuration in less type-driven designs.
+This is the deeper promise: when you encode intent in types, the compiler becomes your ally in ways you didn't predict. Features seemingly unrelated to parsing (error infrastructure, path navigation) naturally derive optimal implementations from the same type information. There are no global knobs because they're simply not needed.
 
 ## Embedded Philosophy: Pay for What You Use
 
