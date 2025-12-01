@@ -109,7 +109,7 @@ how it is usually done in Python, Java, Go, etc..
 input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
 compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
 and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
-- **Escape hatches** for forwarding free-form json into strings
+- **Escape hatches**: Use `json_sink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing). JsonFusion validates JSON correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.
 
 ## Types as Performance Hints
 
@@ -229,7 +229,9 @@ seamless C interop) without forcing users to rewrite code. See the [philosophy](
 ## Declarative Schema and Runtime Validation
 
 Declarative compile-time schema and options, runtime validation in the same parsing single pass.
-Turn your C++ structs into a static schema, decouple variable names from JSON keys, and add parsing rules by annotating fields:
+Turn your C++ structs into a static schema, decouple variable names from JSON keys, and add parsing rules by annotating fields.
+
+**Full reference:** [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md)
 
 ```cpp
 using JsonFusion::A;
@@ -279,6 +281,14 @@ for (const auto & track: tracks) {
 }
 ```
 
+### Supported Options Include
+
+JsonFusion provides validators (runtime constraints) and options (metadata/behavior control):
+
+- **Validators**: `range<>`, `min_length<>`, `max_length<>`, `enum_values<>`, `min_items<>`, `max_items<>`, `constant<>`, and more
+- **Options**: `key<>`, `not_json`, `skip_json<>`, `json_sink<>`, `as_array`, `allow_excess_fields<>`, and more
+
+See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md)
 
 ## Limitations
 
