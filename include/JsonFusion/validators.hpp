@@ -233,6 +233,7 @@ constexpr std::string_view validator_error_to_string(SchemaError e) {
     case SchemaError::map_key_forbidden                : return "map_key_forbidden"; break;
     case SchemaError::map_missing_required_key         : return "map_missing_required_key"; break;
     }
+    return "N/A";
 }
 
 struct ValidationResult {

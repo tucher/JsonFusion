@@ -7,21 +7,16 @@
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/validators.hpp>
-#include <list>
 #include <cassert>
 #include <format>
 #include <iostream>
 #include <map>
-#include <variant>
 #include "JsonFusion/json_path.hpp"
 #include "JsonFusion/error_formatting.hpp"
-auto printErr = [](auto res, std::string_view js_sv) {
-    int pos = res.pos() - js_sv.data();
-    int wnd = 20;
-    std::string before(js_sv.substr(pos+1 >= wnd ? pos+1-wnd:0, pos+1 >= wnd ? wnd:0));
-    std::string after(js_sv.substr(pos+1, wnd));
-    std::cerr << std::format("JsonFusion parse failed: error {} at {}: '...{}😖{}...'", int(res.error()), pos, before, after)<< std::endl;
-};
+
+using JsonFusion::A;
+
+using namespace JsonFusion::validators;
 
 int main() {
     struct Nested {
@@ -31,7 +26,7 @@ int main() {
         bool skip2;
     };
 
-    struct A {
+    struct Model {
         int a = 10;
         bool b;
         std::array<int, 2> c;
@@ -39,7 +34,7 @@ int main() {
         std::optional<int> filled_opt;
 
 
-        JsonFusion::Annotated<Nested, JsonFusion::validators::not_required<"skip1", "skip2">> nested;
+        A<Nested, not_required<"skip1", "skip2">> nested;
         std::vector<int> dynamic_array;
         std::string dynamic_string;
         std::vector<std::vector<int>> vec_of_vec_of_int;
@@ -47,7 +42,7 @@ int main() {
 
     };
     static_assert([]() constexpr {
-        A a;
+        Model a;
         return JsonFusion::Parse(a, std::string(R"JSON(
                 {
                     "a": 10,
@@ -78,7 +73,7 @@ int main() {
     }());
 
     static_assert([]() constexpr {
-        A a{};
+        Model a{};
         a.b = true;
         a.filled_opt=18;
         a.nested->nested_f=-9;
@@ -163,10 +158,10 @@ int main() {
     }());
     static_assert([]() constexpr {
         struct Tst21{
-            JsonFusion::Annotated<bool, JsonFusion::validators::constant<true>> bool_const_t;
-            JsonFusion::Annotated<bool, JsonFusion::validators::constant<false>> bool_const_f;
-            JsonFusion::Annotated<std::array<char, 5>, JsonFusion::validators::string_constant<"fu">> string_c;
-            JsonFusion::Annotated<int, JsonFusion::validators::constant<42>> number_const;
+            A<bool, constant<true>> bool_const_t;
+            A<bool, constant<false>> bool_const_f;
+            A<std::array<char, 5>, string_constant<"fu">> string_c;
+            A<int, constant<42>> number_const;
         } a;
         return JsonFusion::Parse(a, R"JSON(
                     {
@@ -224,9 +219,9 @@ int main() {
     }());
 
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::required_keys<"1", "text">,
-                              JsonFusion::validators::min_properties<2>
+        A<std::map<std::string, int>,
+                              required_keys<"1", "text">,
+                              min_properties<2>
 
                               > t;
         auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -237,9 +232,9 @@ int main() {
         assert(res);
     }
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::required_keys<"1", "text">,
-                              JsonFusion::validators::min_properties<2>
+        A<std::map<std::string, int>,
+                              required_keys<"1", "text">,
+                              min_properties<2>
 
                               > t;
         auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -250,8 +245,8 @@ int main() {
         assert(!res);
     }
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::allowed_keys<"1", "text">
+        A<std::map<std::string, int>,
+                              allowed_keys<"1", "text">
 
                               > t;
         assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -261,8 +256,8 @@ int main() {
             )JSON")));
     }
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::allowed_keys<"1", "text", "fuu">
+        A<std::map<std::string, int>,
+                              allowed_keys<"1", "text", "fuu">
 
                               > t;
         assert(JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -272,8 +267,8 @@ int main() {
             )JSON")));
     }
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::forbidden_keys<"1", "text", "fuu">
+        A<std::map<std::string, int>,
+                              forbidden_keys<"1", "text", "fuu">
 
                               > t;
         assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -283,8 +278,8 @@ int main() {
             )JSON")));
     }
     {
-        JsonFusion::Annotated<std::map<std::string, int>,
-                              JsonFusion::validators::forbidden_keys<"1", "text", "fuu">
+        A<std::map<std::string, int>,
+                              forbidden_keys<"1", "text", "fuu">
 
                               > t;
         assert(JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -294,8 +289,8 @@ int main() {
             )JSON")));
     }
     {
-        JsonFusion::Annotated<bool,
-                              JsonFusion::validators::constant<true>
+        A<bool,
+                              constant<true>
 
                               > t;
         assert(JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -305,8 +300,8 @@ int main() {
             )JSON")));
     }
     {
-        JsonFusion::Annotated<bool,
-                              JsonFusion::validators::constant<false>
+        A<bool,
+                              constant<false>
 
                               > t;
         assert(JsonFusion::Parse(t, std::string_view(R"JSON(
@@ -316,9 +311,6 @@ int main() {
             )JSON")));
     }
     {
-        using namespace JsonFusion;
-        using JsonFusion::A;
-        using namespace validators;
         struct TS{
             A<bool, constant<true>> bool_const_t;
             A<bool, constant<false>> bool_const_f;
@@ -346,7 +338,7 @@ int main() {
             assert(jp.currentLength == 3);
 
 
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+            JsonFusion::json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
                 if constexpr(std::is_same_v<T, double>) {
                     v = 123.456;
                 }
@@ -356,7 +348,7 @@ int main() {
                 std::cout << a.inner[0].f << std::endl;
 
 
-            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+            JsonFusion::json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
                 if constexpr(std::is_same_v<T, double>) {
                     v = 1.4;
                 }
@@ -369,9 +361,7 @@ int main() {
     }
 
     {
-        using namespace JsonFusion;
-        using JsonFusion::A;
-        using namespace validators;
+
         struct TS{
             struct Inner{
                 double f;
@@ -404,9 +394,7 @@ int main() {
 
     }
     {
-        using namespace JsonFusion;
-        using JsonFusion::A;
-        using namespace validators;
+
         struct TS{
             struct Inner{
                 double f;
@@ -439,5 +427,37 @@ int main() {
         }
 
     }
+
+    {
+
+        struct TS{
+            bool val_b;
+            A<std::string, JsonFusion::options::json_sink<>> sink;
+            A<int, constant<42>> number_const;
+            struct Inner{
+                double f;
+            };
+            std::vector<Inner> inner;
+        } a;
+        std::string_view sv{R"JSON(
+                {
+                    "val_b": true,
+                    "sink": [[[[1, 2, 3]]]],
+                    "number_const": 42,
+                    "inner": [{"f": 4.3},{"f": 2.3}]
+        }
+        )JSON"
+        };
+        auto r = JsonFusion::Parse(a, sv);
+        if(!r) {
+            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
+
+        } else {
+            std::cout << "In sink: " << std::string(a.sink) << std::endl;
+            // OUTPUT: In sink: [[[[1,2,3]]]]
+        }
+
+    }
+
 
 }

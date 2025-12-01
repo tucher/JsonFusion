@@ -108,7 +108,8 @@ how it is usually done in Python, Java, Go, etc..
 - **Rich error reporting**: Diagnostics with JSON path tracking (e.g., `$.statuses[3].user.name`),
 input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
 compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
-and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration.
+and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
+- **Escape hatches** for forwarding free-form json into strings
 
 ## Types as Performance Hints
 
@@ -117,8 +118,8 @@ Your type definitions aren't just schema—they're compile-time instructions to 
 Assume you want to count primitives in GeoJSON data, but don't need actual values. With JsonFusion you can model coordinates pair as
 ```cpp
 struct Pt_ {
-    A<float, skip_json> x;
-    A<float, skip_json> y;
+    A<float, skip_json<>> x;
+    A<float, skip_json<>> y;
 };
 using Point = A<Pt_, as_array>;
 ```

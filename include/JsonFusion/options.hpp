@@ -54,20 +54,41 @@ struct float_decimals_tag {};
 struct as_array_tag {};
 struct skip_json_tag {};
 struct skip_materializing_tag{};
+struct json_sink_tag{};
 }
 
 struct not_json {
     using tag = detail::not_json_tag;
+    static constexpr std::string_view to_string() {
+        return "not_json";
+    }
 };
 
 template<std::size_t MaxSkipDepth=64>
 struct skip_json {
     static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::skip_json_tag;
+    static constexpr std::string_view to_string() {
+        return "skip_json";
+    }
 };
+
+
+template<std::size_t MaxSkipDepth=64, std::size_t MaxStringLength=(1<<16)>
+struct json_sink {
+    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
+    using tag = detail::json_sink_tag;
+    static constexpr std::string_view to_string() {
+        return "json_sink";
+    }
+};
+
 
 struct skip_materializing {
     using tag = detail::skip_materializing_tag;
+    static constexpr std::string_view to_string() {
+        return "skip_materializing";
+    }
 };
 
 template<ConstString Desc>
@@ -75,6 +96,9 @@ struct key {
     static_assert(Desc.check(), "[[[ JsonFusion ]]] Jsonkey contains control characters");
     using tag = detail::key_tag;
     static constexpr auto desc = Desc;
+    static constexpr std::string_view to_string() {
+        return "key";
+    }
 };
 
 
@@ -84,6 +108,9 @@ struct description {
     static_assert(Desc.check(), "[[[ JsonFusion ]]] key contains control characters");
     using tag = detail::description_tag;
     static constexpr auto desc = Desc;
+    static constexpr std::string_view to_string() {
+        return "description";
+    }
 };
 
 
@@ -91,20 +118,32 @@ template<std::size_t N>
 struct float_decimals {
     using tag = detail::float_decimals_tag;
     static constexpr std::size_t value = N;
+    static constexpr std::string_view to_string() {
+        return "float_decimals";
+    }
 };
 
 struct as_array {
     using tag = detail::as_array_tag;
+    static constexpr std::string_view to_string() {
+        return "as_array";
+    }
 };
 
 template<std::size_t MaxSkipDepth=64>
 struct allow_excess_fields{
     static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::allow_excess_fields_tag;
+    static constexpr std::string_view to_string() {
+        return "allow_excess_fields";
+    }
 };
 
 struct binary_fields_search{
     using tag = detail::binary_fields_search_tag;
+    static constexpr std::string_view to_string() {
+        return "binary_fields_search";
+    }
 };
 
 namespace detail {

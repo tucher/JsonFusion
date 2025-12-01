@@ -53,7 +53,8 @@ enum class ParseError {
 
     ARRAY_DESTRUCRING_SCHEMA_ERROR,
     DATA_CONSUMER_ERROR,
-    DUPLICATE_KEY_IN_MAP
+    DUPLICATE_KEY_IN_MAP,
+    JSON_SINK_OVERFLOW
 };
 
 constexpr std::string_view error_to_string(ParseError e) {
@@ -78,7 +79,9 @@ constexpr std::string_view error_to_string(ParseError e) {
         case ParseError::ARRAY_DESTRUCRING_SCHEMA_ERROR: return "ARRAY_DESTRUCRING_SCHEMA_ERROR"; break;
         case ParseError::DATA_CONSUMER_ERROR: return "DATA_CONSUMER_ERROR"; break;
         case ParseError::DUPLICATE_KEY_IN_MAP: return "DUPLICATE_KEY_IN_MAP"; break;
+        case ParseError::JSON_SINK_OVERFLOW: return "JSON_SINK_OVERFLOW"; break;
     }
+    return "N/A";
 }
 
 // 1) Iterator you can:
@@ -1077,8 +1080,8 @@ bool matchLiteralTail(It& currentPos, const Sent& end,
 }
 
 
-template <std::size_t MAX_SKIP_NESTING, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
+template <std::size_t MAX_SKIP_NESTING, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX, class OutputSinkContainer = void>
+bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx, OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
     if (!skipWhiteSpace(currentPos, end, ctx)) {
         return false;
     }
@@ -1086,44 +1089,81 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
     }
-
-    auto noopInserter = [](char) -> bool { return true; };
-
-    char c = *currentPos;
-
-    // 1) Simple values we can skip without nesting
-    if (c == '"') {
-        // string
-        return parseString(noopInserter, currentPos, end, ctx);
-    }
-
-    if (c == 't') {
-        // 't' seen; match "rue"
-        ++currentPos;
-        return matchLiteralTail(currentPos, end, "rue", 3,
-                                ParseError::ILLFORMED_BOOL, ctx);
-    }
-    if (c == 'f') {
-        // 'f' seen; match "alse"
-        ++currentPos;
-        return matchLiteralTail(currentPos, end, "alse", 4,
-                                ParseError::ILLFORMED_BOOL, ctx);
-    }
-    if (c == 'n') {
-        // 'n' seen; match "ull"
-        ++currentPos;
-        return matchLiteralTail(currentPos, end, "ull", 3,
-                                ParseError::ILLFORMED_NULL, ctx);
-    }
-
-    // number-like: skip until a plain end (whitespace, ',', ']', '}', etc.)
-    auto skipNumberLike = [&]() {
-        while (currentPos != end && !isPlainEnd(*currentPos)) {
+    std::size_t inserted = 0;
+    auto sinkInserter = [&inserted, &outputContainer, &ctx, &currentPos, &MaxStringLength](char c) -> bool {
+        if constexpr (std::is_same_v<OutputSinkContainer, void>) {
+            return true;
+        } else {
+            if constexpr (!DynamicContainerTypeConcept<OutputSinkContainer>) {
+                if (inserted < outputContainer->size()-1) {
+                    (*outputContainer)[inserted] = c;
+                } else {
+                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    return false;
+                }
+            }  else {
+                outputContainer->push_back(c);
+            }
+            inserted++;
+            if(inserted >= MaxStringLength) {
+                ctx.setError(ParseError::JSON_SINK_OVERFLOW, currentPos);
+                return false;
+            }
+            return true;
+        }
+    };
+    // Helper: skip a JSON literal (true/false/null), mirroring chars to sink.
+    auto skipLiteral = [&] (const char* lit,
+                           std::size_t len,
+                           ParseError err) -> bool
+    {
+        for (std::size_t i = 0; i < len; ++i) {
+            if (currentPos == end || *currentPos != lit[i]) {
+                ctx.setError(err, currentPos);
+                return false;
+            }
+            if (!sinkInserter(*currentPos)) {
+                return false;
+            }
             ++currentPos;
         }
         return true;
     };
 
+    // Helper: skip a number-like token, mirroring chars to sink.
+    auto skipNumberLike = [&]() -> bool {
+        while (currentPos != end && !isPlainEnd(*currentPos)) {
+            if (!sinkInserter(*currentPos)) {
+                return false;
+            }
+            ++currentPos;
+        }
+        return true;
+    };
+
+    char c = *currentPos;
+
+    // 1) Simple values we can skip without nesting
+
+    if (c == '"') {
+        // string: let parseString drive the iterator, but use sinkInserter
+        return parseString(sinkInserter, currentPos, end, ctx);
+    }
+
+    if (c == 't') {
+        // true
+        return skipLiteral("true", 4, ParseError::ILLFORMED_BOOL);
+    }
+    if (c == 'f') {
+        // false
+        return skipLiteral("false", 5, ParseError::ILLFORMED_BOOL);
+    }
+    if (c == 'n') {
+        // null
+        return skipLiteral("null", 4, ParseError::ILLFORMED_NULL);
+    }
+
+    // number-like: skip until a plain end (whitespace, ',', ']', '}', etc.)
     if (c != '{' && c != '[') {
         // neither object nor array → treat as number-like token
         return skipNumberLike();
@@ -1136,7 +1176,7 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
     int  depth = 0;
 
     auto push_close = [&](char open) -> bool {
-        if (depth >= MAX_SKIP_NESTING) {
+        if (depth >= static_cast<int>(MAX_SKIP_NESTING)) {
             ctx.setError(ParseError::SKIPPING_STACK_OVERFLOW, currentPos);
             return false;
         }
@@ -1161,12 +1201,16 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
     if (!push_close(c)) {
         return false;
     }
+    // mirror the opening delimiter
+    if (!sinkInserter(c)) {
+        return false;
+    }
     ++currentPos; // skip first '{' or '['
 
     while (currentPos != end && depth > 0) {
         char ch = *currentPos;
 
-        // Skip whitespace cheaply
+        // Skip whitespace cheaply; you can decide whether to mirror it or not.
         if (isSpace(ch)) {
             ++currentPos;
             continue;
@@ -1174,7 +1218,8 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
 
         switch (ch) {
         case '"': {
-            if (!parseString(noopInserter, currentPos, end, ctx)) {
+            // mirrors the entire string via sinkInserter
+            if (!parseString(sinkInserter, currentPos, end, ctx)) {
                 return false;
             }
             break;
@@ -1182,6 +1227,9 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
         case '{':
         case '[': {
             if (!push_close(ch)) {
+                return false;
+            }
+            if (!sinkInserter(ch)) {
                 return false;
             }
             ++currentPos;
@@ -1192,29 +1240,26 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
             if (!pop_close(ch)) {
                 return false;
             }
+            if (!sinkInserter(ch)) {
+                return false;
+            }
             ++currentPos;
             break;
         }
         case 't': {
-            ++currentPos;
-            if (!matchLiteralTail(currentPos, end, "rue", 3,
-                                  ParseError::ILLFORMED_BOOL, ctx)) {
+            if (!skipLiteral("true", 4, ParseError::ILLFORMED_BOOL)) {
                 return false;
             }
             break;
         }
         case 'f': {
-            ++currentPos;
-            if (!matchLiteralTail(currentPos, end, "alse", 4,
-                                  ParseError::ILLFORMED_BOOL, ctx)) {
+            if (!skipLiteral("false", 5, ParseError::ILLFORMED_BOOL)) {
                 return false;
             }
             break;
         }
         case 'n': {
-            ++currentPos;
-            if (!matchLiteralTail(currentPos, end, "ull", 3,
-                                  ParseError::ILLFORMED_NULL, ctx)) {
+            if (!skipLiteral("null", 4, ParseError::ILLFORMED_NULL)) {
                 return false;
             }
             break;
@@ -1226,7 +1271,11 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
                     return false;
                 }
             } else {
-                ++currentPos; // colon, comma, etc. – don't affect nesting
+                // punctuation: mirror and advance
+                if (!sinkInserter(ch)) {
+                    return false;
+                }
+                ++currentPos;
             }
             break;
         }
@@ -1236,6 +1285,15 @@ bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, Sche
     if (depth != 0) {
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
+    }
+
+    // null-terminate fixed-size buffers if we used one
+    if constexpr (!std::is_same_v<OutputSinkContainer, void>) {
+        if constexpr (!DynamicContainerTypeConcept<OutputSinkContainer>) {
+            if (outputContainer && inserted < outputContainer->size()) {
+                (*outputContainer)[inserted] = '\0';
+            }
+        }
     }
 
     return true;
@@ -1599,7 +1657,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 }
 
 
-/* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */ //TODO may be better to implement with additional helper, to precalculate holes somehow?
+/* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */
 template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonObject<ObjT>
              &&
@@ -1743,6 +1801,10 @@ constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, Deser
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
         using Opt = FieldMeta::options::template get_option<options::detail::skip_json_tag>;
         return SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx);
+    } else if constexpr(FieldMeta::options::template has_option<options::detail::json_sink_tag>) {
+        using Opt = FieldMeta::options::template get_option<options::detail::json_sink_tag>;
+        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");
+        return SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx, std::addressof(static_schema::getRef(field)), Opt::MaxStringLength);
     } else {
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
