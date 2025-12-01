@@ -396,6 +396,23 @@ But next
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
+**6. Structured data performance: twitter.json (0.6 MB, 100 status objects)**
+
+The twitter.json benchmark tests realistic structured data with deeply nested objects, optional fields, and mixed types—representative of real-world REST API responses and configurations.
+
+**Results (same hardware):**
+- **RapidJSON DOM Parse only**: 780 µs (baseline, but unusable—no typed data)
+- **JsonFusion Parse + Populate**: 1060 µs (**35% overhead over DOM-only**, fully typed)
+- **RapidJSON Parse + Manual Populate**: 1470 µs (40% slower than JsonFusion)
+
+**Key insight**: JsonFusion is **~38% faster** than the "traditional" approach (RapidJSON DOM + manual mapping), while requiring **zero boilerplate**.
+
+The manual RapidJSON populate code ([`rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp)) is **450+ lines** of hand-written DOM traversal and type mapping—exactly the kind of tedious, error-prone code JsonFusion eliminates. 
+
+📁 **Twitter.json benchmark**: [`benchmarks/twitter_json_parsing.cpp`](benchmarks/twitter_json_parsing.cpp)  
+📁 **Data model**: [`benchmarks/twitter_model.hpp`](benchmarks/twitter_model.hpp)
+📁 **Manual populate code**: [`benchmarks/rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp) 
+
 ## Advanced Features
 
 ### Constexpr Parsing & Serialization
