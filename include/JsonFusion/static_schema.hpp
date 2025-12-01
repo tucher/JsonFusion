@@ -8,6 +8,8 @@
 
 
 #include "options.hpp"
+#include "struct_introspection.hpp"
+
 namespace JsonFusion {
 
 enum class stream_read_result : std::uint8_t {
@@ -1006,6 +1008,119 @@ struct always_false : std::false_type {};
 }
 
 } //static_schema
+namespace schema_analyzis {
+using namespace static_schema;
+constexpr std::size_t SCHEMA_UNBOUNDED = std::numeric_limits<std::size_t>::max();
 
+template <JsonParsableValue Type, class ... SeenTypes>
+consteval std::size_t calc_type_depth() {
+    using T = AnnotatedValue<Type>;
+
+    if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
+        return SCHEMA_UNBOUNDED;
+    } else {
+        if constexpr (JsonNullableParsableValue<T>) {
+            if constexpr (is_specialization_of<T, std::optional>::value) {
+                return calc_type_depth<typename T::value_type, SeenTypes...>();
+            } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
+                return calc_type_depth<typename T::element_type, SeenTypes...>();
+            } else {
+                static_assert(false, "Bad nullable storage");
+                return SCHEMA_UNBOUNDED;
+            }
+        } else {
+            if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                return 1;
+            } else { //containers
+                if constexpr(ArrayWritable<T>) {
+                    using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
+                    if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
+                        return SCHEMA_UNBOUNDED;
+                    } else
+                        return 1 + r;
+                } else if constexpr(MapWritable<T>) {
+                    using ElemT = AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>;
+                    if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
+                        return SCHEMA_UNBOUNDED;
+                    } else
+                        return 1 + r;
+                } else { // objects
+
+                    auto fieldDepthGetter = [](auto ic) -> std::size_t {
+                        constexpr std::size_t StructIndex = decltype(ic)::value;
+                        using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
+                        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+                        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                            return 0;
+                        } else {
+                            using FeildT = AnnotatedValue<Field>;
+                            return calc_type_depth<FeildT, T, SeenTypes...>();
+                        }
+                    };
+
+                    std::size_t r = [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
+                        return std::max({fieldDepthGetter(std::integral_constant<std::size_t, I>{})...});
+                    }(std::make_index_sequence<introspection::structureElementsCount<T>>{});
+                    if(r == SCHEMA_UNBOUNDED) {
+                        return r;
+                    } else {
+                        return 1 +r;
+                    }
+
+                }
+            }
+        }
+    }
+
+}
+
+template <JsonParsableValue Type, class ... SeenTypes>
+consteval std::size_t has_maps() {
+    using T = AnnotatedValue<Type>;
+    if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
+        return false;
+    } else {
+        if constexpr (JsonNullableParsableValue<T>) {
+            if constexpr (is_specialization_of<T, std::optional>::value) {
+                return has_maps<typename T::value_type, SeenTypes...>();
+            } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
+                return has_maps<typename T::element_type, SeenTypes...>();
+            } else {
+                static_assert(false, "Bad nullable storage");
+                return SCHEMA_UNBOUNDED;
+            }
+        } else {
+            if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                return false;
+            } else { //containers
+                if constexpr(ArrayWritable<T>) {
+                    using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
+                    return has_maps<ElemT, SeenTypes...>();
+                } else if constexpr(MapWritable<T>) {
+                    return true;
+                } else { // objects
+                    auto mapFinder = [](auto ic) -> std::size_t {
+                        constexpr std::size_t StructIndex = decltype(ic)::value;
+                        using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
+                        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+                        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                            return false;
+                        } else {
+                            using FeildT = AnnotatedValue<Field>;
+                            return has_maps<FeildT, T, SeenTypes...>();
+                        }
+                    };
+
+                    return [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
+                        return (mapFinder(std::integral_constant<std::size_t, I>{}) || ...);
+                    }(std::make_index_sequence<introspection::structureElementsCount<T>>{});
+                }
+            }
+        }
+    }
+}
+
+
+}
 } // namespace JsonFusion
 

@@ -68,8 +68,8 @@ struct Point {
 };
 
 struct PointSkippedXY {
-    A<float, skip_json> x;
-    A<float, skip_json> y;
+    A<float, skip_json<>> x;
+    A<float, skip_json<>> y;
 };
 
 struct PointUnmaterializedXY {

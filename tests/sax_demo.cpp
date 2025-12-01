@@ -316,8 +316,8 @@ void geojson_reader(int argc, char ** argv) {
                     struct RingConsumer {
 
                         struct Point {
-                            A<float, skip_json> x;
-                            A<float, skip_json> y;
+                            A<float, skip_json<>> x;
+                            A<float, skip_json<>> y;
                         };
 
                         using PointsAsArray = Annotated<Point, as_array>;

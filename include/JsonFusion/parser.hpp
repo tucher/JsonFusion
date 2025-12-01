@@ -23,7 +23,7 @@
 namespace JsonFusion {
 
 constexpr bool allowed_dynamic_error_stack() {
-#ifdef JSON_FUSION_ALLOW_DYNAMIC_ERROR_STACK
+#ifdef JSONFUSION_ALLOW_DYNAMIC_ERROR_STACK
     return true;
 #else
     return false;
@@ -73,20 +73,17 @@ concept CharSentinelFor =
     std::sentinel_for<Sent, It>;
 
 
-template <CharInputIterator InpIter, std::size_t MaxSchemaDepth>
+template <CharInputIterator InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
 class ParseResult {
     ParseError m_error = ParseError::NO_ERROR;
     InpIter m_begin, m_pos;
     validators::ValidationResult validationResult;
 
-    using PathT = std::conditional_t<MaxSchemaDepth != json_path::SCHEMA_UNBOUNDED,
-                                     json_path::JsonStaticPath<MaxSchemaDepth>,
-                                     json_path::JsonDynamicPath
-                                     >;
-    PathT currentPath;
+
+    json_path::JsonPath<SchemaDepth, SchemaHasMaps> currentPath;
 
 public:
-    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter begin, InpIter pos, PathT jsonP):
+    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter begin, InpIter pos, json_path::JsonPath<SchemaDepth, SchemaHasMaps> jsonP):
         m_error(err), m_begin(begin), m_pos(pos), validationResult(schemaErrors), currentPath(jsonP)
     {}
     constexpr operator bool() const {
@@ -108,8 +105,11 @@ public:
         }
         return m_error;
     }
-    constexpr PathT errorJsonPath() const {
+    constexpr const json_path::JsonPath<SchemaDepth, SchemaHasMaps> & errorJsonPath() const {
         return currentPath;
+    }
+    constexpr validators::ValidationResult validationErrors() const {
+        return validationResult;
     }
 };
 
@@ -117,7 +117,7 @@ public:
 namespace  parser_details {
 
 
-template <CharInputIterator InpIter, std::size_t MaxSchemaDepth, class UserCtx = void>
+template <CharInputIterator InpIter, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCtx = void>
 class DeserializationContext {
 
     ParseError error = ParseError::NO_ERROR;
@@ -126,18 +126,15 @@ class DeserializationContext {
     validators::detail::ValidationCtx _validationCtx;
     UserCtx * m_user_Ctx = nullptr;
 
-    static_assert(MaxSchemaDepth != json_path::SCHEMA_UNBOUNDED || allowed_dynamic_error_stack(),
+    static_assert(SchemaDepth != schema_analyzis::SCHEMA_UNBOUNDED || allowed_dynamic_error_stack(),
                   "JsonFusion: schema appears recursive / unbounded depth, "
                   "but dynamic error stack is not allowed. "
-                  "Either refactor the schema or enable dynamic error stack support via JSON_FUSION_ALLOW_DYNAMIC_ERROR_STACK macro.");
+                  "Either refactor the schema or enable dynamic error stack support via JSONFUSION_ALLOW_DYNAMIC_ERROR_STACK macro.");
 
 
-    using PathT = std::conditional_t<MaxSchemaDepth != json_path::SCHEMA_UNBOUNDED,
-                                        json_path::JsonStaticPath<MaxSchemaDepth>,
-                                     json_path::JsonDynamicPath
-                                     >;
+    using PathT = json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
     PathT currentPath;
-
+    using PathElementT = PathT::PathElementT;
 
     struct PathGuard {
         DeserializationContext & ctx;
@@ -158,8 +155,8 @@ public:
         m_pos = pos;
     }
 
-    constexpr ParseResult<InpIter, MaxSchemaDepth> result() {
-        return ParseResult<InpIter, MaxSchemaDepth>(error, _validationCtx.result(), m_begin, m_pos, currentPath);
+    constexpr ParseResult<InpIter, SchemaDepth, SchemaHasMaps> result() const {
+        return ParseResult<InpIter, SchemaDepth, SchemaHasMaps>(error, _validationCtx.result(), m_begin, m_pos, currentPath);
     }
     constexpr validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
     constexpr UserCtx * userCtx() { return m_user_Ctx;}
@@ -169,8 +166,8 @@ public:
         currentPath.push_child({index});
         return PathGuard{*this};
     }
-    constexpr PathGuard getMapItemGuard(std::string_view key) {
-        currentPath.push_child({std::numeric_limits<std::size_t>::max(), key});
+    constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
+        currentPath.push_child({std::numeric_limits<std::size_t>::max(), key, is_static});
         return PathGuard{*this};
     }
 };
@@ -200,8 +197,8 @@ constexpr inline bool isPlainEnd(char a) {
     return false;
 }
 
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
-constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> & ctx) {
+template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> & ctx) {
     while (currentPos != end && isSpace(*currentPos)) {
         ++currentPos;
     }
@@ -222,9 +219,9 @@ constexpr bool match_literal(auto& it, const auto& end, const std::string_view &
     return true;
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonBool<ObjT>
-constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     if(currentPos == end) {
         ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
         return false;
@@ -247,10 +244,10 @@ constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, D
 }
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
 constexpr bool read_number_token(It& currentPos,
                        const Sent& end,
-                       DeserializationContext<It, MaxSchemaDepth, UserCTX>& ctx,
+                       DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX>& ctx,
                        char (&buf)[fp_to_str_detail::NumberBufSize],
                        std::size_t& index,
                        bool& seenDot,
@@ -435,9 +432,9 @@ constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept 
 
 // Strategy: custom integer parsing (no deps), delegated float parsing (configurable)
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     char buf[fp_to_str_detail::NumberBufSize];
     std::size_t index = 0;
     bool seenDot = false;
@@ -499,8 +496,8 @@ concept DynamicContainerTypeConcept = requires (T  v) {
     v.clear();
 };
 
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
-constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx, std::uint16_t &out) {
+template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx, std::uint16_t &out) {
     out = 0;
     for (int i = 0; i < 4; ++i) {
         if (currentPos == end) [[unlikely]] {
@@ -525,8 +522,8 @@ constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<
     return true;
 }
 
-template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
-constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx,
+template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx,
                           bool continueOnInserterFailure = false) {
     bool stopInserting = false;
     
@@ -698,9 +695,9 @@ constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end,
 }
 
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonString<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     std::size_t parsedSize = 0;
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -742,9 +739,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     }
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonParsableArray<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     if constexpr (DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
@@ -850,9 +847,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonParsableMap<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     using FH = static_schema::map_write_cursor<ObjT>;
 
     FH cursor = [&]() {
@@ -995,18 +992,18 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
 
 
-        auto guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize));
+        auto guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
 
 
         if(!ParseValue(value, currentPos, end, ctx)) {
             return false;
         }
-        
+
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
             return false;
         }
-        
+
         // Finalize the key-value pair
         stream_write_result finalize_r = cursor.finalize_pair(true);
         if(finalize_r != stream_write_result::value_processed) {
@@ -1039,17 +1036,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-#ifndef JSONFUSION_MAX_SKIP_NESTING
-constexpr int MAX_SKIP_NESTING = 64;
-#else
-constexpr int MAX_SKIP_NESTING = JSONFUSION_MAX_SKIP_NESTING;
-#endif
 
-
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
 bool matchLiteralTail(It& currentPos, const Sent& end,
                       const char* tail, std::size_t len,
-                      ParseError err, DeserializationContext<It, MaxSchemaDepth, UserCTX>& ctx)
+                      ParseError err, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX>& ctx)
 {
     for (std::size_t i = 0; i < len; ++i) {
         if (currentPos == end || *currentPos != tail[i]) {
@@ -1062,8 +1053,8 @@ bool matchLiteralTail(It& currentPos, const Sent& end,
 }
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
-bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+template <std::size_t MAX_SKIP_NESTING, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     if (!skipWhiteSpace(currentPos, end, ctx)) {
         return false;
     }
@@ -1435,9 +1426,9 @@ struct AdaptiveFieldSearch {
 };
 
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonObject<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
     if(*currentPos != '{') {
@@ -1519,7 +1510,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
         if(res == FH::fieldIndexesSortedByFieldName.end()) {
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
-                if(!SkipValue(currentPos, end, ctx)) {
+                using Opt = typename Opts::template get_option<options::detail::allow_excess_fields_tag>;
+
+                if(!SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx)) {
                     return false;
                 }
             } else {
@@ -1583,11 +1576,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
 
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */ //TODO may be better to implement with additional helper, to precalculate holes somehow?
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
+template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     if(*currentPos != '[') {
         ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
         return false;
@@ -1600,6 +1593,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     bool has_trailing_comma = false;
     std::size_t field_offset = 0;
     static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(currentPos == end) [[unlikely]] {
             ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
@@ -1648,6 +1642,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             }
 
             currentPos ++;
+
+            if(!validatorsState.template validate<validators::detail::parsing_events_tags::descrtuctured_object_parsing_finished>(obj, ctx.validationCtx())) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                return false;
+            }
+
             return true;
         }
 
@@ -1712,12 +1712,13 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     return false;
 }
 
-template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t MaxSchemaDepth, class UserCTX>
-constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, MaxSchemaDepth, UserCTX> &ctx) {
+template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
-        return SkipValue(currentPos, end, ctx);
+        using Opt = FieldMeta::options::template get_option<options::detail::skip_json_tag>;
+        return SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx);
     } else {
         if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
             return false;
@@ -1753,9 +1754,10 @@ template <static_schema::JsonParsableValue InputObjectT, CharInputIterator It, C
 constexpr auto Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
     It b = begin;
 
-    constexpr std::size_t SchemaDepth = json_path::calc_type_depth<InputObjectT>();
+    constexpr std::size_t SchemaDepth = schema_analyzis::calc_type_depth<InputObjectT>();
+    constexpr bool SchemaHasMaps = schema_analyzis::has_maps<InputObjectT>();
 
-    parser_details::DeserializationContext<decltype(begin), SchemaDepth, UserCtx> ctx(b, userCtx);
+    parser_details::DeserializationContext<decltype(begin), SchemaDepth, SchemaHasMaps, UserCtx> ctx(b, userCtx);
 
     parser_details::ParseValue(obj, begin, end, ctx);
 

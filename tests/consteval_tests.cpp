@@ -1,3 +1,5 @@
+#define JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS
+
 #include <string_view>
 #include <array>
 #include <optional>
@@ -198,9 +200,9 @@ int main() {
         Inner1.inners[0] [2]
         Inner1.inners[1][0] [3]
          */
-        static_assert(JsonFusion::json_path::calc_type_depth<Root::Inner1::Inner2>() == 2);
-        static_assert(JsonFusion::json_path::calc_type_depth<Root::Inner1>() == 4);
-        static_assert(JsonFusion::json_path::calc_type_depth<Root>() == 6);
+        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root::Inner1::Inner2>() == 2);
+        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root::Inner1>() == 4);
+        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root>() == 6);
         return 1;
     }());
     static_assert([]() constexpr {
@@ -215,8 +217,8 @@ int main() {
             std::vector<Root1> inners;
             std::unique_ptr<Root1> child;
         };
-        static_assert(JsonFusion::json_path::calc_type_depth<Root1>() == JsonFusion::json_path::SCHEMA_UNBOUNDED);
-        static_assert(JsonFusion::json_path::calc_type_depth<Root2>() == JsonFusion::json_path::SCHEMA_UNBOUNDED);
+        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root1>() == JsonFusion::schema_analyzis::SCHEMA_UNBOUNDED);
+        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root2>() == JsonFusion::schema_analyzis::SCHEMA_UNBOUNDED);
         return 1;
     }());
 
@@ -313,11 +315,14 @@ int main() {
             )JSON")));
     }
     {
-        struct A{
-            JsonFusion::Annotated<bool, JsonFusion::validators::constant<true>> bool_const_t;
-            JsonFusion::Annotated<bool, JsonFusion::validators::constant<false>> bool_const_f;
-            JsonFusion::Annotated<std::array<char, 5>, JsonFusion::validators::string_constant<"v">> string_c;
-            JsonFusion::Annotated<int, JsonFusion::validators::constant<42>> number_const;
+        using namespace JsonFusion;
+        using JsonFusion::A;
+        using namespace validators;
+        struct TS{
+            A<bool, constant<true>> bool_const_t;
+            A<bool, constant<false>> bool_const_f;
+            A<std::array<char, 10>, string_constant<"I am str">> string_c;
+            A<int, constant<42>> number_const;
             struct Inner{
                 double f;
             };
@@ -326,8 +331,8 @@ int main() {
         std::string_view sv{R"JSON(
                 {
                     "bool_const_t": true,
-                    "bool_const_f": false,
-                    "string_c": "v",
+                    "bool_const_f": true,
+                    "string_c": "I am str",
                     "number_const": 42,
                     "inner": [{"f": 4.3},{"f": true}]
         }
@@ -335,8 +340,86 @@ int main() {
         };
         auto r = JsonFusion::Parse(a, sv);
         if(!r) {
-            std::cerr << ParseResultToString(r, sv.begin(), sv.end()) << std::endl;
+            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
+            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
+            assert(jp.currentLength == 3);
 
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 123.456;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
+
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 1.4;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
+        }
+
+    }
+
+    {
+        using namespace JsonFusion;
+        using JsonFusion::A;
+        using namespace validators;
+        struct TS{
+            struct Inner{
+                double f;
+                std::map<std::string, bool> bools;
+            };
+            std::vector<Inner> inner;
+        } a;
+
+        static_assert (JsonFusion::schema_analyzis::has_maps<TS>());
+        std::string_view sv{R"JSON(
+        {
+
+            "inner": [
+                {
+                    "f": 4.3,
+                    "bools": {"укп": false, "укпук": false, "укпукп": 34}
+                },
+                {
+                    "bools": {"счмчсм": false, "чсм": false, "кеи": true}
+                }
+            ]
+        }
+        )JSON"
+        };
+        auto r = JsonFusion::Parse(a, sv);
+        if(!r) {
+            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
+            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
+            assert(jp.currentLength == 3);
+
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 123.456;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
+
+
+            json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
+                if constexpr(std::is_same_v<T, double>) {
+                    v = 1.4;
+                }
+            }, jp);
+
+            if(a.inner.size() > 0)
+                std::cout << a.inner[0].f << std::endl;
         }
 
     }

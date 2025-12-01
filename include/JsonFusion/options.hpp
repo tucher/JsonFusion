@@ -60,7 +60,9 @@ struct not_json {
     using tag = detail::not_json_tag;
 };
 
+template<std::size_t MaxSkipDepth=64>
 struct skip_json {
+    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::skip_json_tag;
 };
 
@@ -95,8 +97,9 @@ struct as_array {
     using tag = detail::as_array_tag;
 };
 
-
+template<std::size_t MaxSkipDepth=64>
 struct allow_excess_fields{
+    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::allow_excess_fields_tag;
 };
 
@@ -161,6 +164,7 @@ struct field_options {
 
     template<class Tag>
     using get_option = option_type<Tag>;
+
 };
 
 
