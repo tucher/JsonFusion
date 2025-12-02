@@ -153,6 +153,7 @@ template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX,
     requires static_schema::JsonBool<ObjT>
 constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.read_bool(obj); st == tokenizer::TryParseStatus::error) {
+        ctx.setError(reader.getError(), reader.current());
         return false;
     } else if (st == tokenizer::TryParseStatus::no_match) {
         ctx.setError(ParseError::NON_BOOL_JSON_IN_BOOL_VALUE, reader.current());
@@ -176,6 +177,7 @@ template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX,
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
                 st == tokenizer::TryParseStatus::error) {
+        ctx.setError(reader.getError(), reader.current());
         return false;
     }else if (st == tokenizer::TryParseStatus::no_match) {
         ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, reader.current());
@@ -235,6 +237,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
         return false;
     } else {
+        if(ctx.currentError() == ParseError::NO_ERROR)
+            ctx.setError(reader.getError(), reader.current());
         return false;
     }
 }
@@ -271,6 +275,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
             cursor.finalize(false);
+            ctx.setError(reader.getError(), reader.current());
             return false;
         } else if(st == tokenizer::TryParseStatus::no_match) {
             if(parsed_items_count > 0 && !has_trailing_comma) {
@@ -320,6 +325,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         }
 
         if (!reader.consume_value_separator(has_trailing_comma)) {
+            ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
         }
@@ -359,6 +365,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
         } else if(st == tokenizer::TryParseStatus::no_match) {
@@ -427,7 +434,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         };
         if(tokenizer::TryParseStatus st = reader.read_string(inserter); st != tokenizer::TryParseStatus::ok) {
             cursor.finalize(false);
-            if(st == tokenizer::TryParseStatus::no_match) {
+            if(st == tokenizer::TryParseStatus::error) {
+                if(ctx.currentError() == ParseError::NO_ERROR) {
+                    ctx.setError(reader.getError(), reader.current());
+                }
+            } else  if(st == tokenizer::TryParseStatus::no_match) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
             }
             return false;
@@ -445,6 +456,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         }
 
         if (!reader.consume_kv_separator()) {
+            ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
         }
@@ -495,6 +507,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             return false;
         }
         if (!reader.consume_value_separator(has_trailing_comma)) {
+            ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
         }
@@ -606,6 +619,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         } else if(st == tokenizer::TryParseStatus::no_match) {
             if(!isFirst && !has_trailing_comma) {
@@ -645,6 +659,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         if(tokenizer::TryParseStatus st = reader.read_string(inserter, true); st != tokenizer::TryParseStatus::ok) {
             if(st == tokenizer::TryParseStatus::no_match) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            } else {
+                if(ctx.currentError() == ParseError::NO_ERROR) {
+                    ctx.setError(reader.getError(), reader.current());
+                }
             }
             return false;
         }
@@ -654,6 +672,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         // auto res = dfaRes != -1 ? FH::fieldIndexesSortedByFieldName.begin() + std::size_t(dfaRes): FH::fieldIndexesSortedByFieldName.end();
 
         if (!reader.consume_kv_separator()) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         }
 
@@ -662,6 +681,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 using Opt = typename Opts::template get_option<options::detail::allow_excess_fields_tag>;
 
                 if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
+                    ctx.setError(reader.getError(), reader.current());
                     return false;
                 }
             } else {
@@ -710,6 +730,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         }
         isFirst = false;
         if (!reader.consume_value_separator(has_trailing_comma)) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         }
     }
@@ -738,6 +759,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         } else if(st == tokenizer::TryParseStatus::no_match) {
             if(parsed_items_count > 0 && !has_trailing_comma) {
@@ -834,6 +856,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         }
         parsed_items_count ++;
         if (!reader.consume_value_separator(has_trailing_comma)) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         }
     }
@@ -846,13 +869,24 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
 
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
         using Opt = FieldMeta::options::template get_option<options::detail::skip_json_tag>;
-        return reader.template skip_json_value<Opt::SkipDepthLimit>();
+        if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
+            ctx.setError(reader.getError(), reader.current());
+            return false;
+        } else {
+            return true;
+        }
     } else if constexpr(FieldMeta::options::template has_option<options::detail::json_sink_tag>) {
         using Opt = FieldMeta::options::template get_option<options::detail::json_sink_tag>;
-        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");        
-        return reader.template skip_json_value<Opt::SkipDepthLimit>(std::addressof(static_schema::getRef(field)), Opt::MaxStringLength);
+        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");
+        if(!reader.template skip_json_value<Opt::SkipDepthLimit>(std::addressof(static_schema::getRef(field)), Opt::MaxStringLength)) {
+            ctx.setError(reader.getError(), reader.current());
+            return false;
+        } else {
+            return true;
+        }
     } else {
         if(!reader.skip_whitespaces_till_any())  {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         }
         if(tokenizer::TryParseStatus r = reader.read_null(); r == tokenizer::TryParseStatus::ok) {
@@ -864,6 +898,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
                 return false;
             }
         } else if(r == tokenizer::TryParseStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         } else {
             return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), reader, ctx, userCtx);
@@ -883,8 +918,9 @@ constexpr auto Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * u
     using CtxT = parser_details::DeserializationContext<decltype(begin), SchemaDepth, SchemaHasMaps>;
     CtxT ctx(b);
 
-    tokenizer::JsonIteratorReader<It, Sent, CtxT> reader(begin, end, ctx);
+    tokenizer::JsonIteratorReader<It, Sent> reader(begin, end);
     parser_details::ParseValue(obj, reader, ctx, userCtx);
+
 
     if(ctx.currentError() == ParseError::NO_ERROR) {
         reader.skip_whitespaces_till_the_end();
@@ -898,28 +934,19 @@ template<class InputObjectT, class ContainterT, class UserCtx = void>
 constexpr auto Parse(InputObjectT & obj, const ContainterT & c, UserCtx * userCtx = nullptr) {
     return Parse(obj, c.begin(), c.end(), userCtx);
 }
-// string_view front-end
-template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
-constexpr auto Parse(InputObjectT& obj, std::string_view && sv, UserCtx * userCtx = nullptr) {
-    return Parse(obj, sv.data(), sv.data() + sv.size(), userCtx);
-}
 
 template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
-constexpr auto Parse(InputObjectT& obj, const std::string_view & sv, UserCtx * userCtx = nullptr) {
+constexpr auto Parse(InputObjectT& obj, std::string_view sv, UserCtx * userCtx = nullptr) {
     return Parse(obj, sv.data(), sv.data() + sv.size(), userCtx);
 }
 
 
-// string front-end TODO
-// template<static_schema::JsonParsableValue InputObjectT>
-// constexpr ParseResult<const char*> Parse(InputObjectT& obj, const std::string & sv) {
-//     return Parse(obj, sv.data(), sv.size());
+// // string front-end TODO
+// template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
+// constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
+//     return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
 // }
 
-// template<static_schema::JsonParsableValue InputObjectT>
-// constexpr ParseResult<const char*> Parse(InputObjectT& obj, std::string && sv) {
-//     return Parse(obj, sv.data(), sv.size());
-// }
 
 template <class T>
     requires (!static_schema::JsonParsableValue<T>)

@@ -33,20 +33,20 @@ concept DynamicContainerTypeConcept = requires (T  v) {
 };
 }
 
-template<class It, class Sent, class DeserializationContext>
+template<class It, class Sent>
 class JsonIteratorReader {
 public:
     using iterator_type = It;
     using sentinel_type = Sent;
 
-    constexpr JsonIteratorReader(It & first, const Sent & last, DeserializationContext & ctx)
-        : current_(first), end_(last), ctx_(ctx) {}
+    constexpr JsonIteratorReader(It & first, const Sent & last)
+        : current_(first), end_(last), m_error(ParseError::NO_ERROR) {}
 
 
 
     constexpr inline  TryParseStatus read_null() {
         if(atEnd())  {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
         }
 
@@ -55,7 +55,7 @@ public:
         }
         current_ ++;
         if (!match_literal("ull")) {
-            ctx_.setError(ParseError::ILLFORMED_NULL, current_);
+            setError(ParseError::ILLFORMED_NULL, current_);
             return TryParseStatus::error;
         }
         return TryParseStatus::ok;
@@ -63,7 +63,7 @@ public:
 
     constexpr inline  TryParseStatus read_bool(bool & b) {
         if(atEnd())  {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
         }
         switch(*current_) {
@@ -75,7 +75,7 @@ public:
                     return TryParseStatus::ok;
                 }
             }
-            ctx_.setError(ParseError::ILLFORMED_BOOL, current_);
+            setError(ParseError::ILLFORMED_BOOL, current_);
             return TryParseStatus::error;
         }
         case 'f': {
@@ -86,7 +86,7 @@ public:
                     return TryParseStatus::ok;
                 }
             }
-            ctx_.setError(ParseError::ILLFORMED_BOOL, current_);
+            setError(ParseError::ILLFORMED_BOOL, current_);
             return TryParseStatus::error;
         }
         default:
@@ -98,7 +98,7 @@ public:
             ++current_;
         }
         if (current_ != end_) {
-            ctx_.setError(ParseError::EXCESS_CHARACTERS, current_);
+            setError(ParseError::EXCESS_CHARACTERS, current_);
             return false;
         }
         return true;
@@ -108,7 +108,7 @@ public:
             ++current_;
         }
         if (atEnd())   {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
         return true;
@@ -174,7 +174,7 @@ public:
             return false;
         }
         if(*current_ != ':') {
-            ctx_.setError(ParseError::ILLFORMED_OBJECT, current_);
+            setError(ParseError::ILLFORMED_OBJECT, current_);
             return false;
         }
         current_ ++;
@@ -205,7 +205,7 @@ public:
         bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
 
         if (atEnd())   {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
 
@@ -214,7 +214,7 @@ public:
             char c = *current_;
             if (c == '-') {
                 if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                    ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+                    setError(ParseError::ILLFORMED_NUMBER, current_);
                     return false;
                 }
                 buf[index++] = c;
@@ -223,13 +223,13 @@ public:
         }
 
         if (atEnd())   {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
 
         auto push_char = [&](char c) -> bool {
             if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+                setError(ParseError::ILLFORMED_NUMBER, current_);
                 return false;
             }
             buf[index++] = c;
@@ -251,7 +251,7 @@ public:
                     auto peek = current_;
                     ++peek;
                     if (peek != end_ && *peek >= '0' && *peek <= '9') {
-                        ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+                        setError(ParseError::ILLFORMED_NUMBER, current_);
                         return false;
                     }
                 }
@@ -290,7 +290,7 @@ public:
 
             // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
             // Anything else is invalid inside a JSON number
-            ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+            setError(ParseError::ILLFORMED_NUMBER, current_);
             return false;
         }
 
@@ -299,7 +299,7 @@ public:
         // Basic sanity: must have at least one digit before exponent,
         // and if exponent present, at least one digit after it.
         if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
-            ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+            setError(ParseError::ILLFORMED_NUMBER, current_);
             return false;
         }
 
@@ -314,7 +314,7 @@ public:
         bool seenExp = false;
 
         if (!read_number_token(buf, index, seenDot, seenExp)) {
-            // ctx_.setError(ParseError::WRONG_JSON_FOR_NUMBER_STORAGE, current_);
+            // setError(ParseError::WRONG_JSON_FOR_NUMBER_STORAGE, current_);
             return TryParseStatus::error;
         }
         if constexpr(skipMaterializing) {
@@ -328,7 +328,7 @@ public:
 
                 NumberT value{};
                 if(!parse_decimal_integer<NumberT>(buf, value)) {
-                    ctx_.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                    setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
                     return TryParseStatus::error;
                 }
 
@@ -339,13 +339,13 @@ public:
                 if(fp_to_str_detail::parse_number_to_double(buf, x)){
                     if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
                         || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
-                        ctx_.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                        setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
                         return TryParseStatus::error;
                     }
                     storage = static_cast<NumberT>(x);
                     return TryParseStatus::ok;
                 } else {
-                    ctx_.setError(ParseError::ILLFORMED_NUMBER, current_);
+                    setError(ParseError::ILLFORMED_NUMBER, current_);
                     return TryParseStatus::error;
                 }
             } else {
@@ -371,7 +371,7 @@ public:
 
         while(true) {
             if(atEnd())   {
-                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                 return TryParseStatus::error;
             }
             auto c = *current_;
@@ -384,7 +384,7 @@ public:
             case '\\': {
                 current_++;
                 if(atEnd())  {
-                    ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                     return TryParseStatus::error;
                 }
 
@@ -413,20 +413,20 @@ public:
                     if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
                         // High surrogate -> must be followed by \uDC00..DFFF
                         if (atEnd())  {
-                            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                             return TryParseStatus::error;
                         }
                         if (*current_ != '\\') {
-                            ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                            setError(ParseError::ILLFORMED_STRING, current_);
                             return TryParseStatus::error;
                         }
                         ++current_;
                         if (atEnd())  {
-                            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                             return TryParseStatus::error;
                         }
                         if (*current_ != 'u') {
-                            ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                            setError(ParseError::ILLFORMED_STRING, current_);
                             return TryParseStatus::error;
                         }
                         ++current_;
@@ -437,7 +437,7 @@ public:
                         }
                         if (u2 < 0xDC00u || u2 > 0xDFFFu) {
                             // Low surrogate not in valid range
-                            ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                            setError(ParseError::ILLFORMED_STRING, current_);
                             return TryParseStatus::error;
                         }
 
@@ -446,7 +446,7 @@ public:
                                     + (static_cast<std::uint32_t>(u2) - 0xDC00u);
                     } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
                         // Lone low surrogate → invalid
-                        ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                        setError(ParseError::ILLFORMED_STRING, current_);
                         return TryParseStatus::error;
                     } else {
                         // Basic Multilingual Plane code point
@@ -479,7 +479,6 @@ public:
                                 if (continueOnInserterFailure) {
                                     stopInserting = true;
                                 } else {
-                                    // ctx_.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, current_);
                                     return TryParseStatus::error;
                                 }
                             }
@@ -490,7 +489,7 @@ public:
 
                 default:
                     /* Unexpected symbol */
-                    ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                    setError(ParseError::ILLFORMED_STRING, current_);
                     return TryParseStatus::error;
                 }
                 if (out){ // only emit if we actually set a simple escape
@@ -499,7 +498,6 @@ public:
                             if (continueOnInserterFailure) {
                                 stopInserting = true;
                             } else {
-                                // ctx_.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, current_);
                                 return TryParseStatus::error;
                             }
                         }
@@ -513,7 +511,7 @@ public:
             default:
                 // RFC 8259 §7: Control characters (U+0000-U+001F) MUST be escaped
                 if (static_cast<unsigned char>(c) <= 0x1F) {
-                    ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                    setError(ParseError::ILLFORMED_STRING, current_);
                     return TryParseStatus::error;
                 }
                 if (!stopInserting) {
@@ -546,7 +544,7 @@ public:
                     if (inserted < outputContainer->size()-1) {
                         (*outputContainer)[inserted] = c;
                     } else {
-                        ctx_.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, current_);
+                        setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, current_);
                         return false;
                     }
                 }  else {
@@ -554,7 +552,7 @@ public:
                 }
                 inserted++;
                 if(inserted >= MaxStringLength) {
-                    ctx_.setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                    setError(ParseError::JSON_SINK_OVERFLOW, current_);
                     return false;
                 }
                 return true;
@@ -567,12 +565,12 @@ public:
         {
             for (std::size_t i = 0; i < len; ++i) {
                 if (atEnd())  {
-                    ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                     return false;
                 }
 
                 if (*current_ != lit[i]) {
-                    ctx_.setError(err, current_);
+                    setError(err, current_);
                     return false;
                 }
                 if (!sinkInserter(*current_)) {
@@ -634,7 +632,7 @@ public:
 
         auto push_close = [&](char open) -> bool {
             if (depth >= static_cast<int>(MAX_SKIP_NESTING)) {
-                ctx_.setError(ParseError::SKIPPING_STACK_OVERFLOW, current_);
+                setError(ParseError::SKIPPING_STACK_OVERFLOW, current_);
                 return false;
             }
             stack[depth++] = (open == '{') ? '}' : ']';
@@ -643,11 +641,11 @@ public:
 
         auto pop_close = [&](char close) -> bool {
             if (depth == 0)  {
-                ctx_.setError(ParseError::ILLFORMED_OBJECT, current_);
+                setError(ParseError::ILLFORMED_OBJECT, current_);
                 return false;
             }
             if (stack[depth - 1] != close) {
-                ctx_.setError(ParseError::ILLFORMED_OBJECT, current_);
+                setError(ParseError::ILLFORMED_OBJECT, current_);
                 return false;
             }
             --depth;
@@ -738,7 +736,7 @@ public:
         }
 
         if (depth != 0)  {
-            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
 
@@ -753,10 +751,20 @@ public:
 
         return true;
     }
+    constexpr ParseError getError() {
+        return m_error;
+    }
 private:
+    ParseError m_error;
     It & current_;
+    It m_errorPos;
     const Sent & end_;
-    DeserializationContext& ctx_;
+
+    constexpr void setError(ParseError e, It pos) {
+        m_error = e;
+        m_errorPos = pos;
+    }
+
 
 
     constexpr inline bool atEnd() {
@@ -791,7 +799,7 @@ private:
     constexpr inline  bool skip_whitespace() {
         while(isSpace(*current_)) {
             if (atEnd())  {
-                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                 return false;
             }
             ++current_;
@@ -804,7 +812,7 @@ private:
     constexpr inline  bool match_literal(const std::string_view & lit) {
         for (char c : lit) {
             if (atEnd())  {
-                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                 return false;
             }
             if (*current_ != c)  {
@@ -891,7 +899,7 @@ private:
         out = 0;
         for (int i = 0; i < 4; ++i) {
             if (atEnd()) {
-                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                 return false;
             }
             char currChar = *current_;
@@ -903,7 +911,7 @@ private:
             } else if (currChar >= 'a' && currChar <= 'f') {
                 v = static_cast<std::uint8_t>(currChar - 'a' + 10);
             } else  {
-                ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                setError(ParseError::ILLFORMED_STRING, current_);
                 return false;
             }
             out = static_cast<std::uint16_t>((out << 4) | v);
