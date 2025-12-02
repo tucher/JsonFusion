@@ -165,6 +165,14 @@ constexpr bool DeepEqual(const T& a, const T& b) {
         if (!a.has_value()) return true;  // Both are nullopt
         return DeepEqual(a.value(), b.value());
     }
+    // For unique_ptr
+    else if constexpr (requires { a.get(); a.operator bool(); }) {
+        bool a_null = (a.get() == nullptr);
+        bool b_null = (b.get() == nullptr);
+        if (a_null != b_null) return false;
+        if (a_null) return true;  // Both are null
+        return DeepEqual(*a, *b);
+    }
     // For aggregate types (structs), use PFR to compare field-by-field
     else if constexpr (pfr::is_implicitly_reflectable_v<T, T>) {
         constexpr std::size_t fields_count = pfr::tuple_size_v<T>;

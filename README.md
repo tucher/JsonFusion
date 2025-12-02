@@ -55,7 +55,7 @@ JsonFusion::Serialize(conf, output);
 |-----------|-------------------------------------------------------|
 | object    | `struct`,  `map<string, Any>`, *streamers*            |
 | array     | `list<...>`, `vector<...>`, `array<...>`, *streamers* |
-| null      | `optional<...>`                                       |
+| null      | `optional<...>`, `unique_ptr<...>`                    |
 | string    | `string`, `vector<char>`, `array<char, N>`, ...       |
 | number    | `int`*(all kinds)*, `float`, `double`                 |
 | bool      | `bool`                                                |

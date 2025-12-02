@@ -46,13 +46,14 @@ Quick reference for tracking test implementation progress.
 - [x] test_parse_vector_primitives.cpp
 - [x] test_parse_vector_nested.cpp
 
-## json_spec/ (6 files)
-- [ ] test_json_whitespace.cpp
-- [ ] test_json_field_order.cpp
-- [ ] test_json_syntax_valid.cpp
-- [ ] test_json_syntax_invalid.cpp
-- [ ] test_json_numbers_format.cpp
-- [ ] test_json_strings_unicode.cpp
+## json_spec/ (6 files) - 5/6 COMPLETE
+- [x] test_json_whitespace.cpp - Whitespace handling (RFC 8259)
+- [x] test_json_field_order.cpp - Field ordering independence
+- [x] test_json_null.cpp - Null handling (std::optional, std::unique_ptr)
+- [x] test_json_syntax_valid.cpp - Valid JSON syntax (empty keys, deep nesting, large arrays)
+- [x] test_json_syntax_invalid.cpp - Invalid JSON syntax error detection
+- [x] test_json_strings_unicode.cpp - Unicode escapes, surrogate pairs, RFC 8259 compliance
+- [ ] test_json_numbers_format.cpp - ⚠️ **INTEGER PARSING ONLY (no floating-point decimals/exponents)**
 
 ## validation/ (2 files) - Basic coverage complete
 - [x] test_map_validators.cpp - All map validators (45 tests)
@@ -74,13 +75,19 @@ Quick reference for tracking test implementation progress.
 - [ ] test_validation_combined_array.cpp - Multiple array validators
 - [ ] test_validation_combined_map.cpp - Multiple map validators
 
-## annotations/ (6 files)
-- [ ] test_annotated_key.cpp
-- [ ] test_annotated_as_array.cpp
-- [ ] test_annotated_not_json.cpp
-- [ ] test_annotated_not_required.cpp
-- [ ] test_annotated_allow_excess.cpp
-- [ ] test_annotated_combinations.cpp
+## annotations/ (11 files) - NOT STARTED
+- [ ] test_annotated_key.cpp - `key<"json_name">` remapping
+- [ ] test_annotated_as_array.cpp - `as_array` (struct as array)
+- [ ] test_annotated_not_json.cpp - `not_json` (skip field)
+- [ ] test_annotated_not_required.cpp - `not_required<"field1", ...>` (object-level)
+- [ ] test_annotated_allow_excess.cpp - `allow_excess_fields<>`
+- [ ] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
+- [ ] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
+- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)**
+- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)**
+- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization)
+- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional)
+- [ ] test_annotated_combinations.cpp - Multiple options together
 
 ## serialization/ (2 files)
 - [x] test_serialize_int.cpp
@@ -109,14 +116,6 @@ Quick reference for tracking test implementation progress.
 - [ ] test_parse_optional_edge_cases.cpp
 - [ ] test_cpp_zero_sized.cpp
 - [ ] test_cpp_default_values.cpp
-
-## json_spec/ (6 files) - NOT STARTED
-- [ ] test_json_whitespace.cpp
-- [ ] test_json_field_order.cpp
-- [ ] test_json_syntax_valid.cpp
-- [ ] test_json_syntax_invalid.cpp
-- [ ] test_json_numbers_format.cpp - ⚠️ **INTEGER PARSING ONLY (no floating-point decimals/exponents)**
-- [ ] test_json_strings_unicode.cpp
 
 ## validation/ (additional - 5 files) - NOT STARTED
 - [ ] test_validation_range_int.cpp
@@ -175,7 +174,7 @@ Quick reference for tracking test implementation progress.
 
 ---
 
-**Progress: 27 / ~90 tests implemented (~30%)**
+**Progress: 33 / ~90 tests implemented (~36.7%)**
 
 **Complete Coverage Checklist:**
 
@@ -211,6 +210,7 @@ Quick reference for tracking test implementation progress.
 - ✅ composite/ (8/8)
 - ✅ roundtrip/ (3/3)
 - ✅ errors/ JSON path tracking (7/7)
+- ✅ json_spec/ (5/6) - RFC 8259 compliance (Unicode complete, numbers pending)
 
 **In Progress:**
 - serialization/ (2/2 basic, more needed)
