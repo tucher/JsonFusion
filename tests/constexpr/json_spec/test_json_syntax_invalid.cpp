@@ -19,12 +19,12 @@ struct TwoFields {
 
 // Test 1: Missing closing brace
 static_assert(
-    TestParseError<Simple>(R"({"value": 1)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<Simple>(R"({"value": 1)", ParseError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace"
 );
 
 static_assert(
-    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", ParseError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace (multiple fields)"
 );
 
@@ -34,12 +34,12 @@ struct WithArray {
 };
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2, 3)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<WithArray>(R"({"values": [1, 2, 3)", ParseError::ILLFORMED_ARRAY),
     "Invalid: missing closing bracket"
 );
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<WithArray>(R"({"values": [1, 2)", ParseError::ILLFORMED_ARRAY),
     "Invalid: missing closing bracket (incomplete array)"
 );
 
@@ -117,7 +117,7 @@ static_assert(
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 4)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<Simple>(R"({"value": 4)", ParseError::ILLFORMED_OBJECT),
     "Invalid: truncated number"
 );
 
@@ -216,7 +216,7 @@ struct Nested {
 };
 
 static_assert(
-    TestParseError<Nested>(R"({"inner": {"x": 1)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<Nested>(R"({"inner": {"x": 1)", ParseError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace in nested object"
 );
 

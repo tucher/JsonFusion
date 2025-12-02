@@ -22,30 +22,7 @@ enum class TryParseStatus {
 template<class C>
 concept TokenizerLike = true;
 
-constexpr inline bool isSpace(char a) {
-    switch(a) {
-    case 0x20:
-    case 0x0A:
-    case 0x0D:
-    case 0x09:
-        return true;
-    }
-    return false;
-}
 
-constexpr inline bool isPlainEnd(char a) {
-    switch(a) {
-    case ']':
-    case ',':
-    case '}':
-    case 0x20:
-    case 0x0A:
-    case 0x0D:
-    case 0x09:
-        return true;
-    }
-    return false;
-}
 
 namespace detail {
 template <typename T>
@@ -65,30 +42,15 @@ public:
     constexpr JsonIteratorReader(It & first, const Sent & last, DeserializationContext & ctx)
         : current_(first), end_(last), ctx_(ctx) {}
 
-    // Basic whitespace skipping for all callers
-    constexpr bool skip_whitespace() {
-        while (current_ != end_ && isSpace(*current_)) {
-            ++current_;
-        }
-        if (current_ == end_) {
+
+
+    constexpr inline  TryParseStatus read_null() {
+        if(atEnd())  {
             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return false;
+            return TryParseStatus::error;
         }
-        return true;
-    }
 
-    constexpr bool match_literal(const std::string_view & lit) {
-        for (char c : lit) {
-            if (current_ == end_ || *current_ != c) {
-                return false;
-            }
-            ++current_;
-        }
-        return true;
-    }
-
-    constexpr TryParseStatus read_null() {
-        if (current_ == end_ || *current_ != 'n') {
+        if (*current_ != 'n') {
             return TryParseStatus::no_match;
         }
         current_ ++;
@@ -99,26 +61,30 @@ public:
         return TryParseStatus::ok;
     }
 
-    constexpr TryParseStatus read_bool(bool & b) {
-        if(current_ == end_) {
+    constexpr inline  TryParseStatus read_bool(bool & b) {
+        if(atEnd())  {
             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
         }
         switch(*current_) {
         case 't': {
             current_ ++;
-            if (match_literal("rue") && (isPlainEnd(*current_) || current_ == end_)) {
-                b = true;
-                return TryParseStatus::ok;
+            if (match_literal("rue"))  {
+                if(isPlainEnd(*current_) || atEnd()){
+                    b = true;
+                    return TryParseStatus::ok;
+                }
             }
             ctx_.setError(ParseError::ILLFORMED_BOOL, current_);
             return TryParseStatus::error;
         }
         case 'f': {
             current_ ++;
-            if (match_literal("alse") && (isPlainEnd(*current_) || current_ == end_)) {
-                b = false;
-                return TryParseStatus::ok;
+            if (match_literal("alse"))  {
+                if (isPlainEnd(*current_) || atEnd()){
+                    b = false;
+                    return TryParseStatus::ok;
+                }
             }
             ctx_.setError(ParseError::ILLFORMED_BOOL, current_);
             return TryParseStatus::error;
@@ -127,32 +93,47 @@ public:
             return TryParseStatus::no_match;
         }
     }
-    // Array/object structural events
-    constexpr TryParseStatus read_array_begin() {
-        if(*current_ != '[') {
-            return TryParseStatus::no_match;
-
+    constexpr inline  bool skip_whitespaces_till_the_end() {
+        while (current_ != end_ && isSpace(*current_)) {
+            ++current_;
         }
-        current_++;
-        if(!skip_whitespace()) {
-            return TryParseStatus::error;
+        if (current_ != end_) {
+            ctx_.setError(ParseError::EXCESS_CHARACTERS, current_);
+            return false;
         }
-        return TryParseStatus::ok;
+        return true;
     }
-    constexpr TryParseStatus read_object_begin() {
-        if(*current_ != '{') {
-            return TryParseStatus::no_match;
+    constexpr inline  bool skip_whitespaces_till_any() {
+        while (current_ != end_ && isSpace(*current_)) {
+            ++current_;
+        }
+        if (atEnd())   {
+            ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            return false;
+        }
+        return true;
+    }
+
+    // Array/object structural events
+    constexpr inline  bool read_array_begin() {
+        if(*current_ != '[')  {
+            return false;
 
         }
         current_++;
-        if(!skip_whitespace()) {
-            return TryParseStatus::error;
+        return skip_whitespace();
+    }
+    constexpr inline  bool read_object_begin() {
+        if(*current_ != '{')  {
+            return false;
+
         }
-        return TryParseStatus::ok;
+        current_++;
+        return skip_whitespace();
     }
 
     // Try-peek style helpers
-    constexpr TryParseStatus read_array_end() {
+    constexpr inline  TryParseStatus read_array_end() {
         if(!skip_whitespace()) {
             return TryParseStatus::error;
         }
@@ -162,7 +143,7 @@ public:
         }
         return TryParseStatus::no_match;
     }
-    constexpr TryParseStatus read_object_end() {
+    constexpr inline  TryParseStatus read_object_end() {
         if(!skip_whitespace()) {
             return TryParseStatus::error;
         }
@@ -174,12 +155,12 @@ public:
     }
 
     // Comma handling
-    constexpr bool consume_value_separator(bool& had_comma) {
+    constexpr inline  bool consume_value_separator(bool& had_comma) {
         had_comma = false;
-        if(!skip_whitespace()) {
+        if(!skip_whitespace())  {
             return false;
         }
-        if(*current_ == ',') {
+        if(*current_ == ',')  {
             current_ ++;
             had_comma = true;
         }
@@ -188,7 +169,7 @@ public:
         }
         return true;
     }
-    constexpr bool consume_kv_separator() {
+    constexpr inline  bool consume_kv_separator() {
         if(!skip_whitespace()) {
             return false;
         }
@@ -205,11 +186,11 @@ public:
 
     // Value parsing is handled by higher-level ParseValue(T&, Reader&, Ctx&),
     // so reader doesn’t know types; it just supplies char-level ops.
-    constexpr It current() const { return current_; }
-    constexpr Sent end()  const { return end_; }
+    constexpr inline  It current() const { return current_; }
+    constexpr inline  Sent end()  const { return end_; }
 
 
-    constexpr bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
+    constexpr inline  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
                                      std::size_t& index,
                                      bool& seenDot,
                                      bool& seenExp)
@@ -223,7 +204,7 @@ public:
         bool seenDigitAfterExp  = false;
         bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
 
-        if (current_ == end_) {
+        if (atEnd())   {
             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
@@ -241,7 +222,7 @@ public:
             }
         }
 
-        if (current_ == end_) {
+        if (atEnd())   {
             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
@@ -255,7 +236,13 @@ public:
             return true;
         };
 
-        while (current_ != end_ && !isPlainEnd(*current_)) {
+        while (true) {
+            if(atEnd()) {
+                break;
+            }
+            if(isPlainEnd(*current_)){
+                break;
+            }
             char c = *current_;
 
             if (c >= '0' && c <= '9') {
@@ -319,81 +306,8 @@ public:
         return true;
     }
 
-    // -------------------------
-    //  Parse decimal integer
-    // -------------------------
-    // buf: null-terminated ASCII, optional leading '+'/'-' then digits.
-    // Assumes characters are already known to be digits (no extra validation).
-    // Returns false on overflow or invalid '-' for unsigned types.
-    template <class Int>
-    constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
-        static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
-
-        using Limits   = std::numeric_limits<Int>;
-        using Unsigned = std::make_unsigned_t<Int>;
-
-        // const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
-        const char *p = buf;
-        bool negative = false;
-
-        if constexpr (std::is_signed_v<Int>) {
-            if (*p == '+' || *p == '-') {
-                negative = (*p == '-');
-                ++p;
-            }
-        } else {
-            // Unsigned: allow leading '+' but reject '-'
-            if (*p == '+') {
-                ++p;
-            } else if (*p == '-') {
-                return false; // negative value for unsigned -> overflow/error
-            }
-        }
-
-        Unsigned value = 0;
-
-        // Absolute-value limit we must not exceed while parsing
-        Unsigned limit;
-        if constexpr (std::is_signed_v<Int>) {
-            // For negative numbers we allow up to |min()| = max()+1
-            limit = negative ? Unsigned(Limits::max()) + 1u
-                             : Unsigned(Limits::max());
-        } else {
-            limit = std::numeric_limits<Unsigned>::max();
-        }
-
-        for (; *p != 0; ++p) {
-            // We assume *p is '0'..'9'
-            unsigned digit = static_cast<unsigned>(*p - '0');
-
-            // Check overflow: value*10 + digit <= limit
-            if (value > (limit - digit) / 10u) {
-                return false; // overflow
-            }
-            value = value * 10u + static_cast<Unsigned>(digit);
-        }
-
-        if constexpr (std::is_signed_v<Int>) {
-            if (negative) {
-                // Special-case: most-negative value
-                if (value == Unsigned(Limits::max()) + 1u) {
-                    out = Limits::min();
-                } else {
-                    out = static_cast<Int>(-static_cast<Int>(value));
-                }
-            } else {
-                out = static_cast<Int>(value);
-            }
-        } else {
-            out = static_cast<Int>(value);
-        }
-
-        return true;
-    }
-
-
     template<class NumberT, bool skipMaterializing>
-    constexpr TryParseStatus read_number(NumberT & storage) {
+    constexpr inline  TryParseStatus read_number(NumberT & storage) {
         char buf[fp_to_str_detail::NumberBufSize];
         std::size_t index = 0;
         bool seenDot = false;
@@ -422,9 +336,9 @@ public:
                 return TryParseStatus::ok;
             } else if constexpr (std::is_floating_point_v<NumberT>) {
                 double x;
-                if(fp_to_str_detail::parse_number_to_double(buf, x)) {
+                if(fp_to_str_detail::parse_number_to_double(buf, x)){
                     if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
-                        || static_cast<double>(std::numeric_limits<NumberT>::max()) < x) {
+                        || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
                         ctx_.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
                         return TryParseStatus::error;
                     }
@@ -443,43 +357,20 @@ public:
         }
     }
 
-    constexpr bool readHex4(std::uint16_t &out) {
-        out = 0;
-        for (int i = 0; i < 4; ++i) {
-            if (current_ == end_) [[unlikely]] {
-                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                return false;
-            }
-            char currChar = *current_;
-            std::uint8_t v;
-            if (currChar >= '0' && currChar <= '9') {
-                v = static_cast<std::uint8_t>(currChar - '0');
-            } else if (currChar >= 'A' && currChar <= 'F') {
-                v = static_cast<std::uint8_t>(currChar - 'A' + 10);
-            } else if (currChar >= 'a' && currChar <= 'f') {
-                v = static_cast<std::uint8_t>(currChar - 'a' + 10);
-            } else {
-                ctx_.setError(ParseError::ILLFORMED_STRING, current_);
-                return false;
-            }
-            out = static_cast<std::uint16_t>((out << 4) | v);
-            ++current_;
-        }
-        return true;
-    }
+
 
 
     template <class Visitor>
-    constexpr TryParseStatus read_string(Visitor&& inserter, bool continueOnInserterFailure = false) {
+    constexpr inline  TryParseStatus read_string(Visitor&& inserter, bool continueOnInserterFailure = false) {
         bool stopInserting = false;
 
-        if(*current_ != '"'){
+        if(*current_ != '"') {
             return TryParseStatus::no_match;
         }
         current_++;
 
         while(true) {
-            if(current_ == end_) {
+            if(atEnd())   {
                 ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                 return TryParseStatus::error;
             }
@@ -492,7 +383,7 @@ public:
             }
             case '\\': {
                 current_++;
-                if(current_ == end_) [[unlikely]] {
+                if(atEnd())  {
                     ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                     return TryParseStatus::error;
                 }
@@ -521,7 +412,7 @@ public:
                     // Handle surrogate pairs per JSON/UTF-16 rules
                     if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
                         // High surrogate -> must be followed by \uDC00..DFFF
-                        if (current_ == end_) [[unlikely]] {
+                        if (atEnd())  {
                             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                             return TryParseStatus::error;
                         }
@@ -530,7 +421,7 @@ public:
                             return TryParseStatus::error;
                         }
                         ++current_;
-                        if (current_ == end_) [[unlikely]] {
+                        if (atEnd())  {
                             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                             return TryParseStatus::error;
                         }
@@ -602,7 +493,7 @@ public:
                     ctx_.setError(ParseError::ILLFORMED_STRING, current_);
                     return TryParseStatus::error;
                 }
-                if (out) { // only emit if we actually set a simple escape
+                if (out){ // only emit if we actually set a simple escape
                     if (!stopInserting) {
                         if (!inserter(out)) {
                             if (continueOnInserterFailure) {
@@ -642,7 +533,7 @@ public:
 
     template <std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
     constexpr bool skip_json_value(OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
-        if (!skip_whitespace()) {
+        if (!skip_whitespace())  {
             return false;
         }
 
@@ -675,7 +566,12 @@ public:
                                ParseError err) -> bool
         {
             for (std::size_t i = 0; i < len; ++i) {
-                if (current_ == end_ || *current_ != lit[i]) {
+                if (atEnd())  {
+                    ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                    return false;
+                }
+
+                if (*current_ != lit[i]) {
                     ctx_.setError(err, current_);
                     return false;
                 }
@@ -689,7 +585,11 @@ public:
 
         // Helper: skip a number-like token, mirroring chars to sink.
         auto skipNumberLike = [&]() -> bool {
-            while (current_ != end_ && !isPlainEnd(*current_)) {
+            while (!isPlainEnd(*current_)) {
+                if(atEnd())  {
+                    break;
+                }
+
                 if (!sinkInserter(*current_)) {
                     return false;
                 }
@@ -742,7 +642,7 @@ public:
         };
 
         auto pop_close = [&](char close) -> bool {
-            if (depth == 0) {
+            if (depth == 0)  {
                 ctx_.setError(ParseError::ILLFORMED_OBJECT, current_);
                 return false;
             }
@@ -755,7 +655,7 @@ public:
         };
 
         // Initialize with the first '{' or '['
-        if (!push_close(c)) {
+        if (!push_close(c))  {
             return false;
         }
         // mirror the opening delimiter
@@ -786,7 +686,7 @@ public:
                 if (!push_close(ch)) {
                     return false;
                 }
-                if (!sinkInserter(ch)) {
+                if (!sinkInserter(ch))  {
                     return false;
                 }
                 ++current_;
@@ -794,12 +694,10 @@ public:
             }
             case '}':
             case ']': {
-                if (!pop_close(ch)) {
+                if (!pop_close(ch) || !sinkInserter(ch)) {
                     return false;
                 }
-                if (!sinkInserter(ch)) {
-                    return false;
-                }
+
                 ++current_;
                 break;
             }
@@ -810,13 +708,13 @@ public:
                 break;
             }
             case 'f': {
-                if (!skipLiteral("false", 5, ParseError::ILLFORMED_BOOL)) {
+                if (!skipLiteral("false", 5, ParseError::ILLFORMED_BOOL))  {
                     return false;
                 }
                 break;
             }
             case 'n': {
-                if (!skipLiteral("null", 4, ParseError::ILLFORMED_NULL)) {
+                if (!skipLiteral("null", 4, ParseError::ILLFORMED_NULL))  {
                     return false;
                 }
                 break;
@@ -829,7 +727,7 @@ public:
                     }
                 } else {
                     // punctuation: mirror and advance
-                    if (!sinkInserter(ch)) {
+                    if (!sinkInserter(ch))  {
                         return false;
                     }
                     ++current_;
@@ -839,7 +737,7 @@ public:
             }
         }
 
-        if (depth != 0) {
+        if (depth != 0)  {
             ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return false;
         }
@@ -859,6 +757,160 @@ private:
     It & current_;
     const Sent & end_;
     DeserializationContext& ctx_;
+
+
+    constexpr inline bool atEnd() {
+        return current_ == end_;
+    }
+    constexpr inline bool isSpace(char a) {
+        switch(a) {
+        case 0x20:
+        case 0x0A:
+        case 0x0D:
+        case 0x09:
+            return true;
+        }
+        return false;
+    }
+
+    constexpr inline bool isPlainEnd(char a) {
+        switch(a) {
+        case ']':
+        case ',':
+        case '}':
+        case 0x20:
+        case 0x0A:
+        case 0x0D:
+        case 0x09:
+            return true;
+        }
+        return false;
+    }
+
+    // Basic whitespace skipping for all callers
+    constexpr inline  bool skip_whitespace() {
+        while(isSpace(*current_)) {
+            if (atEnd())  {
+                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                return false;
+            }
+            ++current_;
+        }
+
+
+        return true;
+    }
+
+    constexpr inline  bool match_literal(const std::string_view & lit) {
+        for (char c : lit) {
+            if (atEnd())  {
+                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                return false;
+            }
+            if (*current_ != c)  {
+                return false;
+            }
+            ++current_;
+        }
+        return true;
+    }
+
+    // -------------------------
+    //  Parse decimal integer
+    // -------------------------
+    // buf: null-terminated ASCII, optional leading '+'/'-' then digits.
+    // Assumes characters are already known to be digits (no extra validation).
+    // Returns false on overflow or invalid '-' for unsigned types.
+    template <class Int>
+    constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
+        static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
+
+        using Limits   = std::numeric_limits<Int>;
+        using Unsigned = std::make_unsigned_t<Int>;
+
+        // const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
+        const char *p = buf;
+        bool negative = false;
+
+        if constexpr (std::is_signed_v<Int>) {
+            if (*p == '+' || *p == '-') {
+                negative = (*p == '-');
+                ++p;
+            }
+        } else {
+            // Unsigned: allow leading '+' but reject '-'
+            if (*p == '+') {
+                ++p;
+            } else if (*p == '-') {
+                return false; // negative value for unsigned -> overflow/error
+            }
+        }
+
+        Unsigned value = 0;
+
+        // Absolute-value limit we must not exceed while parsing
+        Unsigned limit;
+        if constexpr (std::is_signed_v<Int>) {
+            // For negative numbers we allow up to |min()| = max()+1
+            limit = negative ? Unsigned(Limits::max()) + 1u
+                             : Unsigned(Limits::max());
+        } else {
+            limit = std::numeric_limits<Unsigned>::max();
+        }
+
+        for (; *p != 0; ++p) {
+            // We assume *p is '0'..'9'
+            unsigned digit = static_cast<unsigned>(*p - '0');
+
+            // Check overflow: value*10 + digit <= limit
+            if (value > (limit - digit) / 10u)  {
+                return false; // overflow
+            }
+            value = value * 10u + static_cast<Unsigned>(digit);
+        }
+
+        if constexpr (std::is_signed_v<Int>) {
+            if (negative) {
+                // Special-case: most-negative value
+                if (value == Unsigned(Limits::max()) + 1u) {
+                    out = Limits::min();
+                } else {
+                    out = static_cast<Int>(-static_cast<Int>(value));
+                }
+            } else {
+                out = static_cast<Int>(value);
+            }
+        } else {
+            out = static_cast<Int>(value);
+        }
+
+        return true;
+    }
+
+    constexpr inline  bool readHex4(std::uint16_t &out) {
+        out = 0;
+        for (int i = 0; i < 4; ++i) {
+            if (atEnd()) {
+                ctx_.setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                return false;
+            }
+            char currChar = *current_;
+            std::uint8_t v;
+            if (currChar >= '0' && currChar <= '9') {
+                v = static_cast<std::uint8_t>(currChar - '0');
+            } else if (currChar >= 'A' && currChar <= 'F') {
+                v = static_cast<std::uint8_t>(currChar - 'A' + 10);
+            } else if (currChar >= 'a' && currChar <= 'f') {
+                v = static_cast<std::uint8_t>(currChar - 'a' + 10);
+            } else  {
+                ctx_.setError(ParseError::ILLFORMED_STRING, current_);
+                return false;
+            }
+            out = static_cast<std::uint16_t>((out << 4) | v);
+            ++current_;
+        }
+        return true;
+    }
 };
 }
 

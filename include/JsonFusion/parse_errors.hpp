@@ -13,6 +13,7 @@ enum class ParseError {
     ILLFORMED_OBJECT,
 
     UNEXPECTED_END_OF_DATA,
+    EXCESS_CHARACTERS,
     FIXED_SIZE_CONTAINER_OVERFLOW,
     NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE,
     FLOAT_VALUE_IN_INTEGER_STORAGE,
@@ -45,6 +46,7 @@ constexpr std::string_view error_to_string(ParseError e) {
     case ParseError::ILLFORMED_ARRAY: return "ILLFORMED_ARRAY"; break;
     case ParseError::ILLFORMED_OBJECT: return "ILLFORMED_OBJECT"; break;
     case ParseError::UNEXPECTED_END_OF_DATA: return "UNEXPECTED_END_OF_DATA"; break;
+    case ParseError::EXCESS_CHARACTERS: return "EXCESS_CHARACTERS"; break;
     case ParseError::FIXED_SIZE_CONTAINER_OVERFLOW: return "FIXED_SIZE_CONTAINER_OVERFLOW"; break;
     case ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE: return "NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE"; break;
     case ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE: return "FLOAT_VALUE_IN_INTEGER_STORAGE"; break;

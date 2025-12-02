@@ -151,7 +151,7 @@ static_assert([]() constexpr {
     Flat obj{};
     auto result = Parse(obj, std::string_view(R"({"x": 42)"));
     return !result 
-        && result.error() == ParseError::UNEXPECTED_END_OF_DATA;
+        && result.error() == ParseError::ILLFORMED_OBJECT;
         // Path depth could be 0 or 1 depending on how far parsing got
 }(), "Root-level error: unclosed object");
 

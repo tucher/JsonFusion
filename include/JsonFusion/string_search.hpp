@@ -295,7 +295,7 @@ struct BufferedLinearFieldSearch {
         : begin(begin_), end(end_), buffer{}, length(0), overflown(false) {}
 
     // Simply buffer the character, no searching yet
-    constexpr bool step(char ch) {
+    constexpr inline  bool step(char ch) {
         if (length < MaxLen) {
             buffer[length++] = ch;
             return true;
@@ -344,7 +344,7 @@ struct AdaptiveStringSearch {
     constexpr AdaptiveStringSearch(It begin, It end)
         : impl(begin, end) {}
 
-    constexpr bool step(char ch) {
+    constexpr inline  bool step(char ch) {
         return impl.step(ch);
     }
 

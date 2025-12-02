@@ -304,144 +304,14 @@ namespace test_map_concept {
     };
     
     // Structurally valid but not a JSON map (keys must be strings)
-    static_assert(MapWritable<InvalidKeyMap>);
     static_assert(!JsonParsableMap<InvalidKeyMap>);
+    static_assert(!JsonParsableValue<InvalidKeyMap>);  // Not parsable (invalid key type)
     static_assert(!JsonObject<InvalidKeyMap>);  // Also not an object
     static_assert(!JsonParsableArray<InvalidKeyMap>);  // Also not an array
 }
 
 // ============================================================================
-// SECTION 7: Test Streaming/Custom Containers
-// ============================================================================
-
-namespace test_streaming_containers {
-    // Custom map consumer (from test_map_streaming.cpp)
-    template<typename K, typename V, std::size_t MaxEntries>
-    struct MapConsumer {
-        using key_type = K;
-        using mapped_type = V;
-        
-        std::array<std::pair<K, V>, MaxEntries> entries{};
-        std::size_t count = 0;
-        
-        constexpr void clear() { count = 0; }
-        auto try_emplace(key_type, mapped_type) {
-            return std::make_pair(key_type{}, true);
-        }
-        constexpr stream_write_result finalize(bool) {
-            return  stream_write_result::value_processed;
-        }
-    };
-    
-    using TestMapConsumer = MapConsumer<std::array<char, 32>, int, 10>;
-    
-    // Custom array consumer for comparison
-    template<typename T, std::size_t MaxEntries>
-    struct ArrayConsumer {
-        std::array<T, MaxEntries> entries{};
-        std::size_t count = 0;
-        
-        constexpr T& emplace_back() {
-            return entries[count++];
-        }
-        constexpr void clear() { count = 0; }
-        constexpr stream_write_result finalize(bool) {
-            return  stream_write_result::value_processed;
-        }
-    };
-    
-    using TestArrayConsumer = ArrayConsumer<int, 10>;
-}
-
-// Add cursor specializations in the proper namespace
-namespace JsonFusion::static_schema {
-    // map_write_cursor specialization for MapConsumer
-    template<typename K, typename V, std::size_t N>
-    struct map_write_cursor<test_streaming_containers::MapConsumer<K, V, N>> {
-        using key_type = K;
-        using mapped_type = V;
-        
-        test_streaming_containers::MapConsumer<K, V, N>& m;
-        K current_key{};
-        V current_value{};
-        
-        constexpr stream_write_result allocate_key() {
-            return stream_write_result::slot_allocated;
-        }
-        
-        constexpr key_type& key_ref() {
-            return current_key;
-        }
-        
-        constexpr stream_write_result allocate_value_for_parsed_key() {
-            return stream_write_result::slot_allocated;
-        }
-        
-        constexpr mapped_type& value_ref() {
-            return current_value;
-        }
-        
-        constexpr stream_write_result finalize_pair(bool ok) {
-            return ok ? stream_write_result::value_processed : stream_write_result::error;
-        }
-        
-        constexpr void reset() {
-            m.clear();
-        }
-        constexpr stream_write_result finalize(bool) {
-            return  stream_write_result::value_processed;
-        }
-    };
-    
-    // array_write_cursor specialization for ArrayConsumer
-    template<typename T, std::size_t N>
-    struct array_write_cursor<test_streaming_containers::ArrayConsumer<T, N>> {
-        using element_type = T;
-        
-        test_streaming_containers::ArrayConsumer<T, N>& c;
-        
-        constexpr stream_write_result allocate_slot() {
-            return stream_write_result::slot_allocated;
-        }
-        
-        constexpr element_type& get_slot() {
-            return c.emplace_back();
-        }
-        
-        constexpr stream_write_result finalize(bool) {
-            return stream_write_result::value_processed;
-        }
-        
-        constexpr void reset() {
-            c.clear();
-        }
-    };
-}
-
-namespace test_streaming_containers {
-    // Now test the concepts
-    
-    // CRITICAL: MapConsumer should be detected as a MAP, not an OBJECT
-    static_assert(MapWritable<TestMapConsumer>);
-    static_assert(JsonParsableMap<TestMapConsumer>);
-    static_assert(!JsonObject<TestMapConsumer>);  // THE BUG FIX!
-    static_assert(!JsonParsableArray<TestMapConsumer>);
-    static_assert(!JsonBool<TestMapConsumer>);
-    static_assert(!JsonNumber<TestMapConsumer>);
-    static_assert(!JsonString<TestMapConsumer>);
-    
-    // ArrayConsumer should be detected as ARRAY, not OBJECT or MAP
-    static_assert(ArrayWritable<TestArrayConsumer>);
-    static_assert(JsonParsableArray<TestArrayConsumer>);
-    static_assert(!JsonObject<TestArrayConsumer>);
-    static_assert(!JsonParsableMap<TestArrayConsumer>);
-    static_assert(!JsonBool<TestArrayConsumer>);
-    static_assert(!JsonNumber<TestArrayConsumer>);
-    static_assert(!JsonString<TestArrayConsumer>);
-}
-
-// ============================================================================
-// SECTION 8: Test ConsumingStreamerLike and ProducingStreamerLike
+// SECTION 7: Test ConsumingStreamerLike and ProducingStreamerLike
 // ============================================================================
 
 namespace test_streamer_concepts {
@@ -470,12 +340,10 @@ namespace test_streamer_concepts {
     
     using TestConsumer = SimpleConsumer<int>;
     
-    // CRITICAL: ConsumingStreamerLike should be detected as ARRAY via cursor
+    // CRITICAL: ConsumingStreamerLike should be detected as ARRAY
     static_assert(ConsumingStreamerLike<TestConsumer>);
-    
-    // The library provides array_write_cursor specialization automatically
-    static_assert(ArrayWritable<TestConsumer>);
     static_assert(JsonParsableArray<TestConsumer>);
+    static_assert(JsonParsableValue<TestConsumer>);  // Highest level concept
     
     // ConsumingStreamerLike is NOT other concepts
     static_assert(!JsonObject<TestConsumer>);
@@ -511,12 +379,10 @@ namespace test_streamer_concepts {
     
     using TestProducer = SimpleProducer<int>;
     
-    // CRITICAL: ProducingStreamerLike should be detected as ARRAY via cursor
+    // CRITICAL: ProducingStreamerLike should be detected as ARRAY
     static_assert(ProducingStreamerLike<TestProducer>);
-    
-    // The library provides array_read_cursor specialization automatically
-    static_assert(ArrayReadable<TestProducer>);
     static_assert(JsonSerializableArray<TestProducer>);
+    static_assert(JsonSerializableValue<TestProducer>);  // Highest level concept
     
     // ProducingStreamerLike is NOT other concepts
     static_assert(!JsonObject<TestProducer>);
@@ -541,7 +407,7 @@ namespace test_streamer_concepts {
 }
 
 // ============================================================================
-// SECTION 9: Test ConsumingMapStreamerLike and ProducingMapStreamerLike
+// SECTION 8: Test ConsumingMapStreamerLike and ProducingMapStreamerLike
 // ============================================================================
 
 namespace test_map_streamer_concepts {
@@ -581,12 +447,10 @@ namespace test_map_streamer_concepts {
     
     using TestMapConsumer = SimpleMapConsumer<std::array<char, 32>, int, 10>;
     
-    // CRITICAL: ConsumingMapStreamerLike should be detected as MAP via cursor
+    // CRITICAL: ConsumingMapStreamerLike should be detected as MAP
     static_assert(ConsumingMapStreamerLike<TestMapConsumer>);
-    
-    // The library provides map_write_cursor specialization automatically
-    static_assert(MapWritable<TestMapConsumer>);
     static_assert(JsonParsableMap<TestMapConsumer>);
+    static_assert(JsonParsableValue<TestMapConsumer>);  // Highest level concept
     
     // ConsumingMapStreamerLike is NOT other concepts
     static_assert(!JsonObject<TestMapConsumer>);
@@ -622,12 +486,10 @@ namespace test_map_streamer_concepts {
     
     using TestMapProducer = SimpleMapProducer<std::array<char, 32>, int, 5>;
     
-    // CRITICAL: ProducingMapStreamerLike should be detected as MAP via cursor
+    // CRITICAL: ProducingMapStreamerLike should be detected as MAP
     static_assert(ProducingMapStreamerLike<TestMapProducer>);
-    
-    // The library provides map_read_cursor specialization automatically
-    static_assert(MapReadable<TestMapProducer>);
     static_assert(JsonSerializableMap<TestMapProducer>);
+    static_assert(JsonSerializableValue<TestMapProducer>);  // Highest level concept
     
     // ProducingMapStreamerLike is NOT other concepts
     static_assert(!JsonObject<TestMapProducer>);
@@ -680,7 +542,7 @@ namespace test_map_streamer_concepts {
 }
 
 // ============================================================================
-// SECTION 10: Test Nullable/Optional Types
+// SECTION 9: Test Nullable/Optional Types
 // ============================================================================
 
 namespace test_optional_concept {
@@ -709,7 +571,7 @@ namespace test_optional_concept {
 }
 
 // ============================================================================
-// SECTION 11: Comprehensive Type Classification Matrix
+// SECTION 10: Comprehensive Type Classification Matrix
 // ============================================================================
 
 namespace test_classification_matrix {
@@ -742,7 +604,7 @@ namespace test_classification_matrix {
 }
 
 // ============================================================================
-// SECTION 12: Edge Cases and Corner Cases
+// SECTION 11: Edge Cases and Corner Cases
 // ============================================================================
 
 namespace test_edge_cases {
@@ -769,9 +631,9 @@ namespace test_edge_cases {
         int y;
     };
     // This doesn't have try_emplace/clear, so it's NOT a map
-    static_assert(!MapWritable<FakeMap>);
     static_assert(!JsonParsableMap<FakeMap>);
     static_assert(JsonObject<FakeMap>);  // It's just a regular struct
+    static_assert(JsonParsableValue<FakeMap>);  // Parsable as object (highest level)
     
     // Array of size 1
     using SingletonArray = std::array<int, 1>;
@@ -795,7 +657,7 @@ namespace test_edge_cases {
 }
 
 // ============================================================================
-// SECTION 13: Test Annotated Types
+// SECTION 12: Test Annotated Types
 // ============================================================================
 
 namespace test_annotated_types {

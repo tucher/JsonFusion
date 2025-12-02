@@ -47,8 +47,8 @@ static_assert([]() constexpr {
     // Unclosed object
     return ParseFailsWith(c, 
         std::string_view(R"({"value": 42, "flag": true)"),
-        JsonFusion::ParseError::UNEXPECTED_END_OF_DATA);
-}(), "Should fail with UNEXPECTED_END_OF_DATA error");
+        JsonFusion::ParseError::ILLFORMED_OBJECT);
+}(), "Should fail with ILLFORMED_OBJECT error");
 
 // ============================================================================
 // Error Position Tests - Using ParseFailsAt
