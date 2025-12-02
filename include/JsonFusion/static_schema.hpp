@@ -28,6 +28,14 @@ enum class stream_write_result : std::uint8_t {
 namespace static_schema {
 
 
+template <typename T>
+concept DynamicContainerTypeConcept = requires (T  v) {
+    typename T::value_type;
+    v.push_back(std::declval<typename T::value_type>());
+    v.clear();
+};
+
+
 namespace input_checks {
 
 
@@ -167,6 +175,8 @@ concept MapWritable = requires(C& c) {
     { map_write_cursor<C>{c}.allocate_value_for_parsed_key() } -> std::same_as<stream_write_result>;
     { map_write_cursor<C>{c}.value_ref() } -> std::same_as<typename map_write_cursor<C>::mapped_type&>;
     { map_write_cursor<C>{c}.finalize_pair(std::declval<bool>()) } -> std::same_as<stream_write_result>;
+    { map_write_cursor<C>{c}.finalize(std::declval<bool>()) } -> std::same_as<stream_write_result>;
+
     map_write_cursor<C>{c}.reset();
 };
 
@@ -284,6 +294,9 @@ struct map_write_cursor<M> {
         
         return inserted ? stream_write_result::value_processed 
                         : stream_write_result::error;  // duplicate key
+    }
+    constexpr stream_write_result finalize(bool) {
+        return  stream_write_result::value_processed;
     }
     
     constexpr void reset() {
@@ -955,7 +968,15 @@ struct map_write_cursor<Streamer> {
         
         return stream_write_result::value_processed;
     }
-    
+    constexpr stream_write_result finalize(bool res) {
+
+        if(!streamer.finalize(res)) {
+            return stream_write_result::error;
+        } else {
+            return stream_write_result::value_processed;
+        }
+    }
+
     constexpr void reset() {
         streamer.reset();
     }

@@ -325,6 +325,12 @@ namespace test_streaming_containers {
         std::size_t count = 0;
         
         constexpr void clear() { count = 0; }
+        auto try_emplace(key_type, mapped_type) {
+            return std::make_pair(key_type{}, true);
+        }
+        constexpr stream_write_result finalize(bool) {
+            return  stream_write_result::value_processed;
+        }
     };
     
     using TestMapConsumer = MapConsumer<std::array<char, 32>, int, 10>;
@@ -339,6 +345,9 @@ namespace test_streaming_containers {
             return entries[count++];
         }
         constexpr void clear() { count = 0; }
+        constexpr stream_write_result finalize(bool) {
+            return  stream_write_result::value_processed;
+        }
     };
     
     using TestArrayConsumer = ArrayConsumer<int, 10>;
@@ -378,6 +387,9 @@ namespace JsonFusion::static_schema {
         
         constexpr void reset() {
             m.clear();
+        }
+        constexpr stream_write_result finalize(bool) {
+            return  stream_write_result::value_processed;
         }
     };
     

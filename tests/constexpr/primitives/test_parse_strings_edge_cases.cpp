@@ -36,7 +36,7 @@ static_assert(TestParseError<Config>(R"({"text": "unclosed})", JsonFusion::Parse
 static_assert(TestParseError<Config>(R"({"text": "unclosed)", JsonFusion::ParseError::UNEXPECTED_END_OF_DATA));
 
 // ===== Error: Missing quotes =====
-static_assert(TestParseError<Config>(R"({"text": hello})", JsonFusion::ParseError::ILLFORMED_STRING));
+static_assert(TestParseError<Config>(R"({"text": hello})", JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE));
 
 // ===== Strings with quotes and backslashes =====
 static_assert(TestParse(R"({"text": "a\"b"})", Config{{'a','"','b','\0'}}));

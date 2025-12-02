@@ -31,7 +31,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"x": 42, "flag": "not_bool", "y": 10})",
-        ParseError::ILLFORMED_BOOL,
+        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
         "flag"  // Expected path: $.flag
     ),
     "Path tracking: error in middle primitive field"
@@ -76,7 +76,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Outer>(
         R"({"id": 1, "inner": {"value": 42, "enabled": 123}, "count": 10})",
-        ParseError::ILLFORMED_BOOL,
+        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
         "inner", "enabled"  // Expected path: $.inner.enabled
     ),
     "Path tracking: error in nested bool field ($.inner.enabled)"
@@ -160,7 +160,7 @@ static_assert([]() constexpr {
     Flat obj{};
     auto result = Parse(obj, std::string_view(R"([1, 2, 3])"));
     return !result 
-        && result.error() == ParseError::ILLFORMED_OBJECT;
+        && result.error() == ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE;
 }(), "Root-level error: wrong container type");
 
 // ============================================================================
@@ -171,7 +171,7 @@ static_assert([]() constexpr {
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"y": 10, "x": 42, "flag": "bad"})",
-        ParseError::ILLFORMED_BOOL,
+        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
         "flag"  // Expected path: $.flag (order-independent)
     ),
     "Path tracking: field order doesn't matter"

@@ -92,7 +92,7 @@ static_assert(
                 }
             ]
         })",
-        ParseError::ILLFORMED_STRING,
+        ParseError::NON_STRING_IN_STRING_STORAGE,
         "statuses", 0, "entities", "urls", 1, "expanded_url"
     ),
     "Generic path: complex 6-level path"

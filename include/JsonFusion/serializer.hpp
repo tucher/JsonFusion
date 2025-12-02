@@ -279,18 +279,12 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
     }
 }
 
-template <typename T>
-concept DynamicContainerTypeConcept = requires (T  v) {
-    typename T::value_type;
-    v.push_back(std::declval<typename T::value_type>());
-    v.clear();
-};
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
     requires static_schema::JsonString<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
 
-    if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), !DynamicContainerTypeConcept<ObjT>); err != SerializeError::NO_ERROR) {
+    if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), !static_schema::DynamicContainerTypeConcept<ObjT>); err != SerializeError::NO_ERROR) {
         ctx.setError(err, currentPos);
         return false;
     }

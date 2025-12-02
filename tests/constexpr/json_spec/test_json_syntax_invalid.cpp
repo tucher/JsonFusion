@@ -90,18 +90,18 @@ static_assert(
 
 // Test 7: Unquoted keys (not valid JSON)
 static_assert(
-    TestParseError<Simple>(R"({value: 42})", ParseError::ILLFORMED_STRING),
+    TestParseError<Simple>(R"({value: 42})", ParseError::ILLFORMED_OBJECT),
     "Invalid: unquoted key"
 );
 
 static_assert(
-    TestParseError<TwoFields>(R"({x: 1, y: 2})", ParseError::ILLFORMED_STRING),
+    TestParseError<TwoFields>(R"({x: 1, y: 2})", ParseError::ILLFORMED_OBJECT),
     "Invalid: unquoted keys"
 );
 
 // Test 8: Single quotes (not valid JSON)
 static_assert(
-    TestParseError<Simple>(R"({'value': 42})", ParseError::ILLFORMED_STRING),
+    TestParseError<Simple>(R"({'value': 42})", ParseError::ILLFORMED_OBJECT),
     "Invalid: single quotes for key"
 );
 
@@ -158,12 +158,12 @@ struct WithBool {
 };
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": True})", ParseError::ILLFORMED_BOOL),
+    TestParseError<WithBool>(R"({"flag": True})", ParseError::NON_BOOL_JSON_IN_BOOL_VALUE),
     "Invalid: capitalized True (should be lowercase)"
 );
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": TRUE})", ParseError::ILLFORMED_BOOL),
+    TestParseError<WithBool>(R"({"flag": TRUE})", ParseError::NON_BOOL_JSON_IN_BOOL_VALUE),
     "Invalid: uppercase TRUE"
 );
 

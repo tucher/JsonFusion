@@ -8,175 +8,13 @@
 #include "options.hpp"
 #include "struct_introspection.hpp"
 #include "static_schema.hpp"
+#include "string_search.hpp"
 #include <iostream>
 #include <map>
 namespace JsonFusion {
 
 namespace validators {
 
-// ============================================================================
-// Generic Name Search Utilities (Extracted from Parser)
-// ============================================================================
-
-/// Generic descriptor for named entities (fields, keys, etc.)
-struct NameDescr {
-    std::string_view name;
-    std::size_t originalIndex;
-};
-
-// Thresholds for selecting search strategy at compile time
-inline constexpr std::size_t MaxNamesCountForLinearSearch = 8;
-inline constexpr std::size_t MaxNameLengthForLinearSearch = 32;
-
-/// Binary search strategy: incrementally narrows candidate range per character
-struct IncrementalBinaryNameSearch {
-    using It = const NameDescr*;
-
-    It first;         // current candidate range [first, last)
-    It last;
-    It original_begin; // original begin, for reset
-    It original_end;  // original end, used as "empty result"
-    std::size_t depth = 0; // how many characters have been fed
-
-    constexpr IncrementalBinaryNameSearch(It begin, It end)
-        : first(begin), last(end), original_begin(begin), original_end(end), depth(0) {}
-
-    // Feed next character; narrows [first, last) by character at position `depth`.
-    // Returns true if any candidates remain after this step.
-    constexpr bool step(char ch) {
-        if (first == last)
-            return false;
-
-        // projection: NameDescr -> char at current depth
-        auto char_at_depth = [this](const NameDescr& f) -> char {
-            std::string_view s = f.name;
-            // sentinel: '\0' means "past the end"
-            return depth < s.size() ? s[depth] : '\0';
-        };
-
-        // lower_bound: first element with char_at_depth(elem) >= ch
-        auto lower = std::ranges::lower_bound(
-            first, last, ch, {}, char_at_depth
-        );
-
-        // upper_bound: first element with char_at_depth(elem) > ch
-        auto upper = std::ranges::upper_bound(
-            lower, last, ch, {}, char_at_depth
-        );
-
-        first = lower;
-        last  = upper;
-        ++depth;
-        return first != last;
-    }
-
-    // Return:
-    //   - pointer to unique NameDescr if exactly one matches AND
-    //     fully typed (depth >= name.size())
-    //   - original_end if 0 matches OR >1 matches OR undertyped.
-    constexpr It result() const {
-        if (first == last)
-            return original_end; // 0 matches
-
-        // exactly one candidate
-        const NameDescr& candidate = *first;
-
-        // undertyping: not all characters of the name have been given
-        if (depth != candidate.name.size())
-            return original_end;
-
-        return first;
-    }
-    
-    // Reset for next key
-    constexpr void reset() {
-        first = original_begin;
-        last = original_end;
-        depth = 0;
-    }
-};
-
-/// Linear search strategy: buffers the name, does simple linear search at the end
-template<std::size_t MaxLen>
-struct BufferedLinearNameSearch {
-    using It = const NameDescr*;
-
-    It begin;         // name descriptors range [begin, end)
-    It end;
-    char buffer[MaxLen];
-    std::size_t length = 0;
-    bool overflown = false;
-
-    constexpr BufferedLinearNameSearch(It begin_, It end_)
-        : begin(begin_), end(end_), buffer{}, length(0) {}
-
-    // Simply buffer the character, no searching yet
-    constexpr bool step(char ch) {
-        if (length < MaxLen) {
-            buffer[length++] = ch;
-            return true;
-        }
-        // Name too long, won't match anything
-        overflown = true;
-        return false;
-    }
-
-    // Perform linear search through all names
-    constexpr It result() const {
-        if(overflown) return end;
-        std::string_view key(buffer, length);
-        for (It it = begin; it != end; ++it) {
-            if (it->name == key) {
-                return it;
-            }
-        }
-        return end; // not found
-    }
-    
-    // Reset for next key
-    constexpr void reset() {
-        for (std::size_t i = 0; i < MaxLen; ++i) {
-            buffer[i] = '\0';
-        }
-        length = 0;
-        overflown = false;
-    }
-};
-
-/// Adapter that selects strategy at compile time based on name count and max length
-template<std::size_t NameCount, std::size_t MaxNameLen>
-struct AdaptiveNameSearch {
-    using It = const NameDescr*;
-    
-    // static constexpr bool useLinear =
-    //     (NameCount <= MaxNamesCountForLinearSearch) &&
-    //     (MaxNameLen <= MaxNameLengthForLinearSearch);
-
-    static constexpr bool useLinear = true;
-
-    using SearchImpl = std::conditional_t<
-        useLinear,
-        BufferedLinearNameSearch<MaxNameLen>,
-        IncrementalBinaryNameSearch
-    >;
-
-    SearchImpl impl;
-
-    constexpr AdaptiveNameSearch(It begin, It end)
-        : impl(begin, end) {}
-
-    constexpr bool step(char ch) {
-        return impl.step(ch);
-    }
-
-    constexpr It result() const {
-        return impl.result();
-    }
-    
-    constexpr void reset() {
-        impl.reset();
-    }
-};
 
 /// Helper to compute sorted keys and metadata for key set validators
 template<ConstString... Keys>
@@ -184,11 +22,11 @@ struct KeySetHelper {
     static constexpr std::size_t keyCount = sizeof...(Keys);
     
     // Build sorted array of key names at compile time
-    static constexpr std::array<NameDescr, keyCount> sortedKeys = []() consteval {
-        std::array<NameDescr, keyCount> arr;
+    static constexpr std::array<string_search::StringDescr, keyCount> sortedKeys = []() consteval {
+        std::array<string_search::StringDescr, keyCount> arr;
         std::size_t idx = 0;
-        ((arr[idx++] = NameDescr{Keys.toStringView(), idx}), ...);
-        std::ranges::sort(arr, {}, &NameDescr::name);
+        ((arr[idx++] = string_search::StringDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &string_search::StringDescr::name);
         return arr;
     }();
     
@@ -470,7 +308,7 @@ struct enum_values {
     
     template<class Storage>
     struct state {
-        AdaptiveNameSearch<valueCount, maxValueLength> searcher{
+        string_search::AdaptiveStringSearch<false, maxValueLength> searcher{
             sortedValues.data(), 
             sortedValues.data() + sortedValues.size()
         };
@@ -773,7 +611,7 @@ struct required_keys {
     template<class Storage>
     struct state {
         std::bitset<keyCount> seen{};  // Track which required keys were parsed
-        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };
@@ -835,7 +673,7 @@ struct allowed_keys {
     
     template<class Storage>
     struct state {
-        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };
@@ -888,7 +726,7 @@ struct forbidden_keys {
     
     template<class Storage>
     struct state {
-        AdaptiveNameSearch<keyCount, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };

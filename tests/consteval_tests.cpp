@@ -13,12 +13,17 @@
 #include <map>
 #include "JsonFusion/json_path.hpp"
 #include "JsonFusion/error_formatting.hpp"
+#include "JsonFusion/string_search.hpp"
 
 using JsonFusion::A;
 
 using namespace JsonFusion::validators;
+using namespace JsonFusion::options;
 
 int main() {
+
+    JsonFusion::string_search::test();
+
     struct Nested {
         int nested_f;
         std::array<char, 10> nested_string;
@@ -458,6 +463,17 @@ int main() {
         }
 
     }
-
+    {
+        struct WithArray {
+            std::array<int, 3> values;
+            A<int, key<"">> ek;
+        };
+        WithArray a;
+        std::string_view sv{R"({"": 10, "values": [1 , 2,3]  })"};
+        auto r = JsonFusion::Parse(a, sv);
+        if(!r) {
+            std::cerr << ParseResultToString<WithArray>(r, sv.begin(), sv.end()) << std::endl;
+        }
+    }
 
 }

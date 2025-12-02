@@ -16,9 +16,11 @@
 #include "options.hpp"
 #include "validators.hpp"
 
-#include "fp_to_str.hpp"
 #include "struct_introspection.hpp"
 #include "json_path.hpp"
+#include "string_search.hpp"
+#include "tokenizer.hpp"
+#include "parse_errors.hpp"
 
 namespace JsonFusion {
 
@@ -30,59 +32,8 @@ constexpr bool allowed_dynamic_error_stack() {
 #endif
 }
 
-enum class ParseError {
-    NO_ERROR,
-    ILLFORMED_NUMBER,
-    ILLFORMED_NULL,
-    ILLFORMED_STRING,
-    ILLFORMED_ARRAY,
-    ILLFORMED_OBJECT,
-    ILLFORMED_MAP,
 
-    UNEXPECTED_END_OF_DATA,
-    FIXED_SIZE_CONTAINER_OVERFLOW,
-    NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE,
-    FLOAT_VALUE_IN_INTEGER_STORAGE,
-    ILLFORMED_BOOL,
-    EXCESS_FIELD,
-    NULL_IN_NON_OPTIONAL,
 
-    EXCESS_DATA,
-    SKIPPING_STACK_OVERFLOW,
-    SCHEMA_VALIDATION_ERROR,
-
-    ARRAY_DESTRUCRING_SCHEMA_ERROR,
-    DATA_CONSUMER_ERROR,
-    DUPLICATE_KEY_IN_MAP,
-    JSON_SINK_OVERFLOW
-};
-
-constexpr std::string_view error_to_string(ParseError e) {
-    switch(e) {
-        case ParseError::NO_ERROR: return "NO_ERROR"; break;
-        case ParseError::ILLFORMED_NUMBER: return "ILLFORMED_NUMBER"; break;
-        case ParseError::ILLFORMED_NULL: return "ILLFORMED_NULL"; break;
-        case ParseError::ILLFORMED_STRING: return "ILLFORMED_STRING"; break;
-        case ParseError::ILLFORMED_ARRAY: return "ILLFORMED_ARRAY"; break;
-        case ParseError::ILLFORMED_OBJECT: return "ILLFORMED_OBJECT"; break;
-        case ParseError::ILLFORMED_MAP: return "ILLFORMED_MAP"; break;
-        case ParseError::UNEXPECTED_END_OF_DATA: return "UNEXPECTED_END_OF_DATA"; break;
-        case ParseError::FIXED_SIZE_CONTAINER_OVERFLOW: return "FIXED_SIZE_CONTAINER_OVERFLOW"; break;
-        case ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE: return "NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE"; break;
-        case ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE: return "FLOAT_VALUE_IN_INTEGER_STORAGE"; break;
-        case ParseError::ILLFORMED_BOOL: return "ILLFORMED_BOOL"; break;
-        case ParseError::EXCESS_FIELD: return "EXCESS_FIELD"; break;
-        case ParseError::NULL_IN_NON_OPTIONAL: return "NULL_IN_NON_OPTIONAL"; break;
-        case ParseError::EXCESS_DATA: return "EXCESS_DATA"; break;
-        case ParseError::SKIPPING_STACK_OVERFLOW: return "SKIPPING_STACK_OVERFLOW"; break;
-        case ParseError::SCHEMA_VALIDATION_ERROR: return "SCHEMA_VALIDATION_ERROR"; break;
-        case ParseError::ARRAY_DESTRUCRING_SCHEMA_ERROR: return "ARRAY_DESTRUCRING_SCHEMA_ERROR"; break;
-        case ParseError::DATA_CONSUMER_ERROR: return "DATA_CONSUMER_ERROR"; break;
-        case ParseError::DUPLICATE_KEY_IN_MAP: return "DUPLICATE_KEY_IN_MAP"; break;
-        case ParseError::JSON_SINK_OVERFLOW: return "JSON_SINK_OVERFLOW"; break;
-    }
-    return "N/A";
-}
 
 // 1) Iterator you can:
 //    - read as *it   (convertible to char)
@@ -199,594 +150,112 @@ public:
     }
 };
 
-constexpr inline bool isSpace(char a) {
-    switch(a) {
-    case 0x20:
-    case 0x0A:
-    case 0x0D:
-    case 0x09:
-        return true;
-    }
-    return false;
-}
 
-constexpr inline bool isPlainEnd(char a) {
-    switch(a) {
-    case ']':
-    case ',':
-    case '}':
-    case 0x20:
-    case 0x0A:
-    case 0x0D:
-    case 0x09:
-        return true;
-    }
-    return false;
-}
-
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-constexpr inline bool skipWhiteSpace(It & currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> & ctx) {
-    while (currentPos != end && isSpace(*currentPos)) {
-        ++currentPos;
-    }
-    if (currentPos == end) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-        return false;
-    }
-    return true;
-}
-
-constexpr bool match_literal(auto& it, const auto& end, const std::string_view & lit) {
-    for (char c : lit) {
-        if (it == end || *it != c) {
-            return false;
-        }
-        ++it;
-    }
-    return true;
-}
-
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonBool<ObjT>
-constexpr bool ParseNonNullValue(ObjT & obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
-    if(currentPos == end) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx) {
+    if (tokenizer::TryParseStatus st = reader.read_bool(obj); st == tokenizer::TryParseStatus::error) {
+        return false;
+    } else if (st == tokenizer::TryParseStatus::no_match) {
+        ctx.setError(ParseError::NON_BOOL_JSON_IN_BOOL_VALUE, reader.current());
         return false;
     }
-    if (*currentPos == 't' && match_literal(++currentPos, end, "rue") && (isPlainEnd(*currentPos) || currentPos == end)) {
-        obj = true;
-    } else if (*currentPos == 'f' && match_literal(++currentPos, end, "alse") && (isPlainEnd(*currentPos)|| currentPos == end)) {
-        obj = false;
-    } else {
-        ctx.setError(ParseError::ILLFORMED_BOOL, currentPos);
-        return false;
-    }
+
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     if(!validatorsState.template validate<validators::detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
-        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     } else {
         return true;
     }
 }
 
-
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-constexpr bool read_number_token(It& currentPos,
-                       const Sent& end,
-                       DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX>& ctx,
-                       char (&buf)[fp_to_str_detail::NumberBufSize],
-                       std::size_t& index,
-                       bool& seenDot,
-                       bool& seenExp)
-{
-    index   = 0;
-    seenDot = false;
-    seenExp = false;
-
-    bool inExp            = false;
-    bool seenDigitBeforeExp = false;
-    bool seenDigitAfterExp  = false;
-    bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
-
-    if (currentPos == end) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-        return false;
-    }
-
-    // Optional leading '-'
-    {
-        char c = *currentPos;
-        if (c == '-') {
-            if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-                return false;
-            }
-            buf[index++] = c;
-            ++currentPos;
-        }
-    }
-
-    if (currentPos == end) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-        return false;
-    }
-
-    auto push_char = [&](char c) -> bool {
-        if (index >= fp_to_str_detail::NumberBufSize - 1) {
-            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-            return false;
-        }
-        buf[index++] = c;
-        return true;
-    };
-
-    while (currentPos != end && !isPlainEnd(*currentPos)) {
-        char c = *currentPos;
-
-        if (c >= '0' && c <= '9') {
-            // RFC 8259: Leading zeros not allowed (except "0" itself)
-            if (firstDigit && c == '0') {
-                auto peek = currentPos;
-                ++peek;
-                if (peek != end && *peek >= '0' && *peek <= '9') {
-                    ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-                    return false;
-                }
-            }
-            firstDigit = false;  // Mark that we've seen the first digit
-            
-            if (!inExp) {
-                seenDigitBeforeExp = true;
-            } else {
-                seenDigitAfterExp = true;
-            }
-            if (!push_char(c)) return false;
-            ++currentPos;
-            continue;
-        }
-
-        if (c == '.' && !seenDot && !inExp) {
-            seenDot = true;
-            if (!push_char(c)) return false;
-            ++currentPos;
-            continue;
-        }
-
-        if ((c == 'e' || c == 'E') && !inExp) {
-            inExp  = true;
-            seenExp = true;
-            if (!push_char(c)) return false;
-            ++currentPos;
-
-            // Optional sign immediately after exponent
-            if (currentPos != end && (*currentPos == '+' || *currentPos == '-')) {
-                if (!push_char(*currentPos)) return false;
-                ++currentPos;
-            }
-            continue;
-        }
-
-        // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
-        // Anything else is invalid inside a JSON number
-        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-        return false;
-    }
-
-    buf[index] = '\0';
-
-    // Basic sanity: must have at least one digit before exponent,
-    // and if exponent present, at least one digit after it.
-    if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
-        ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-        return false;
-    }
-
-    return true;
-}
-
-// -------------------------
-//  Parse decimal integer
-// -------------------------
-// buf: null-terminated ASCII, optional leading '+'/'-' then digits.
-// Assumes characters are already known to be digits (no extra validation).
-// Returns false on overflow or invalid '-' for unsigned types.
-template <class Int>
-constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
-    static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
-
-    using Limits   = std::numeric_limits<Int>;
-    using Unsigned = std::make_unsigned_t<Int>;
-
-    // const unsigned char* p = reinterpret_cast<const unsigned char*>(buf);
-    const char *p = buf;
-    bool negative = false;
-
-    if constexpr (std::is_signed_v<Int>) {
-        if (*p == '+' || *p == '-') {
-            negative = (*p == '-');
-            ++p;
-        }
-    } else {
-        // Unsigned: allow leading '+' but reject '-'
-        if (*p == '+') {
-            ++p;
-        } else if (*p == '-') {
-            return false; // negative value for unsigned -> overflow/error
-        }
-    }
-
-    Unsigned value = 0;
-
-    // Absolute-value limit we must not exceed while parsing
-    Unsigned limit;
-    if constexpr (std::is_signed_v<Int>) {
-        // For negative numbers we allow up to |min()| = max()+1
-        limit = negative ? Unsigned(Limits::max()) + 1u
-                         : Unsigned(Limits::max());
-    } else {
-        limit = std::numeric_limits<Unsigned>::max();
-    }
-
-    for (; *p != 0; ++p) {
-        // We assume *p is '0'..'9'
-        unsigned digit = static_cast<unsigned>(*p - '0');
-
-        // Check overflow: value*10 + digit <= limit
-        if (value > (limit - digit) / 10u) {
-            return false; // overflow
-        }
-        value = value * 10u + static_cast<Unsigned>(digit);
-    }
-
-    if constexpr (std::is_signed_v<Int>) {
-        if (negative) {
-            // Special-case: most-negative value
-            if (value == Unsigned(Limits::max()) + 1u) {
-                out = Limits::min();
-            } else {
-                out = static_cast<Int>(-static_cast<Int>(value));
-            }
-        } else {
-            out = static_cast<Int>(value);
-        }
-    } else {
-        out = static_cast<Int>(value);
-    }
-
-    return true;
-}
 
 // Strategy: custom integer parsing (no deps), delegated float parsing (configurable)
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
-    char buf[fp_to_str_detail::NumberBufSize];
-    std::size_t index = 0;
-    bool seenDot = false;
-    bool seenExp = false;
-
-    if (!read_number_token(currentPos, end, ctx, buf, index, seenDot, seenExp)) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
+    if (tokenizer::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj); st == tokenizer::TryParseStatus::error) {
+        return false;
+    }else if (st == tokenizer::TryParseStatus::no_match) {
+        ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, reader.current());
         return false;
     }
-    if constexpr (Opts::template has_option<options::detail::skip_materializing_tag>) {
-        return true;
-    } else {
-        if constexpr (std::is_integral_v<ObjT>) {
-            // Reject decimals/exponents for integer fields
-            if (seenDot || seenExp) {
-                ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, currentPos);
-                return false;
-            }
 
-            ObjT value{};
-            if(!parse_decimal_integer<ObjT>(buf, value)) {
-                ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
-                return false;
-            }
-
-            obj = value;
-        } else if constexpr (std::is_floating_point_v<ObjT>) {
-            double x;
-            if(fp_to_str_detail::parse_number_to_double(buf, x)) {
-                if(static_cast<double>(std::numeric_limits<ObjT>::lowest()) > x
-                    || static_cast<double>(std::numeric_limits<ObjT>::max()) < x) {
-                    ctx.setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, currentPos);
-                    return false;
-                }
-                obj = static_cast<ObjT>(x);
-            } else {
-                ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-                return false;
-            }
-        } else {
-            // Should never happen if JsonNumber is correct
-            static_assert(std::is_integral_v<ObjT> || std::is_floating_point_v<ObjT>,
-                          "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
-            ctx.setError(ParseError::ILLFORMED_NUMBER, currentPos);
-            return false;
-        }
-        validators::detail::validator_state<Opts, ObjT> validatorsState;
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
-            return false;
-        }
-        return true;
+    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+        return false;
     }
-}
 
-template <typename T>
-concept DynamicContainerTypeConcept = requires (T  v) {
-    typename T::value_type;
-    v.push_back(std::declval<typename T::value_type>());
-    v.clear();
-};
-
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-constexpr bool readHex4(It &currentPos, const Sent &end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx, std::uint16_t &out) {
-    out = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-            return false;
-        }
-        char currChar = *currentPos;
-        std::uint8_t v;
-        if (currChar >= '0' && currChar <= '9') {
-            v = static_cast<std::uint8_t>(currChar - '0');
-        } else if (currChar >= 'A' && currChar <= 'F') {
-            v = static_cast<std::uint8_t>(currChar - 'A' + 10);
-        } else if (currChar >= 'a' && currChar <= 'f') {
-            v = static_cast<std::uint8_t>(currChar - 'a' + 10);
-        } else {
-            ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-            return false;
-        }
-        out = static_cast<std::uint16_t>((out << 4) | v);
-        ++currentPos;
-    }
     return true;
 }
 
-template <class Visitor, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-constexpr bool parseString(Visitor&& inserter, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx,
-                          bool continueOnInserterFailure = false) {
-    bool stopInserting = false;
-    
-    if(*currentPos != '"'){
-        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-        return false;
-    }
-    currentPos++;
 
-    while(true) {
-        if(currentPos == end) {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-            return false;
-        }
-        auto c = *currentPos;
-        switch(c) {
-        case '"': {
-            currentPos ++;
-
-            return true;
-        }
-        case '\\': {
-            currentPos++;
-            if(currentPos == end) [[unlikely]] {
-                ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-                return false;
-            }
-
-            char out{};
-            switch (*currentPos) {
-            /* Allowed escaped symbols */
-            case '"':  out = '"';  break;
-            case '/':  out = '/';  break;
-            case '\\': out = '\\'; break;
-            case 'b':  out = '\b'; break;
-            case 'f':  out = '\f'; break;
-            case 'r':  out = '\r'; break;
-            case 'n':  out = '\n'; break;
-            case 't':  out = '\t'; break;
-            case 'u': {
-                ++currentPos; // move past 'u'
-
-                std::uint16_t u1 = 0;
-                if (!readHex4(currentPos, end, ctx, u1)) {
-                    return false; // ctx already set
-                }
-
-                std::uint32_t codepoint = 0;
-
-                // Handle surrogate pairs per JSON/UTF-16 rules
-                if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
-                    // High surrogate -> must be followed by \uDC00..DFFF
-                    if (currentPos == end) [[unlikely]] {
-                        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-                        return false;
-                    }
-                    if (*currentPos != '\\') {
-                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                        return false;
-                    }
-                    ++currentPos;
-                    if (currentPos == end) [[unlikely]] {
-                        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-                        return false;
-                    }
-                    if (*currentPos != 'u') {
-                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                        return false;
-                    }
-                    ++currentPos;
-
-                    std::uint16_t u2 = 0;
-                    if (!readHex4(currentPos, end, ctx, u2)) {
-                        return false;
-                    }
-                    if (u2 < 0xDC00u || u2 > 0xDFFFu) {
-                        // Low surrogate not in valid range
-                        ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                        return false;
-                    }
-
-                    codepoint = 0x10000u
-                                + ((static_cast<std::uint32_t>(u1) - 0xD800u) << 10)
-                                + (static_cast<std::uint32_t>(u2) - 0xDC00u);
-                } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
-                    // Lone low surrogate → invalid
-                    ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                    return false;
-                } else {
-                    // Basic Multilingual Plane code point
-                    codepoint = u1;
-                }
-
-                // Encode codepoint as UTF-8
-                char utf8[4];
-                int len = 0;
-
-                if (codepoint <= 0x7Fu) {
-                    utf8[len++] = static_cast<char>(codepoint);
-                } else if (codepoint <= 0x7FFu) {
-                    utf8[len++] = static_cast<char>(0xC0 | (codepoint >> 6));
-                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-                } else if (codepoint <= 0xFFFFu) {
-                    utf8[len++] = static_cast<char>(0xE0 | (codepoint >> 12));
-                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-                } else { // up to 0x10FFFF
-                    utf8[len++] = static_cast<char>(0xF0 | (codepoint >> 18));
-                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-                    utf8[len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                    utf8[len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-                }
-
-                for (int i = 0; i < len; ++i) {
-                    if (!stopInserting) {
-                        if (!inserter(utf8[i])) {
-                            if (continueOnInserterFailure) {
-                                stopInserting = true;
-                            } else {
-                                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-            break;
-
-            default:
-                /* Unexpected symbol */
-                ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                return false;
-            }
-            if (out) { // only emit if we actually set a simple escape
-                if (!stopInserting) {
-                    if (!inserter(out)) {
-                        if (continueOnInserterFailure) {
-                            stopInserting = true;
-                        } else {
-                            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                            return false;
-                        }
-                    }
-                }
-                currentPos++;
-            }
-
-        }
-        break;
-
-        default:
-            // RFC 8259 §7: Control characters (U+0000-U+001F) MUST be escaped
-            if (static_cast<unsigned char>(c) <= 0x1F) {
-                ctx.setError(ParseError::ILLFORMED_STRING, currentPos);
-                return false;
-            }
-            if (!stopInserting) {
-                if(!inserter(*currentPos)) {
-                    if (continueOnInserterFailure) {
-                        stopInserting = true;
-                    } else {
-                        return false;
-                    }
-                }
-            }
-            currentPos++;
-        }
-    }
-}
-
-
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonString<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
     std::size_t parsedSize = 0;
-    if constexpr (DynamicContainerTypeConcept<ObjT>) {
+    if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
     validators::detail::validator_state<Opts, ObjT> validatorsState;
-    auto inserter = [&obj, &parsedSize, &ctx, &currentPos, &validatorsState] (char c) -> bool {
-        if constexpr (!DynamicContainerTypeConcept<ObjT>) {
+    auto inserter = [&obj, &parsedSize, &ctx, &reader, &validatorsState] (char c) -> bool {
+        if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
             if (parsedSize < obj.size()-1) {
                 obj[parsedSize] = c;
             } else {
-               ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-               return false;
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+                return false;
             }
         }  else {
             obj.push_back(c);
         }
         parsedSize++;
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), c)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
 
         return true;
     };
 
-    if(parseString(inserter, currentPos, end, ctx)) {
-        if constexpr (!DynamicContainerTypeConcept<ObjT>) {
+    if(tokenizer::TryParseStatus st = reader.read_string(inserter); st == tokenizer::TryParseStatus::ok) {
+        if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
             if(parsedSize < obj.size())
                 obj[parsedSize] = 0;
         }
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
 
         return true;
+    } else if(st == tokenizer::TryParseStatus::no_match) {
+        ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+        return false;
     } else {
         return false;
     }
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonParsableArray<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
-    if constexpr (DynamicContainerTypeConcept<ObjT>) {
-        obj.clear();
-    }
-    if(*currentPos != '[') {
-        ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
+
+    if(typename tokenizer::TryParseStatus st = reader.read_array_begin(); st != tokenizer::TryParseStatus::ok) {
+        ctx.setError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader.current());
         return false;
     }
-    currentPos++;
-    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-        return false;
-    }
+
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
 
     using FH   = static_schema::array_write_cursor<ObjT>;
 
     FH cursor = [&]() {
-        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+        if constexpr (!std::is_same_v<typename CTX::UserContextType, void> && std::is_constructible_v<FH, ObjT&, typename CTX::UserContextType*>) {
             if(auto c = ctx.userCtx(); c) {
                 return FH(obj, c );
             } else {
@@ -799,88 +268,83 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 
     cursor.reset();
     validators::detail::validator_state<Opts, ObjT> validatorsState;
-    while(true) {
-        if(currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-            cursor.finalize(false);
-            return false;
-        }
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            cursor.finalize(false);
-            return false;
-        }
-        if(*currentPos == ']') {
 
+    while(true) {
+        if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
+            cursor.finalize(false);
+            return false;
+        } else if(st == tokenizer::TryParseStatus::no_match) {
+            if(parsed_items_count > 0 && !has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
+                cursor.finalize(false);
+                return false;
+            }
+        } else {
             if(has_trailing_comma) {
-                ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+                ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
                 cursor.finalize(false);
                 return false;
             }
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 cursor.finalize(false);
                 return false;
             }
-
             cursor.finalize(true);
-            currentPos ++;
             return true;
-        }
-        if(parsed_items_count > 0 && !has_trailing_comma) {
-            ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
-            cursor.finalize(false);
-            return false;
         }
 
         stream_write_result alloc_r = cursor.allocate_slot();
         if(alloc_r != stream_write_result::slot_allocated) {
             if(alloc_r == stream_write_result::overflow ) {
-                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                 return false;
             } else {
-                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, reader.current());
                 return false;
             }
-
         }
+
         auto & newItem = cursor.get_slot();
         auto guard = ctx.getArrayItemGuard(parsed_items_count);
 
-        if(!ParseValue(newItem, currentPos, end, ctx)) {
+        if(!ParseValue(newItem, reader, ctx)) {
             cursor.finalize(false);
             return false;
         }
 
         parsed_items_count ++;
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             cursor.finalize(false);
             return false;
         }
 
-
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        if (!reader.consume_value_separator(has_trailing_comma)) {
             cursor.finalize(false);
             return false;
         }
-        has_trailing_comma = false;
-        if(*currentPos == ',') {
-            has_trailing_comma = true;
-            currentPos ++;
-        }
-
     }
     cursor.finalize(false);
     return false;
 }
 
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonParsableMap<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
+
+    if(tokenizer::TryParseStatus st = reader.read_object_begin(); st != tokenizer::TryParseStatus::ok) {
+        ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
+        return false;
+    }
+
+    std::size_t parsed_entries_count = 0;
+    bool has_trailing_comma = false;
+
     using FH = static_schema::map_write_cursor<ObjT>;
 
     FH cursor = [&]() {
-        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
+        if constexpr (!std::is_same_v<typename CTX::UserContextType, void> && std::is_constructible_v<FH, ObjT&, typename CTX::UserContextType*>) {
             if(auto c = ctx.userCtx(); c) {
                 return FH(obj, c );
             } else {
@@ -892,54 +356,40 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
     }();
 
     cursor.reset();
-    
-    if(*currentPos != '{') {
-        ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
-        return false;
-    }
-    currentPos++;
-    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-        return false;
-    }
-    
-    std::size_t parsed_entries_count = 0;
-    bool has_trailing_comma = false;
+
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
-        if(currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
+            cursor.finalize(false);
             return false;
-        }
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            return false;
-        }
-        
-        if(*currentPos == '}') {
+        } else if(st == tokenizer::TryParseStatus::no_match) {
+            if(parsed_entries_count > 0 && !has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                cursor.finalize(false);
+                return false;
+            }
+        } else {
             if(has_trailing_comma) {
-                ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                cursor.finalize(false);
                 return false;
             }
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+                cursor.finalize(false);
                 return false;
             }
-            currentPos++;
             return true;
-        }
-        
-        if(parsed_entries_count > 0 && !has_trailing_comma) {
-            ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
-            return false;
         }
         
         // Allocate key slot
         stream_write_result alloc_r = cursor.allocate_key();
         if(alloc_r != stream_write_result::slot_allocated) {
             if(alloc_r == stream_write_result::overflow) {
-                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                 return false;
             } else {
-                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, reader.current());
                 return false;
             }
         }
@@ -950,16 +400,16 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         
         // Custom string parsing with incremental key validation
         std::size_t parsedSize = 0;
-        if constexpr (DynamicContainerTypeConcept<typename FH::key_type>) {
+        if constexpr (static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
             key.clear();
         }
         
         auto inserter = [&](char c) -> bool {
-            if constexpr (!DynamicContainerTypeConcept<typename FH::key_type>) {
+            if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
                 if (parsedSize < key.size()-1) {
                     key[parsedSize] = c;
                 } else {
-                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                     return false;
                 }
             } else {
@@ -970,46 +420,44 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             // Emit incremental key parsing event for validators
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_parsed_some_chars>
                             (obj, ctx.validationCtx(), c)) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
             
             return true;
         };
-        
-        if(!parseString(inserter, currentPos, end, ctx)) {
+        if(tokenizer::TryParseStatus st = reader.read_string(inserter); st != tokenizer::TryParseStatus::ok) {
+            cursor.finalize(false);
+            if(st == tokenizer::TryParseStatus::no_match) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            }
             return false;
         }
-        
-        if constexpr (!DynamicContainerTypeConcept<typename FH::key_type>) {
+
+        if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
             if(parsedSize < key.size())
                 key[parsedSize] = 0;
         }
         
         // Emit key finished event
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
 
-        
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        if (!reader.consume_kv_separator()) {
+            cursor.finalize(false);
             return false;
         }
-        if(*currentPos != ':') {
-            ctx.setError(ParseError::ILLFORMED_MAP, currentPos);
-            return false;
-        }
-        currentPos++;
         
         // Allocate value slot
         alloc_r = cursor.allocate_value_for_parsed_key();
         if(alloc_r != stream_write_result::slot_allocated) {
             if(alloc_r == stream_write_result::overflow) {
-                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                 return false;
             } else {
-                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, reader.current());
                 return false;
             }
         }
@@ -1017,17 +465,15 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         // Parse value
         auto& value = cursor.value_ref();
 
-
-
         auto guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
 
 
-        if(!ParseValue(value, currentPos, end, ctx)) {
+        if(!ParseValue(value, reader, ctx)) {
             return false;
         }
 
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
 
@@ -1035,10 +481,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         stream_write_result finalize_r = cursor.finalize_pair(true);
         if(finalize_r != stream_write_result::value_processed) {
             if(finalize_r == stream_write_result::error) {
-                ctx.setError(ParseError::DUPLICATE_KEY_IN_MAP, currentPos);
+                ctx.setError(ParseError::DUPLICATE_KEY_IN_MAP, reader.current());
                 return false;
             } else {
-                ctx.setError(ParseError::DATA_CONSUMER_ERROR, currentPos);
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, reader.current());
                 return false;
             }
         }
@@ -1046,17 +492,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
         parsed_entries_count++;
 
         if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
-        
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        if (!reader.consume_value_separator(has_trailing_comma)) {
+            cursor.finalize(false);
             return false;
-        }
-        has_trailing_comma = false;
-        if(*currentPos == ',') {
-            has_trailing_comma = true;
-            currentPos++;
         }
     }
     
@@ -1064,252 +505,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
 }
 
 
-template <CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-bool matchLiteralTail(It& currentPos, const Sent& end,
-                      const char* tail, std::size_t len,
-                      ParseError err, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX>& ctx)
-{
-    for (std::size_t i = 0; i < len; ++i) {
-        if (currentPos == end || *currentPos != tail[i]) {
-            ctx.setError(err, currentPos);
-            return false;
-        }
-        ++currentPos;
-    }
-    return true;
-}
-
-
-template <std::size_t MAX_SKIP_NESTING, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX, class OutputSinkContainer = void>
-bool SkipValue(It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx, OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
-    if (!skipWhiteSpace(currentPos, end, ctx)) {
-        return false;
-    }
-    if (currentPos == end) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-        return false;
-    }
-    std::size_t inserted = 0;
-    auto sinkInserter = [&inserted, &outputContainer, &ctx, &currentPos, &MaxStringLength](char c) -> bool {
-        if constexpr (std::is_same_v<OutputSinkContainer, void>) {
-            return true;
-        } else {
-            if constexpr (!DynamicContainerTypeConcept<OutputSinkContainer>) {
-                if (inserted < outputContainer->size()-1) {
-                    (*outputContainer)[inserted] = c;
-                } else {
-                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
-                }
-            }  else {
-                outputContainer->push_back(c);
-            }
-            inserted++;
-            if(inserted >= MaxStringLength) {
-                ctx.setError(ParseError::JSON_SINK_OVERFLOW, currentPos);
-                return false;
-            }
-            return true;
-        }
-    };
-    // Helper: skip a JSON literal (true/false/null), mirroring chars to sink.
-    auto skipLiteral = [&] (const char* lit,
-                           std::size_t len,
-                           ParseError err) -> bool
-    {
-        for (std::size_t i = 0; i < len; ++i) {
-            if (currentPos == end || *currentPos != lit[i]) {
-                ctx.setError(err, currentPos);
-                return false;
-            }
-            if (!sinkInserter(*currentPos)) {
-                return false;
-            }
-            ++currentPos;
-        }
-        return true;
-    };
-
-    // Helper: skip a number-like token, mirroring chars to sink.
-    auto skipNumberLike = [&]() -> bool {
-        while (currentPos != end && !isPlainEnd(*currentPos)) {
-            if (!sinkInserter(*currentPos)) {
-                return false;
-            }
-            ++currentPos;
-        }
-        return true;
-    };
-
-    char c = *currentPos;
-
-    // 1) Simple values we can skip without nesting
-
-    if (c == '"') {
-        // string: let parseString drive the iterator, but use sinkInserter
-        return parseString(sinkInserter, currentPos, end, ctx);
-    }
-
-    if (c == 't') {
-        // true
-        return skipLiteral("true", 4, ParseError::ILLFORMED_BOOL);
-    }
-    if (c == 'f') {
-        // false
-        return skipLiteral("false", 5, ParseError::ILLFORMED_BOOL);
-    }
-    if (c == 'n') {
-        // null
-        return skipLiteral("null", 4, ParseError::ILLFORMED_NULL);
-    }
-
-    // number-like: skip until a plain end (whitespace, ',', ']', '}', etc.)
-    if (c != '{' && c != '[') {
-        // neither object nor array → treat as number-like token
-        return skipNumberLike();
-    }
-
-    // 2) Compound value: object or array with possible nesting.
-    // We use an explicit stack of expected closing delimiters to avoid recursion.
-
-    char stack[MAX_SKIP_NESTING];
-    int  depth = 0;
-
-    auto push_close = [&](char open) -> bool {
-        if (depth >= static_cast<int>(MAX_SKIP_NESTING)) {
-            ctx.setError(ParseError::SKIPPING_STACK_OVERFLOW, currentPos);
-            return false;
-        }
-        stack[depth++] = (open == '{') ? '}' : ']';
-        return true;
-    };
-
-    auto pop_close = [&](char close) -> bool {
-        if (depth == 0) {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
-            return false;
-        }
-        if (stack[depth - 1] != close) {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
-            return false;
-        }
-        --depth;
-        return true;
-    };
-
-    // Initialize with the first '{' or '['
-    if (!push_close(c)) {
-        return false;
-    }
-    // mirror the opening delimiter
-    if (!sinkInserter(c)) {
-        return false;
-    }
-    ++currentPos; // skip first '{' or '['
-
-    while (currentPos != end && depth > 0) {
-        char ch = *currentPos;
-
-        // Skip whitespace cheaply; you can decide whether to mirror it or not.
-        if (isSpace(ch)) {
-            ++currentPos;
-            continue;
-        }
-
-        switch (ch) {
-        case '"': {
-            // mirrors the entire string via sinkInserter
-            if (!parseString(sinkInserter, currentPos, end, ctx)) {
-                return false;
-            }
-            break;
-        }
-        case '{':
-        case '[': {
-            if (!push_close(ch)) {
-                return false;
-            }
-            if (!sinkInserter(ch)) {
-                return false;
-            }
-            ++currentPos;
-            break;
-        }
-        case '}':
-        case ']': {
-            if (!pop_close(ch)) {
-                return false;
-            }
-            if (!sinkInserter(ch)) {
-                return false;
-            }
-            ++currentPos;
-            break;
-        }
-        case 't': {
-            if (!skipLiteral("true", 4, ParseError::ILLFORMED_BOOL)) {
-                return false;
-            }
-            break;
-        }
-        case 'f': {
-            if (!skipLiteral("false", 5, ParseError::ILLFORMED_BOOL)) {
-                return false;
-            }
-            break;
-        }
-        case 'n': {
-            if (!skipLiteral("null", 4, ParseError::ILLFORMED_NULL)) {
-                return false;
-            }
-            break;
-        }
-        default: {
-            // number-like or punctuation (':', ',', etc.)
-            if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+') {
-                if (!skipNumberLike()) {
-                    return false;
-                }
-            } else {
-                // punctuation: mirror and advance
-                if (!sinkInserter(ch)) {
-                    return false;
-                }
-                ++currentPos;
-            }
-            break;
-        }
-        }
-    }
-
-    if (depth != 0) {
-        ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-        return false;
-    }
-
-    // null-terminate fixed-size buffers if we used one
-    if constexpr (!std::is_same_v<OutputSinkContainer, void>) {
-        if constexpr (!DynamicContainerTypeConcept<OutputSinkContainer>) {
-            if (outputContainer && inserted < outputContainer->size()) {
-                (*outputContainer)[inserted] = '\0';
-            }
-        }
-    }
-
-    return true;
-}
-
-
-
-
-struct FieldDescr {
-    std::string_view name;
-    std::size_t originalIndex;
-
-};
-
 template<class T>
 struct FieldsHelper {
+    using FieldDescr = string_search::StringDescr;
     template<std::size_t I>
     static consteval bool fieldIsNotJSON() {
         using Field   = introspection::structureElementTypeByIndex<I, T>;
@@ -1381,212 +579,82 @@ struct FieldsHelper {
         }
         return -1;
     }
+
+
+    // static constexpr string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength> dfa = []() consteval {
+    //     return string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength>(fieldIndexesSortedByFieldName);
+    // }();
 };
 
 
-// Binary search strategy: incrementally narrows candidate range per character
-struct IncrementalBinaryFieldSearch {
-    using It = const FieldDescr*;
-
-    It first;         // current candidate range [first, last)
-    It last;
-    It original_end;  // original end, used as "empty result"
-    std::size_t depth = 0; // how many characters have been fed
-
-    constexpr IncrementalBinaryFieldSearch(It begin, It end)
-        : first(begin), last(end), original_end(end), depth(0) {}
-
-    // Feed next character; narrows [first, last) by character at position `depth`.
-    // Returns true if any candidates remain after this step.
-    constexpr bool step(char ch) {
-        if (first == last)
-            return false;
-
-        // projection: FieldDescr -> char at current depth
-        auto char_at_depth = [this](const FieldDescr& f) -> char {
-            std::string_view s = f.name;
-            // sentinel: '\0' means "past the end"
-            return depth < s.size() ? s[depth] : '\0';
-        };
-
-        // lower_bound: first element with char_at_depth(elem) >= ch
-        auto lower = std::ranges::lower_bound(
-            first, last, ch, {}, char_at_depth
-            );
-
-        // upper_bound: first element with char_at_depth(elem) > ch
-        auto upper = std::ranges::upper_bound(
-            lower, last, ch, {}, char_at_depth
-            );
-
-        first = lower;
-        last  = upper;
-        ++depth;
-        return first != last;
-    }
-
-    // Return:
-    //   - pointer to unique FieldDescr if exactly one matches AND
-    //     fully typed (depth >= name.size())
-    //   - original_end if 0 matches OR >1 matches OR undertyped.
-    constexpr It result() const {
-        if (first == last)
-            return original_end; // 0 matches
 
 
-        // exactly one candidate
-        const FieldDescr& candidate = *first;
-
-        // undertyping: not all characters of the name have been given
-        if (depth != candidate.name.size())
-            return original_end;
-
-        return first;
-    }
-};
-
-// Linear search strategy: buffers the field name, does simple linear search at the end
-template<std::size_t MaxLen>
-struct BufferedLinearFieldSearch {
-    using It = const FieldDescr*;
-
-    It begin;         // field descriptors range [begin, end)
-    It end;
-    char buffer[MaxLen];
-    std::size_t length = 0;
-
-    constexpr BufferedLinearFieldSearch(It begin_, It end_)
-        : begin(begin_), end(end_), buffer{}, length(0) {}
-
-    // Simply buffer the character, no searching yet
-    constexpr bool step(char ch) {
-        if (length < MaxLen) {
-            buffer[length++] = ch;
-            return true;
-        }
-        // Field name too long, won't match anything
-        return false;
-    }
-
-    // Perform linear search through all fields
-    constexpr It result() const {
-        std::string_view key(buffer, length);
-        for (It it = begin; it != end; ++it) {
-            if (it->name == key) {
-                return it;
-            }
-        }
-        return end; // not found
-    }
-};
-
-// Adapter that selects strategy at compile time based on field count and max length
-template<bool useBinarySearch, std::size_t MaxFieldLen>
-struct AdaptiveFieldSearch {
-    using It = const FieldDescr*;
-    
-    static constexpr bool useLinear = !useBinarySearch;
-
-    using SearchImpl = std::conditional_t<
-        useLinear,
-        BufferedLinearFieldSearch<MaxFieldLen>,
-        IncrementalBinaryFieldSearch
-    >;
-
-    SearchImpl impl;
-
-    constexpr AdaptiveFieldSearch(It begin, It end)
-        : impl(begin, end) {}
-
-    constexpr bool step(char ch) {
-        return impl.step(ch);
-    }
-
-    constexpr It result() const {
-        return impl.result();
-    }
-};
-
-
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonObject<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
-    if(*currentPos != '{') {
-        ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+
+    if(tokenizer::TryParseStatus st = reader.read_object_begin(); st != tokenizer::TryParseStatus::ok) {
+        ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
         return false;
     }
-    currentPos++;
-    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-        return false;
-    }
+
     bool has_trailing_comma = false;
     bool isFirst = true;
 
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
     validators::detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
-        if(currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
             return false;
-        }
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            return false;
-        }
-
-        if(*currentPos == '}') {
-            if(has_trailing_comma) {
-                ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+        } else if(st == tokenizer::TryParseStatus::no_match) {
+            if(!isFirst && !has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
-            currentPos ++;
-
+        } else {
+            if(has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                return false;
+            }
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
 
             return true;
         }
-
-        if(!isFirst && !has_trailing_comma) {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
-            return false;
-        }
         
-        AdaptiveFieldSearch<Opts::template has_option<options::detail::allow_excess_fields_tag>, FH::maxFieldNameLength> searcher{
+        string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
+        // DFARunner searcher2(FH::dfa);
+
         bool fieldRejected = false;
 
-        if(!parseString([&](char c){
-                // Early rejection optimization: stop searching once no candidates remain
-                if(!searcher.step(c)) {
-                    fieldRejected = true;
-                    return false; // Signal to stop inserting (parseString won't call us again)
-                }
-                return true;
-            }, currentPos, end, ctx, true)) {
-            // String itself was malformed
+        auto inserter = [&](char c){
+            // Early rejection optimization: stop searching once no candidates remain
+            // if(!searcher2.step(c)) {
+            if(!searcher.step(c)) {
+                fieldRejected = true;
+                return false; // Signal to stop inserting (parseString won't call us again)
+            }
+            return true;
+        };
+        if(tokenizer::TryParseStatus st = reader.read_string(inserter, true); st != tokenizer::TryParseStatus::ok) {
+            if(st == tokenizer::TryParseStatus::no_match) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            }
             return false;
-
         }
+
         auto res = searcher.result();
+        // int dfaRes = searcher2.result();
+        // auto res = dfaRes != -1 ? FH::fieldIndexesSortedByFieldName.begin() + std::size_t(dfaRes): FH::fieldIndexesSortedByFieldName.end();
 
-
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
-            return false;
-        }
-        if(*currentPos != ':') {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
-            return false;
-        }
-        currentPos ++;
-        if(currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        if (!reader.consume_kv_separator()) {
             return false;
         }
 
@@ -1594,11 +662,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
                 using Opt = typename Opts::template get_option<options::detail::allow_excess_fields_tag>;
 
-                if(!SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx)) {
+                if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
                     return false;
                 }
             } else {
-                ctx.setError(ParseError::EXCESS_FIELD, currentPos);
+                ctx.setError(ParseError::EXCESS_FIELD, reader.current());
                 return false;
             }
         } else {
@@ -1609,14 +677,14 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                 } else {
                     std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
                     if(parsedFieldsByIndex[arrIndex] == true) {
-                        ctx.setError(ParseError::ILLFORMED_OBJECT, currentPos);
+                        ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                         return false;
                     } else {
                         auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
 
                         if (!ParseValue(
                                    introspection::getStructElementByIndex<StructIndex>(obj),
-                                       currentPos, end, ctx)) {
+                                       reader, ctx)) {
                             return false;
                         } else {
                             parsedFieldsByIndex[arrIndex] = true;
@@ -1641,54 +709,48 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
                 return false;
             }
         }
-
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        isFirst = false;
+        if (!reader.consume_value_separator(has_trailing_comma)) {
             return false;
         }
-        isFirst = false;
-        has_trailing_comma = false;
-        if(*currentPos == ',') {
-            has_trailing_comma = true;
-            currentPos ++;
-        }
-
     }
     return false;
 }
 
 
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */
-template <class Opts, class ObjT, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
+template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX>
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
-    if(*currentPos != '[') {
-        ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx) {
+    if(tokenizer::TryParseStatus st = reader.read_array_begin(); st != tokenizer::TryParseStatus::ok) {
+        ctx.setError(ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT, reader.current());
         return false;
     }
-    currentPos++;
-    if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-        return false;
-    }
+
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
+
     std::size_t field_offset = 0;
+
     static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     validators::detail::validator_state<Opts, ObjT> validatorsState;
+
     while(true) {
-        if(currentPos == end) [[unlikely]] {
-            ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
+        if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
             return false;
-        }
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
-            return false;
-        }
-        if(*currentPos == ']') {
-            if(has_trailing_comma) {
-                ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
+        } else if(st == tokenizer::TryParseStatus::no_match) {
+            if(parsed_items_count > 0 && !has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
                 return false;
             }
+        } else {
+            if(has_trailing_comma) {
+                ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
+                return false;
+            }
+
             std::size_t final_fields_offest = field_offset;
             auto skip_checker = [&](auto ic) {
                 constexpr std::size_t StructIndex = decltype(ic)::value;
@@ -1719,24 +781,18 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             }
 
             if(!skip_rest_result || parsed_items_count + final_fields_offest != totalFieldsCount) {
-                ctx.setError(ParseError::ARRAY_DESTRUCRING_SCHEMA_ERROR, currentPos);
+                ctx.setError(ParseError::ARRAY_DESTRUCTURING_SCHEMA_ERROR, reader.current());
                 return false;
             }
 
-            currentPos ++;
-
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::descrtuctured_object_parsing_finished>(obj, ctx.validationCtx())) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, currentPos);
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
 
             return true;
         }
 
-        if(parsed_items_count > 0 && !has_trailing_comma) {
-            ctx.setError(ParseError::ILLFORMED_ARRAY, currentPos);
-            return false;
-        }
         bool skipped = false;
 
         auto try_one = [&](auto ic) {
@@ -1749,8 +805,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             } else {
                 auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
 
-                if(ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), currentPos, end, ctx)) {
-
+                if(ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx)) {
                     return true;
                 } else {
                     return false;
@@ -1779,58 +834,41 @@ constexpr bool ParseNonNullValue(ObjT& obj, It &currentPos, const Sent & end, De
             return false;
         }
         parsed_items_count ++;
-
-
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        if (!reader.consume_value_separator(has_trailing_comma)) {
             return false;
         }
-        has_trailing_comma = false;
-        if(*currentPos == ',') {
-            has_trailing_comma = true;
-            currentPos ++;
-        }
-
     }
     return false;
 }
 
-template <static_schema::JsonParsableValue Field, CharInputIterator It, CharSentinelFor<It> Sent, std::size_t SchemaDepth, bool SchemaHasMaps, class UserCTX>
-constexpr bool ParseValue(Field & field, It &currentPos, const Sent & end, DeserializationContext<It, SchemaDepth, SchemaHasMaps, UserCTX> &ctx) {
+template <static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX>
+constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
         using Opt = FieldMeta::options::template get_option<options::detail::skip_json_tag>;
-        return SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx);
+        return reader.template skip_json_value<Opt::SkipDepthLimit>();
     } else if constexpr(FieldMeta::options::template has_option<options::detail::json_sink_tag>) {
         using Opt = FieldMeta::options::template get_option<options::detail::json_sink_tag>;
-        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");
-        return SkipValue<Opt::SkipDepthLimit>(currentPos, end, ctx, std::addressof(static_schema::getRef(field)), Opt::MaxStringLength);
+        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");        
+        return reader.template skip_json_value<Opt::SkipDepthLimit>(std::addressof(static_schema::getRef(field)), Opt::MaxStringLength);
     } else {
-        if(!skipWhiteSpace(currentPos, end, ctx)) [[unlikely]] {
+        if(!reader.skip_whitespace()) [[unlikely]] {
             return false;
         }
-        if constexpr(static_schema::JsonNullableParsableValue<Field>) {
-
-            if (currentPos == end) {
-                ctx.setError(ParseError::UNEXPECTED_END_OF_DATA, currentPos);
-                return false;
-            }
-            if(*currentPos == 'n') {
-                currentPos++;
-                if(!match_literal(currentPos, end, "ull")) {
-                    ctx.setError(ParseError::ILLFORMED_NULL, currentPos);
-                    return false;
-                }
+        if(tokenizer::TryParseStatus r = reader.read_null(); r == tokenizer::TryParseStatus::ok) {
+            if constexpr(static_schema::JsonNullableParsableValue<Field>) {
                 static_schema::setNull(field);
                 return true;
-            }
-        } else {
-            if (currentPos != end && *currentPos == 'n') {
-                ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, currentPos);
+            } else {
+                ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, reader.current());
                 return false;
             }
+        } else if(r == tokenizer::TryParseStatus::error) {
+            return false;
         }
-        return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), currentPos, end, ctx);
+
+        return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), reader, ctx);
     }
 }
 
@@ -1843,14 +881,16 @@ constexpr auto Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * u
     constexpr std::size_t SchemaDepth = schema_analyzis::calc_type_depth<InputObjectT>();
     constexpr bool SchemaHasMaps = schema_analyzis::has_maps<InputObjectT>();
 
-    parser_details::DeserializationContext<decltype(begin), SchemaDepth, SchemaHasMaps, UserCtx> ctx(b, userCtx);
+    using CtxT = parser_details::DeserializationContext<decltype(begin), SchemaDepth, SchemaHasMaps, UserCtx>;
+    CtxT ctx(b, userCtx);
 
-    parser_details::ParseValue(obj, begin, end, ctx);
+    tokenizer::JsonIteratorReader<It, Sent, CtxT> reader(begin, end, ctx);
+    parser_details::ParseValue(obj, reader, ctx);
 
     auto res = ctx.result();
     if(!res) {
     } else {
-        if(parser_details::skipWhiteSpace(begin, end, ctx)) {
+        if(reader.skip_whitespace()) {
             ctx.setError(ParseError::EXCESS_DATA, begin);
         } else {
             ctx.setError(ParseError::NO_ERROR, begin);
