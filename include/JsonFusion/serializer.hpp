@@ -407,39 +407,26 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
-    requires static_schema::JsonObject<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+template <bool AsArray, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
+constexpr inline bool SerializeOneStructField(bool & first, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+    using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
+    using Meta =  options::detail::annotation_meta_getter<Field>;
+    using FieldOpts    = typename Meta::options;
+    if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+        return true;
     }
-    *outputPos ++ = '{';
-
-
-    bool first = true;
-    auto  outputOne = [&outputPos, &end, &ctx, &first,&obj]<std::size_t I>() -> bool {
-        const auto & f = introspection::getStructElementByIndex<I>(obj);
-        using Field   = introspection::structureElementTypeByIndex<I, ObjT>;
-        using Meta =  options::detail::annotation_meta_getter<Field>;
-        using FieldOpts    = typename Meta::options;
-
-
-        if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
-            return true;
+    if(first) {
+        first = false;
+    } else {
+        if(outputPos == end) {
+            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+            return false;
         }
+        *outputPos ++ = ',';
+    }
 
-
-        if(first) {
-            first = false;
-        } else {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
-            }
-            *outputPos ++ = ',';
-        }
+    if constexpr(!AsArray) {
         if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
             using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
             const auto & f =  KeyOpt::desc.toStringView();
@@ -448,7 +435,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
                 return false;
             }
         } else {
-            const auto & f =   introspection::structureElementNameByIndex<I, ObjT>;
+            const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
             if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
                 ctx.setError(err, outputPos);
                 return false;
@@ -460,16 +447,36 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             return false;
         }
         *outputPos ++ = ':';
-        return SerializeValue<FieldOpts>(Meta::getRef(
-                                             introspection::getStructElementByIndex<I>(obj)
-                                             ), outputPos, end, ctx);
-    };
+    }
 
-    bool field_parse_result = [&outputOne]<std::size_t... I>(std::index_sequence<I...>) {
-        return ( outputOne.template operator()<I>() && ...);
 
-    }(std::make_index_sequence<introspection::structureElementsCount<ObjT>>{});
-    if(!field_parse_result) return false;
+    return SerializeValue<FieldOpts>(Meta::getRef(
+                                         introspection::getStructElementByIndex<StructIndex>(structObj)
+                                         ), outputPos, end, ctx);
+
+
+}
+template <bool AsArray, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
+constexpr inline bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
+    bool first = true;
+    return (
+        SerializeOneStructField<AsArray, StructIndex>(first, structObj, outputPos, end, ctx, userCtx)
+        && ...
+        );
+}
+
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+    requires static_schema::JsonObject<ObjT>
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+
+    if(outputPos == end) {
+        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+        return false;
+    }
+    *outputPos ++ = '{';
+
+    if(!SerializeStructFields<false>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+        return false;
 
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -491,35 +498,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     bool first = true;
 
 
-    auto try_one = [&](auto ic) {
-        constexpr std::size_t StructIndex = decltype(ic)::value;
-        using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
-        using Meta = options::detail::annotation_meta_getter<Field>;
-        using FieldOpts    = Meta::options;
-        if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
-            return true;
-        } else {
-            if(first) {
-                first = false;
-            } else {
-                if(outputPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                    return false;
-                }
-                *outputPos ++ = ',';
-            }
 
-            if(SerializeValue<FieldOpts>(Meta::getRef(introspection::getStructElementByIndex<StructIndex>(obj)), outputPos, end, ctx)) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-
-    };
-    bool ser_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
-        return (try_one(std::integral_constant<std::size_t, I>{}) && ...);
-    } (std::make_index_sequence<introspection::structureElementsCount<ObjT>>{});
+    if(!SerializeStructFields<true>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+        return false;
 
 
     if(outputPos == end) {

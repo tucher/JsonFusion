@@ -193,7 +193,7 @@ public:
     constexpr inline  Sent end()  const { return end_; }
 
 
-    constexpr inline  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
+    constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
                                      std::size_t& index,
                                      bool& seenDot,
                                      bool& seenExp)
@@ -310,7 +310,7 @@ public:
     }
 
     template<class NumberT, bool skipMaterializing>
-    constexpr inline  TryParseStatus read_number(NumberT & storage) {
+    constexpr  TryParseStatus read_number(NumberT & storage) {
         char buf[fp_to_str_detail::NumberBufSize];
         std::size_t index = 0;
         bool seenDot = false;
@@ -363,7 +363,7 @@ public:
 
 
 
-    constexpr inline StringCharStatus read_string_char(char &out) {
+    constexpr StringCharStatus read_string_char(char &out) {
         // If we're not currently inside a string, expect an opening quote
         if (!in_string_) {
             if (atEnd()) {
@@ -840,7 +840,7 @@ private:
     // Assumes characters are already known to be digits (no extra validation).
     // Returns false on overflow or invalid '-' for unsigned types.
     template <class Int>
-    constexpr inline bool parse_decimal_integer(const char* buf, Int& out) noexcept {
+    constexpr bool parse_decimal_integer(const char* buf, Int& out) noexcept {
         static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
 
         using Limits   = std::numeric_limits<Int>;
@@ -905,7 +905,7 @@ private:
         return true;
     }
 
-    constexpr inline  bool readHex4(std::uint16_t &out) {
+    constexpr  bool readHex4(std::uint16_t &out) {
         out = 0;
         for (int i = 0; i < 4; ++i) {
             if (atEnd()) {
@@ -975,7 +975,7 @@ private:
     };
 
     template<class Filler>
-    constexpr inline bool read_string_with_filler(Filler & f) {
+    constexpr bool read_string_with_filler(Filler & f) {
         char ch;
         for (;;) {
             auto st = read_string_char(ch);

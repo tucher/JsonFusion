@@ -52,6 +52,8 @@ class DeserializationContext {
     PathT currentPath;
     using PathElementT = PathT::PathElementT;
 
+
+public:
     struct PathGuard {
         DeserializationContext & ctx;
 
@@ -60,7 +62,7 @@ class DeserializationContext {
                 ctx.currentPath.pop();
         }
     };
-public:
+
     constexpr DeserializationContext(InpIter b):
         m_begin(b), m_pos(b), currentPath() {
 
@@ -135,7 +137,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     std::size_t parsedSize = 0;
     if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -144,7 +146,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
     char ch;
     while(true) {
-        auto st = reader.read_string_char(ch);
+        tokenizer::StringCharStatus st = reader.read_string_char(ch);
         if (st == tokenizer::StringCharStatus::no_match) {
             ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
             return false;
@@ -187,7 +189,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableArray<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(!reader.read_array_begin()) {
         ctx.setError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader.current());
@@ -251,8 +253,8 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
             }
         }
 
-        auto & newItem = cursor.get_slot();
-        auto guard = ctx.getArrayItemGuard(parsed_items_count);
+        typename FH::element_type & newItem = cursor.get_slot();
+        typename CTX::PathGuard guard = ctx.getArrayItemGuard(parsed_items_count);
 
         using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(newItem), reader, ctx, userCtx)) {
@@ -279,7 +281,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableMap<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(!reader.read_object_begin()) {
         ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
@@ -344,7 +346,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         }
         
         // Parse key as string with incremental validation
-        auto& key = cursor.key_ref();
+        typename FH::key_type& key = cursor.key_ref();
         using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
         
         // Custom string parsing with incremental key validation
@@ -356,7 +358,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
         char ch;
         while(true) {
-            auto st = reader.read_string_char(ch);
+            tokenizer::StringCharStatus st = reader.read_string_char(ch);
             if (st == tokenizer::StringCharStatus::no_match) {
                 cursor.finalize(false);
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
@@ -422,9 +424,9 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         }
         
         // Parse value
-        auto& value = cursor.value_ref();
+        typename FH::mapped_type& value = cursor.value_ref();
 
-        auto guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
+        typename CTX::PathGuard guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
 
         using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(value), reader, ctx, userCtx)) {
@@ -465,25 +467,27 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 }
 
 
+
+template<class T, std::size_t I>
+static consteval bool fieldIsNotJSON() {
+    using Field   = introspection::structureElementTypeByIndex<I, T>;
+    using Opts    = options::detail::annotation_meta_getter<Field>::options;
+    if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
 template<class T>
 struct FieldsHelper {
     using FieldDescr = string_search::StringDescr;
-    template<std::size_t I>
-    static consteval bool fieldIsNotJSON() {
-        using Field   = introspection::structureElementTypeByIndex<I, T>;
-        using Opts    = options::detail::annotation_meta_getter<Field>::options;
-        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
-            return true;
-        } else {
-            return false;
-        }
-    }
+
 
     static constexpr std::size_t rawFieldsCount = introspection::structureElementsCount<T>;
 
     static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) consteval{
-        //TODO get name from options, if presented
-        return (std::size_t{0} + ... + (!fieldIsNotJSON<I>() ? 1: 0));
+        return (std::size_t{0} + ... + (!fieldIsNotJSON<T, I>() ? 1: 0));
     }(std::make_index_sequence<rawFieldsCount>{});
 
 
@@ -507,7 +511,7 @@ struct FieldsHelper {
             std::size_t index = 0;
             auto add_one = [&](auto ic) consteval {
                 constexpr std::size_t J = decltype(ic)::value;
-                if constexpr (!fieldIsNotJSON<J>()) {
+                if constexpr (!fieldIsNotJSON<T, J>()) {
                     arr[index++] = FieldDescr{ fieldName<J>(), J };
                 }
             };
@@ -548,10 +552,36 @@ struct FieldsHelper {
 
 
 
+template<class StructT, std::size_t StructIndex>
+using StructFieldMeta = options::detail::annotation_meta_getter<
+    introspection::structureElementTypeByIndex<StructIndex, StructT>
+>;
+template <class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
+    requires static_schema::JsonObject<ObjT>
+constexpr inline bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
+    bool ok = false;
+    (
+        (requiredIndex == StructIndex
+             ? (
+                ok = ParseValue<typename StructFieldMeta<ObjT, StructIndex>::options>(
+                       StructFieldMeta<ObjT, StructIndex>::getRef(
+                           introspection::getStructElementByIndex<StructIndex>(structObj)
+                           ),
+                       reader, ctx, userCtx
+                       )
+
+
+
+                , 0)
+             : 0),
+        ...
+        );
+    return ok;
+}
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
 
@@ -600,7 +630,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
         char ch;
         while(true) {
-            auto st = reader.read_string_char(ch);
+            tokenizer::StringCharStatus st = reader.read_string_char(ch);
             if (st == tokenizer::StringCharStatus::no_match) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
@@ -636,52 +666,29 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
                     ctx.setError(reader.getError(), reader.current());
                     return false;
+                } else {
+                    return true;
                 }
             } else {
                 ctx.setError(ParseError::EXCESS_FIELD, reader.current());
                 return false;
             }
-        } else {
-            std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
-            if(parsedFieldsByIndex[arrIndex] == true) {
-                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-                return false;
-            }
-            auto try_one = [&](auto ic) {
-                constexpr std::size_t StructIndex = decltype(ic)::value;
-                if constexpr(FH::template fieldIsNotJSON<StructIndex>()) {
-                    return true;
-                } else {
-
-                    auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
-                    using Meta = options::detail::annotation_meta_getter<
-                        introspection::structureElementTypeByIndex<StructIndex, ObjT>
-                    >;
-                    return ParseValue<typename Meta::options>(
-                        Meta::getRef(
-                            introspection::getStructElementByIndex<StructIndex>(obj)
-                        ),
-                        reader, ctx, userCtx
-                    );
-                }
-            };
-
-            std::size_t structIndex = res->originalIndex;
-            bool field_parse_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
-                bool ok = false;
-                (
-                    (structIndex == I
-                         ? (ok = try_one(std::integral_constant<std::size_t, I>{}), 0)
-                         : 0),
-                    ...
-                    );
-                return ok;
-            } (std::make_index_sequence<FH::rawFieldsCount>{});
-            if(!field_parse_result) {
-                return false;
-            }
-            parsedFieldsByIndex[arrIndex] = true;
+        } 
+        std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
+        if(parsedFieldsByIndex[arrIndex] == true) {
+            ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            return false;
         }
+        typename CTX::PathGuard guard = ctx.getMapItemGuard(res->name);
+        std::size_t structIndex = res->originalIndex;
+
+
+        if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
+            return false;
+        }
+        parsedFieldsByIndex[arrIndex] = true;
+
+
         isFirst = false;
         if (!reader.consume_value_separator(has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
@@ -693,20 +700,36 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
 
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */
+
+template <class ObjT, std::size_t... StructIndex>
+constexpr inline bool IsFieldSkipped(std::index_sequence<StructIndex...>, std::size_t index) {
+    bool ok = false;
+    (
+        (index == StructIndex
+             ? (
+                   ok = fieldIsNotJSON<ObjT, StructIndex>()
+                   , 0)
+             : 0),
+        ...
+        );
+    return ok;
+}
+
+
+
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr  bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(!reader.read_array_begin()) {
         ctx.setError(ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT, reader.current());
         return false;
     }
 
+    std::size_t requiredIndex = 0;
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
-
-    std::size_t field_offset = 0;
 
     static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -726,38 +749,11 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 return false;
             }
 
-            std::size_t final_fields_offest = field_offset;
-            auto skip_checker = [&](auto ic) {
-                constexpr std::size_t StructIndex = decltype(ic)::value;
-                using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
-                using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
-
-                //TODO refactor this, skipping is handled on value level!!
-                if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
-                    final_fields_offest ++;
-                    return true;
-
-                } else {
-                    return false;
-                }
-            };
-
-            bool skip_rest_result = true;
-            if(parsed_items_count + field_offset != totalFieldsCount) {
-                skip_rest_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
-                    bool ok = false;
-                    (
-                        ((parsed_items_count + field_offset) <= I
-                             ? (ok = skip_checker(std::integral_constant<std::size_t, I>{}), 0)
-                             : 0),
-                        ...
-                        );
-
-                    return ok;
-                } (std::make_index_sequence<totalFieldsCount>{});
+            while(IsFieldSkipped<ObjT>(std::make_index_sequence<totalFieldsCount>{}, requiredIndex)) {
+                requiredIndex ++;
             }
 
-            if(!skip_rest_result || parsed_items_count + final_fields_offest != totalFieldsCount) {
+            if(requiredIndex!= totalFieldsCount) {
                 ctx.setError(ParseError::ARRAY_DESTRUCTURING_SCHEMA_ERROR, reader.current());
                 return false;
             }
@@ -770,48 +766,22 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
             return true;
         }
 
-        bool skipped = false;
+        while(IsFieldSkipped<ObjT>(std::make_index_sequence<totalFieldsCount>{}, requiredIndex)) {
+            requiredIndex ++;
+        }
 
-        auto try_one = [&](auto ic) {
-            constexpr std::size_t StructIndex = decltype(ic)::value;
-            using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
-            using Meta = options::detail::annotation_meta_getter<Field>;
+        if(requiredIndex >= totalFieldsCount) {
+            ctx.setError(ParseError::ARRAY_DESTRUCTURING_SCHEMA_ERROR, reader.current());
+            return false;
+        }
 
-            using FieldOpts    = Meta::options;
-            if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
-                skipped = true;
-                return false;
-            } else {
-                auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
-
-
-                return ParseValue<FieldOpts>(
-                    Meta::getRef(introspection::getStructElementByIndex<StructIndex>(obj)),
-                reader, ctx, userCtx);
-            }
-        };
-        bool field_parse_result = false;
-        do {
-            skipped = false;
-            field_parse_result = [&]<std::size_t... I>(std::index_sequence<I...>) {
-                bool ok = false;
-                (
-                    ((parsed_items_count + field_offset) == I
-                         ? (ok = try_one(std::integral_constant<std::size_t, I>{}), 0)
-                         : 0),
-                    ...
-                    );
-
-                return ok;
-            } (std::make_index_sequence<totalFieldsCount>{});
-            if(skipped) {
-                field_offset ++;
-            }
-        } while(skipped);
-        if(!field_parse_result) {
+        if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<totalFieldsCount>{}, requiredIndex, userCtx)) {
             return false;
         }
         parsed_items_count ++;
+        requiredIndex ++;
+
+
         if (!reader.consume_value_separator(has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
             return false;
@@ -821,10 +791,10 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 }
 
 template <class FieldOptions, static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
-constexpr inline bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr  bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
-        return true;
+        return false; // cannot parse non-json
     }else if constexpr (FieldOptions::template has_option<options::detail::skip_json_tag>) {
         using Opt = FieldOptions::template get_option<options::detail::skip_json_tag>;
         if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {

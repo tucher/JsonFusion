@@ -19,6 +19,7 @@ JsonFusion Stream + count objects         5134.85 µs/iter  (1000 iterations)
 #include <vector>
 #include <format>
 #include <filesystem>
+#include <map>
 
 #include <JsonFusion/parser.hpp>
 #include <rapidjson/document.h>
