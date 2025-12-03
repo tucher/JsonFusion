@@ -175,7 +175,7 @@ struct DFARunner {
     }
 };
 
-
+/*
 int test() {
     constexpr std::array<StringDescr, 8> keys{
         StringDescr{"hello", 0},
@@ -209,7 +209,7 @@ int test() {
     return 0;
 }
 
-
+*/
 
 // Binary search strategy: incrementally narrows candidate range per character
 struct IncrementalBinaryFieldSearch {
@@ -222,12 +222,12 @@ struct IncrementalBinaryFieldSearch {
     It original_end;  // original end, used as "empty result"
     std::size_t depth = 0; // how many characters have been fed
 
-    constexpr IncrementalBinaryFieldSearch(It begin, It end)
+    constexpr inline IncrementalBinaryFieldSearch(It begin, It end)
         : first(begin), last(end), original_begin(begin), original_end(end), depth(0) {}
 
     // Feed next character; narrows [first, last) by character at position `depth`.
     // Returns true if any candidates remain after this step.
-    constexpr bool step(char ch) {
+    constexpr inline bool step(char ch) {
         if (first == last)
             return false;
 
@@ -258,7 +258,7 @@ struct IncrementalBinaryFieldSearch {
     //   - pointer to unique StringDescr if exactly one matches AND
     //     fully typed (depth >= name.size())
     //   - original_end if 0 matches OR >1 matches OR undertyped.
-    constexpr It result() const {
+    constexpr inline It result() const {
         if (first == last)
             return original_end; // 0 matches
 
@@ -273,7 +273,7 @@ struct IncrementalBinaryFieldSearch {
         return first;
     }
     // Reset for next key
-    constexpr void reset() {
+    constexpr inline void reset() {
         first = original_begin;
         last = original_end;
         depth = 0;
@@ -291,7 +291,7 @@ struct BufferedLinearFieldSearch {
     std::size_t length = 0;
     bool overflown = false;
 
-    constexpr BufferedLinearFieldSearch(It begin_, It end_)
+    constexpr inline BufferedLinearFieldSearch(It begin_, It end_)
         : begin(begin_), end(end_), buffer{}, length(0), overflown(false) {}
 
     // Simply buffer the character, no searching yet
@@ -306,7 +306,7 @@ struct BufferedLinearFieldSearch {
     }
 
     // Perform linear search through all fields
-    constexpr It result() const {
+    constexpr inline It result() const {
         if(overflown) return end;
         std::string_view key(buffer, length);
         for (It it = begin; it != end; ++it) {
@@ -317,7 +317,7 @@ struct BufferedLinearFieldSearch {
         return end; // not found
     }
     // Reset for next key
-    constexpr void reset() {
+    constexpr inline void reset() {
         for (std::size_t i = 0; i < MaxLen; ++i) {
             buffer[i] = '\0';
         }
@@ -331,6 +331,7 @@ template<bool useBinarySearch, std::size_t MaxFieldLen>
 struct AdaptiveStringSearch {
     using It = const StringDescr*;
 
+    static_assert(!useBinarySearch, "DOn't");
     static constexpr bool useLinear = !useBinarySearch;
 
     using SearchImpl = std::conditional_t<
@@ -341,17 +342,17 @@ struct AdaptiveStringSearch {
 
     SearchImpl impl;
 
-    constexpr AdaptiveStringSearch(It begin, It end)
+    constexpr inline AdaptiveStringSearch(It begin, It end)
         : impl(begin, end) {}
 
     constexpr inline  bool step(char ch) {
         return impl.step(ch);
     }
 
-    constexpr It result() const {
+    constexpr inline It result() const {
         return impl.result();
     }
-    constexpr void reset() {
+    constexpr inline void reset() {
         impl.reset();
     }
 };

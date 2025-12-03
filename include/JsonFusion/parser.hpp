@@ -126,23 +126,23 @@ public:
         m_begin(b), m_pos(b), currentPath() {
 
     }
-    constexpr void setError(ParseError err, InpIter pos) {
+    constexpr inline void setError(ParseError err, InpIter pos) {
         error = err;
         m_pos = pos;
     }
-    constexpr ParseError currentError(){return error;}
+    constexpr inline ParseError currentError(){return error;}
 
     constexpr ParseResult<InpIter, SchemaDepth, SchemaHasMaps> result() const {
         return ParseResult<InpIter, SchemaDepth, SchemaHasMaps>(error, _validationCtx.result(), m_begin, m_pos, currentPath);
     }
-    constexpr validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    constexpr inline validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
 
 
-    constexpr PathGuard getArrayItemGuard(std::size_t index) {
+    constexpr inline PathGuard getArrayItemGuard(std::size_t index) {
         currentPath.push_child({index});
         return PathGuard{*this};
     }
-    constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
+    constexpr inline PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
         currentPath.push_child({std::numeric_limits<std::size_t>::max(), key, is_static});
         return PathGuard{*this};
     }

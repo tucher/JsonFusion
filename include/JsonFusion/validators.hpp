@@ -97,7 +97,7 @@ namespace detail {
 struct ValidationCtx {
     SchemaError  m_error  = SchemaError::none;
     std::size_t validatorIndex = std::numeric_limits<std::size_t>::max();
-    constexpr void setError(SchemaError e, std::size_t validatorOptIndex) {
+    constexpr inline void setError(SchemaError e, std::size_t validatorOptIndex) {
         m_error = e;
         validatorIndex = validatorOptIndex;
     }
@@ -136,26 +136,16 @@ struct validator_state<options::detail::field_options<T, Opts...>, Storage> {
     using StatesTuple = std::tuple<detail::option_state_t<Opts, Storage>...>;
     StatesTuple states{};
     template<class Tag, class... Args>
-    constexpr bool validate(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
+    constexpr inline bool validate(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
         return validate_impl<Tag>(
             std::make_index_sequence<OptsCount>{},
             storage, ctx, args...
         );
-
-        // bool ok = true;
-        // std::apply(
-        //     [&](auto&... st) {
-        //         // iterate over options, in lockstep with states
-        //         ((ok = ok && call_one<Tag, Opts>(st, storage, ctx, args...)), ...);
-        //     },
-        //     states
-        //     );
-        // return ok;
     }
 
 private:
     template<class Tag, class... Args, std::size_t... I>
-    constexpr bool validate_impl(std::index_sequence<I...>, const Storage& storage,
+    constexpr inline bool validate_impl(std::index_sequence<I...>, const Storage& storage,
                                  ValidationCtx& ctx, const Args&... args)
     {
         bool ok = true;
@@ -165,7 +155,7 @@ private:
     }
 
     template<class Tag, std::size_t I, class... Args>
-    constexpr bool validate_one(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
+    constexpr inline bool validate_one(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
         using Opt   = std::tuple_element_t<I, OptsTuple>;
         using State = std::tuple_element_t<I, StatesTuple>;
 
@@ -174,7 +164,7 @@ private:
     }
 
     template<class Tag, std::size_t Index, class Opt, class State, class... Args>
-    static constexpr bool call_one(
+    static constexpr inline bool call_one(
         State&        st,
         const Storage& storage,
         ValidationCtx&          ctx,
@@ -206,7 +196,7 @@ private:
 template<class Storage>
 struct validator_state<options::detail::no_options, Storage> {
     template<class Tag, class Ctx, class... Args>
-    constexpr bool validate(const Storage&, Ctx&, const Args&...) {
+    constexpr inline bool validate(const Storage&, Ctx&, const Args&...) {
         return true;
     }
 };
@@ -240,7 +230,7 @@ struct constant {
     static_assert(!is_const_string<decltype(C)>::value, "Use string_constant instead");
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>
-    static constexpr bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
+    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
         static_assert(std::is_same_v<decltype(C), bool>, "Constant is not bool");
         if(v != C) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -251,7 +241,7 @@ struct constant {
     }
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
-    static constexpr bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
+    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
         static_assert(static_schema::JsonNumber<decltype(C)>, "Constant is not number");
         if(v != C) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -263,7 +253,7 @@ struct constant {
 
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
         static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
         if(value != C.toStringView()) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -281,7 +271,7 @@ template<ConstString C>
 struct string_constant {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
         static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
         if(value != C.toStringView()) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -316,7 +306,7 @@ struct enum_values {
     
     // Incremental validation during string parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& str,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& str,
                                    detail::ValidationCtx& ctx, char c)
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
     {
@@ -332,7 +322,7 @@ struct enum_values {
     
     // Final validation after string is fully parsed
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& str,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& str,
                                    detail::ValidationCtx& ctx, std::size_t parsed_size, const std::string_view & value)
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
     {
@@ -365,7 +355,7 @@ template<auto Min, auto Max>
 struct range {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx) {
         if constexpr (std::is_floating_point_v<Storage>){
             static_assert(
                 std::numeric_limits<Storage>::lowest() <= Min && Min <= std::numeric_limits<Storage>::max() &&
@@ -396,7 +386,7 @@ template<std::size_t N>
 struct min_length {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size, const std::string_view & value) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size, const std::string_view & value) {
         if(size >= N) {
             return true;
         } else {
@@ -417,7 +407,7 @@ struct max_length {
     };
 
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& val,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& val,
                                    detail::ValidationCtx& ctx, char c)
         requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
     {
@@ -438,7 +428,7 @@ template<std::size_t N>
 struct min_items {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::array_parsing_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
         if(count >= N) {
             return true;
         } else {
@@ -455,7 +445,7 @@ template<std::size_t N>
 struct max_items {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::array_item_parsed>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
         if(count <= N) {
             return true;
         } else {
@@ -472,7 +462,7 @@ template <ConstString ... NotRequiredNames>
 struct not_required {
     template<class Tag, std::size_t Index, class Storage, class FH>
         requires std::is_same_v<Tag, detail::parsing_events_tags::object_parsing_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
         static_assert(
             ((FH::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
             "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
@@ -508,7 +498,7 @@ struct min_properties {
     
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
         if (count >= N) {
             return true;
         } else {
@@ -527,7 +517,7 @@ struct max_properties {
     
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_entry_parsed>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
         if (count <= N) {
             return true;
         } else {
@@ -550,7 +540,7 @@ struct min_key_length {
     
     template<class Tag, std::size_t Index, class Storage, class KeyType>
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -578,7 +568,7 @@ struct max_key_length {
     
     template<class Tag, std::size_t Index, class Storage, class KeyType>
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
-    static constexpr bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -619,7 +609,7 @@ struct required_keys {
     
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, char c)
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
     {
@@ -629,7 +619,7 @@ struct required_keys {
     
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
     {
@@ -647,7 +637,7 @@ struct required_keys {
     
     // Check all required keys were seen
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, std::size_t entry_count) 
             requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>                               
     {
@@ -681,7 +671,7 @@ struct allowed_keys {
     
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, char c)
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
     {
@@ -697,7 +687,7 @@ struct allowed_keys {
     
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
     {
@@ -734,7 +724,7 @@ struct forbidden_keys {
     
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, char c)
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
     {
@@ -744,7 +734,7 @@ struct forbidden_keys {
     
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
-    static constexpr bool validate(state<Storage>& st, const Storage& map,
+    static constexpr inline bool validate(state<Storage>& st, const Storage& map,
                                    detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
         requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
     {
