@@ -71,4 +71,56 @@ constexpr std::string_view error_to_string(ParseError e) {
     }
     return "N/A";
 }
+
+
+// ============================================================================
+// Schema Errors
+// ============================================================================
+
+enum class SchemaError  {
+    none                             ,
+    number_out_of_range              ,
+    string_length_out_of_range       ,
+    array_items_count_out_of_range   ,
+    missing_required_fields          ,
+    map_properties_count_out_of_range,
+    map_key_length_out_of_range      ,
+    wrong_constant_value             ,
+    map_key_not_allowed              ,
+    map_key_forbidden                ,
+    map_missing_required_key
+};
+
+constexpr std::string_view validator_error_to_string(SchemaError e) {
+    switch(e) {
+    case SchemaError::none                             : return "none"; break;
+    case SchemaError::number_out_of_range              : return "number_out_of_range"; break;
+    case SchemaError::string_length_out_of_range       : return "string_length_out_of_range"; break;
+    case SchemaError::array_items_count_out_of_range   : return "array_items_count_out_of_range"; break;
+    case SchemaError::missing_required_fields          : return "missing_required_fields"; break;
+    case SchemaError::map_properties_count_out_of_range: return "map_properties_count_out_of_range"; break;
+    case SchemaError::map_key_length_out_of_range      : return "map_key_length_out_of_range"; break;
+    case SchemaError::wrong_constant_value             : return "wrong_constant_value"; break;
+    case SchemaError::map_key_not_allowed              : return "map_key_not_allowed"; break;
+    case SchemaError::map_key_forbidden                : return "map_key_forbidden"; break;
+    case SchemaError::map_missing_required_key         : return "map_missing_required_key"; break;
+    }
+    return "N/A";
+}
+
+struct ValidationResult {
+    SchemaError  m_error  = SchemaError::none;
+    std::size_t validatorIndex;
+    constexpr operator bool() const {
+        return m_error == SchemaError::none;
+    }
+
+    constexpr SchemaError error() const {
+        return m_error;
+    }
+    constexpr std::size_t validator_index() const {
+        return validatorIndex;
+    }
+};
+
 } // namespace JsonFusion

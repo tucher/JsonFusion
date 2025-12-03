@@ -7,11 +7,16 @@
 
 namespace JsonFusion {
 
+template <class ... Options>
+struct OptionsPack {
 
-template <class T, typename... Options>
+};
+
+template <class T, typename... OptionsAndAnnotations>
 struct Annotated {
     T value{};
     using value_type = T;
+    using Options = OptionsPack<OptionsAndAnnotations...>;
 
 
     template<class Ctx>

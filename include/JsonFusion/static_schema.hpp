@@ -642,7 +642,7 @@ constexpr bool isNull(const Field &f) {
 }
 
 template<JsonNullableParsableValue Field>
-constexpr decltype(auto) getRef(Field & f) {
+constexpr inline decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     if constexpr (is_specialization_of<typename S::value_t, std::optional>::value) {
         auto& opt = S::getRef(f);
@@ -661,19 +661,19 @@ constexpr decltype(auto) getRef(Field & f) {
 }
 
 template<JsonNullableSerializableValue Field>
-constexpr decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
+constexpr inline decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
     using S = annotation_meta_getter<Field>;
     return (*S::getRef(f));
 }
 
 template<JsonNonNullableParsableValue Field>
-constexpr decltype(auto) getRef(Field & f) {
+constexpr inline decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }
 
 template<JsonNonNullableSerializableValue Field>
-constexpr decltype(auto) getRef(const Field & f) {
+constexpr inline decltype(auto) getRef(const Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }

@@ -2,7 +2,6 @@
 
 #include <array>
 // #include <cstdint>
-#include <iterator>
 #include <string_view>
 #include <utility>  // std::declval
 // #include <type_traits>
@@ -19,6 +18,7 @@
 #include "string_search.hpp"
 #include "tokenizer.hpp"
 #include "parse_errors.hpp"
+#include "parse_result.hpp"
 
 namespace JsonFusion {
 
@@ -31,65 +31,6 @@ constexpr bool allowed_dynamic_error_stack() {
 }
 
 
-
-
-// 1) Iterator you can:
-//    - read as *it   (convertible to char)
-//    - advance as it++ / ++it
-template <class It>
-concept CharInputIterator =
-    std::input_iterator<It> &&
-    std::convertible_to<std::iter_reference_t<It>, char>;
-
-// 2) Matching "end" type you can:
-//    - compare as it == end / it != end
-template <class It, class Sent>
-concept CharSentinelFor =
-    CharInputIterator<It> &&
-    std::sentinel_for<Sent, It>;
-
-
-template <CharInputIterator InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
-class ParseResult {
-    ParseError m_error = ParseError::NO_ERROR;
-    InpIter m_begin, m_pos;
-    validators::ValidationResult validationResult;
-
-
-    json_path::JsonPath<SchemaDepth, SchemaHasMaps> currentPath;
-
-public:
-    constexpr ParseResult(ParseError err, validators::ValidationResult schemaErrors, InpIter begin, InpIter pos, json_path::JsonPath<SchemaDepth, SchemaHasMaps> jsonP):
-        m_error(err), m_begin(begin), m_pos(pos), validationResult(schemaErrors), currentPath(jsonP)
-    {}
-    constexpr operator bool() const {
-        return m_error == ParseError::NO_ERROR && validationResult;
-    }
-    constexpr InpIter pos() const {
-        return m_pos;
-    }
-    constexpr std::size_t offset() const {
-        return m_pos - m_begin;
-    }
-    constexpr ParseError error() const {
-        if (m_error == ParseError::NO_ERROR) {
-            return ParseError::NO_ERROR;
-        } else {
-            if(!validationResult) {
-                return ParseError::SCHEMA_VALIDATION_ERROR;
-            }
-        }
-        return m_error;
-    }
-    constexpr const json_path::JsonPath<SchemaDepth, SchemaHasMaps> & errorJsonPath() const {
-        return currentPath;
-    }
-    constexpr validators::ValidationResult validationErrors() const {
-        return validationResult;
-    }
-};
-
-
 namespace  parser_details {
 
 
@@ -99,7 +40,7 @@ class DeserializationContext {
     ParseError error = ParseError::NO_ERROR;
     InpIter m_begin;
     InpIter m_pos;
-    validators::detail::ValidationCtx _validationCtx;
+    validators::validators_detail::ValidationCtx _validationCtx;
 
     static_assert(SchemaDepth != schema_analyzis::SCHEMA_UNBOUNDED || allowed_dynamic_error_stack(),
                   "JsonFusion: schema appears recursive / unbounded depth, "
@@ -133,7 +74,7 @@ public:
     constexpr ParseResult<InpIter, SchemaDepth, SchemaHasMaps> result() const {
         return ParseResult<InpIter, SchemaDepth, SchemaHasMaps>(error, _validationCtx.result(), m_begin, m_pos, currentPath);
     }
-    constexpr inline validators::detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    constexpr inline validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
 
 
     constexpr inline PathGuard getArrayItemGuard(std::size_t index) {
@@ -158,8 +99,8 @@ constexpr inline bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx
         return false;
     }
 
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
-    if(!validatorsState.template validate<validators::detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
         ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     } else {
@@ -182,8 +123,8 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         return false;
     }
 
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
-    if(!validatorsState.template validate<validators::detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
         ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     }
@@ -199,7 +140,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
     if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
     }
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     char ch;
     while(true) {
@@ -226,7 +167,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
             obj.push_back(ch);
         }
         parsedSize++;
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
@@ -236,7 +177,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         if(parsedSize < obj.size())
             obj[parsedSize] = 0;
     }
-    if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
+    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
         ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     }
@@ -260,8 +201,8 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
     FH cursor = [&]() {
         if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<FH, ObjT&, UserCtx*>) {
-            if(auto c = userCtx; c) {
-                return FH(obj, c );
+            if(userCtx) {
+                return FH(obj, userCtx );
             } else {
                 return FH(obj );
             }
@@ -271,7 +212,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
     }();
 
     cursor.reset();
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
@@ -290,7 +231,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 cursor.finalize(false);
                 return false;
             }
-            if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 cursor.finalize(false);
                 return false;
@@ -313,13 +254,14 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         auto & newItem = cursor.get_slot();
         auto guard = ctx.getArrayItemGuard(parsed_items_count);
 
-        if(!ParseValue(newItem, reader, ctx, userCtx)) {
+        using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
+        if(!ParseValue<typename Meta::options>(Meta::getRef(newItem), reader, ctx, userCtx)) {
             cursor.finalize(false);
             return false;
         }
 
         parsed_items_count ++;
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             cursor.finalize(false);
             return false;
@@ -351,8 +293,8 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
     FH cursor = [&]() {
         if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<FH, ObjT&, UserCtx*>) {
-            if(auto c = userCtx; c) {
-                return FH(obj, c );
+            if(userCtx) {
+                return FH(obj, userCtx);
             } else {
                 return FH(obj );
             }
@@ -363,7 +305,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
     cursor.reset();
 
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
@@ -381,7 +323,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 cursor.finalize(false);
                 return false;
             }
-            if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 cursor.finalize(false);
                 return false;
@@ -441,7 +383,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
             parsedSize++;
 
             // Emit incremental key parsing event for validators
-            if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_parsed_some_chars>
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_parsed_some_chars>
                  (obj, ctx.validationCtx(), ch)) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
@@ -455,7 +397,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         }
         
         // Emit key finished event
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
@@ -484,12 +426,12 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
         auto guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
 
-
-        if(!ParseValue(value, reader, ctx, userCtx)) {
+        using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
+        if(!ParseValue<typename Meta::options>(Meta::getRef(value), reader, ctx, userCtx)) {
             return false;
         }
 
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_value_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
@@ -508,7 +450,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         
         parsed_entries_count++;
 
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
@@ -622,7 +564,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
     bool isFirst = true;
 
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
@@ -637,7 +579,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
-            if(!validatorsState.template validate<validators::detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
@@ -712,7 +654,15 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 } else {
 
                     auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
-                    return ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx, userCtx);
+                    using Meta = options::detail::annotation_meta_getter<
+                        introspection::structureElementTypeByIndex<StructIndex, ObjT>
+                    >;
+                    return ParseValue<typename Meta::options>(
+                        Meta::getRef(
+                            introspection::getStructElementByIndex<StructIndex>(obj)
+                        ),
+                        reader, ctx, userCtx
+                    );
                 }
             };
 
@@ -759,7 +709,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
     std::size_t field_offset = 0;
 
     static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
-    validators::detail::validator_state<Opts, ObjT> validatorsState;
+    validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {
         if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
@@ -781,6 +731,8 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 constexpr std::size_t StructIndex = decltype(ic)::value;
                 using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
                 using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+
+                //TODO refactor this, skipping is handled on value level!!
                 if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
                     final_fields_offest ++;
                     return true;
@@ -810,7 +762,7 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
                 return false;
             }
 
-            if(!validatorsState.template validate<validators::detail::parsing_events_tags::descrtuctured_object_parsing_finished>(obj, ctx.validationCtx())) {
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::descrtuctured_object_parsing_finished>(obj, ctx.validationCtx())) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
@@ -823,13 +775,19 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
         auto try_one = [&](auto ic) {
             constexpr std::size_t StructIndex = decltype(ic)::value;
             using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
-            using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+            using Meta = options::detail::annotation_meta_getter<Field>;
+
+            using FieldOpts    = Meta::options;
             if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
                 skipped = true;
                 return false;
             } else {
                 auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
-                return ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx, userCtx);
+
+
+                return ParseValue<FieldOpts>(
+                    Meta::getRef(introspection::getStructElementByIndex<StructIndex>(obj)),
+                reader, ctx, userCtx);
             }
         };
         bool field_parse_result = false;
@@ -862,22 +820,23 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
     return false;
 }
 
-template <static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
 constexpr inline bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
-    if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
-        using Opt = FieldMeta::options::template get_option<options::detail::skip_json_tag>;
+    if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
+        return true;
+    }else if constexpr (FieldOptions::template has_option<options::detail::skip_json_tag>) {
+        using Opt = FieldOptions::template get_option<options::detail::skip_json_tag>;
         if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else {
             return true;
         }
-    } else if constexpr(FieldMeta::options::template has_option<options::detail::json_sink_tag>) {
-        using Opt = FieldMeta::options::template get_option<options::detail::json_sink_tag>;
-        static_assert(static_schema::JsonString<typename FieldMeta::value_t>, "json_sink should be used with string-like types");
-        if(!reader.template skip_json_value<Opt::SkipDepthLimit>(std::addressof(static_schema::getRef(field)), Opt::MaxStringLength)) {
+    } else if constexpr(FieldOptions::template has_option<options::detail::json_sink_tag>) {
+        using Opt = FieldOptions::template get_option<options::detail::json_sink_tag>;
+        static_assert(static_schema::JsonString<Field>, "json_sink should be used with string-like types");
+        if(!reader.template skip_json_value<Opt::SkipDepthLimit>(std::addressof(field), Opt::MaxStringLength)) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else {
@@ -900,22 +859,13 @@ constexpr inline bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, Us
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else {
-            return ParseNonNullValue<typename FieldMeta::options>(static_schema::getRef(field), reader, ctx, userCtx);
+            return ParseNonNullValue<FieldOptions>(static_schema::getRef(field), reader, ctx, userCtx);
         }
     }
 }
 
 } // namespace parser_details
 
-template <class M, CharInputIterator It>
-struct ModelParsingTraits {
-    static constexpr std::size_t SchemaDepth = schema_analyzis::calc_type_depth<M>();
-    static constexpr bool SchemaHasMaps = schema_analyzis::has_maps<M>();
-    using ResultT = ParseResult<It,SchemaDepth, SchemaHasMaps>;
-};
-
-template <class M, CharInputIterator It>
-using ParseResultT = ModelParsingTraits<M, It>::ResultT;
 
 template <static_schema::JsonParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCtx = void>
 constexpr ParseResultT<InputObjectT, It> Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
@@ -928,7 +878,10 @@ constexpr ParseResultT<InputObjectT, It> Parse(InputObjectT & obj, It begin, con
     CtxT ctx(b);
 
     tokenizer::JsonIteratorReader<It, Sent> reader(begin, end);
-    parser_details::ParseValue(obj, reader, ctx, userCtx);
+
+    using Meta = options::detail::annotation_meta_getter<InputObjectT>;
+
+    parser_details::ParseValue<typename Meta::options>(Meta::getRef(obj), reader, ctx, userCtx);
 
 
     if(ctx.currentError() == ParseError::NO_ERROR) {

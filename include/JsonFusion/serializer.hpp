@@ -16,6 +16,8 @@
 
 
 #include "options.hpp"
+#include "io.hpp"
+
 namespace JsonFusion {
 
 enum class SerializeError {
@@ -26,19 +28,6 @@ enum class SerializeError {
     INPUT_STREAM_ERROR
 };
 
-
-// 1) Iterator you can:
-//    - read as *it   (convertible to char)
-//    - advance as it++ / ++it
-template <class It>
-concept CharOutputIterator =
-    std::output_iterator<It, char>;
-
-// 2) Matching "end" type you can:
-//    - compare as it == end / it != end
-template <class Sent, class It>
-concept CharSentinelForOut =
-    std::sentinel_for<Sent, It>;
 
 
 
@@ -65,15 +54,14 @@ public:
 namespace  serializer_details {
 
 
-template <CharOutputIterator OutIter, class UserCtx = void>
+template <CharOutputIterator OutIter>
 class SerializationContext {
 
     SerializeError error = SerializeError::NO_ERROR;
     OutIter m_pos;
 
-    UserCtx * m_user_Ctx = nullptr;
 public:
-    constexpr SerializationContext(OutIter b, UserCtx * userCtx = nullptr): m_pos(b), m_user_Ctx(userCtx) {
+    constexpr SerializationContext(OutIter b): m_pos(b) {
 
     }
     constexpr void setError(SerializeError err, OutIter pos) {
@@ -86,7 +74,6 @@ public:
                    ? SerializeResult<OutIter>(SerializeError::NO_ERROR, current)
                    : SerializeResult<OutIter>(error, m_pos);
     }
-    constexpr UserCtx * userCtx() { return m_user_Ctx;}
 };
 
 constexpr bool serialize_literal(auto& it, const auto& end, const std::string_view & lit) {
@@ -147,9 +134,9 @@ constexpr SerializeError outputEscapedString(It & outputPos, const Sent &end, co
 }
 
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(obj) {
         if(!serialize_literal(currentPos, end, "true")) {
             ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
@@ -229,9 +216,9 @@ constexpr inline char* format_decimal_integer(Int value,
     return first + len;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     char buf[fp_to_str_detail::NumberBufSize];
     if constexpr (std::is_integral_v<ObjT>) {
         char* p = format_decimal_integer<ObjT>(obj, buf, buf + sizeof(buf));
@@ -280,9 +267,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
 }
 
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), !static_schema::DynamicContainerTypeConcept<ObjT>); err != SerializeError::NO_ERROR) {
         ctx.setError(err, currentPos);
@@ -291,9 +278,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonSerializableArray<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -303,9 +290,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
     using FH   = static_schema::array_read_cursor<ObjT>;
     FH cursor = [&]() {
-        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
-            if(auto c = ctx.userCtx(); c) {
-                return FH(obj, c );
+        if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<FH, ObjT&, UserCtx*>) {
+            if(userCtx) {
+                return FH(obj, userCtx);
             } else {
                 return FH(obj );
             }
@@ -333,7 +320,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             }
             *outputPos ++ = ',';
         }
-        if(!SerializeValue(ch, outputPos, end, ctx)) {
+        using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(ch), outputPos, end, ctx)) {
             return false;
         }
     }
@@ -346,9 +334,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonSerializableMap<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -358,9 +346,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
     using FH = static_schema::map_read_cursor<ObjT>;
     FH cursor = [&]() {
-        if constexpr (!std::is_same_v<UserCTX, void> && std::is_constructible_v<FH, ObjT&, UserCTX*>) {
-            if(auto c = ctx.userCtx(); c) {
-                return FH(obj, c );
+        if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<FH, ObjT&, UserCtx*>) {
+            if(userCtx) {
+                return FH(obj, userCtx );
             } else {
                 return FH(obj );
             }
@@ -393,7 +381,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         }
         
         // Serialize key as string
-        if(!SerializeValue(key, outputPos, end, ctx)) {
+
+        if(!SerializeValue<options::detail::no_options>(key, outputPos, end, ctx)) {
             return false;
         }
         
@@ -404,7 +393,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         *outputPos++ = ':';
         
         // Serialize value
-        if(!SerializeValue(value, outputPos, end, ctx)) {
+        using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(value), outputPos, end, ctx)) {
             return false;
         }
     }
@@ -417,9 +407,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -431,7 +421,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     bool first = true;
     auto  outputOne = [&outputPos, &end, &ctx, &first,&obj]<std::size_t I>() -> bool {
         const auto & f = introspection::getStructElementByIndex<I>(obj);
-        using Field   = std::remove_cvref_t<decltype(f)>;
+        using Field   = introspection::structureElementTypeByIndex<I, ObjT>;
         using Meta =  options::detail::annotation_meta_getter<Field>;
         using FieldOpts    = typename Meta::options;
 
@@ -470,7 +460,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             return false;
         }
         *outputPos ++ = ':';
-        return SerializeValue(f, outputPos, end, ctx);
+        return SerializeValue<FieldOpts>(Meta::getRef(
+                                             introspection::getStructElementByIndex<I>(obj)
+                                             ), outputPos, end, ctx);
     };
 
     bool field_parse_result = [&outputOne]<std::size_t... I>(std::index_sequence<I...>) {
@@ -487,10 +479,10 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
+template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
         && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(outputPos == end) {
         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
         return false;
@@ -502,7 +494,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     auto try_one = [&](auto ic) {
         constexpr std::size_t StructIndex = decltype(ic)::value;
         using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
-        using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
+        using Meta = options::detail::annotation_meta_getter<Field>;
+        using FieldOpts    = Meta::options;
         if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
             return true;
         } else {
@@ -516,7 +509,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
                 *outputPos ++ = ',';
             }
 
-            if(SerializeValue(introspection::getStructElementByIndex<StructIndex>(obj), outputPos, end, ctx)) {
+            if(SerializeValue<FieldOpts>(Meta::getRef(introspection::getStructElementByIndex<StructIndex>(obj)), outputPos, end, ctx)) {
                 return true;
             } else {
                 return false;
@@ -537,103 +530,52 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     return true;
 }
 
-template <static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCTX>
-constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, SerializationContext<It, UserCTX> &ctx) {
-    using Meta    = options::detail::annotation_meta_getter<Field>;
-    if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
+template <class FieldOptions, static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+
+    if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
+        return true;
+    }else if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
 
         if(static_schema::isNull(obj)) {
             return serialize_literal(currentPos, end, "null");
         }
     }
-    return SerializeNonNullValue<typename Meta::options>(static_schema::getRef(obj), currentPos, end, ctx);
+    return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), currentPos, end, ctx, userCtx);
 }
 
 } // namespace serializer_details
 
-template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent>
-constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, const Sent & end) {
+
+
+template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void>
+constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx = nullptr) {
     serializer_details::SerializationContext<It> ctx(begin);
-    serializer_details::SerializeValue(obj, begin, end, ctx);
+    using Meta = options::detail::annotation_meta_getter<InputObjectT>;
+
+    serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), begin, end, ctx, userCtx);
     return ctx.result(begin);
 }
 
-template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx>
-constexpr SerializeResult<It> SerializeWithContext(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx) {
-    serializer_details::SerializationContext<It, UserCtx> ctx(begin, userCtx);
-    serializer_details::SerializeValue(obj, begin, end, ctx);
-    return ctx.result(begin);
-}
-
-// template<class InputObjectT, class ContainterT>
-// constexpr auto Serialize(const InputObjectT & obj, ContainterT & c) {
-//     return Serialize(obj, c.begin(), c.end());
-// }
-
-
-// Pointer + length front-end
-template<static_schema::JsonSerializableValue InputObjectT>
-constexpr SerializeResult<char*> Serialize(const InputObjectT& obj, char* data, std::size_t size) {
-    char* begin = data;
-    char* end   = data + size;
-
-    serializer_details::SerializationContext<char*> ctx(begin);
-
-    char* cur = begin;
-    serializer_details::SerializeValue(obj, cur, end, ctx);
-
-    return ctx.result(begin);
-}
 
 namespace serializer_details {
-struct limitless_sentinel {};
 
-constexpr inline bool operator==(const std::back_insert_iterator<std::string>&,
-                       const limitless_sentinel&) noexcept {
-    return false;
 }
 
-constexpr inline bool operator==(const limitless_sentinel&,
-                       const std::back_insert_iterator<std::string>&) noexcept {
-    return false;
-}
-
-constexpr inline bool operator!=(const std::back_insert_iterator<std::string>& it,
-                       const limitless_sentinel& s) noexcept {
-    return !(it == s);
-}
-
-constexpr inline bool operator!=(const limitless_sentinel& s,
-                       const std::back_insert_iterator<std::string>& it) noexcept {
-    return !(it == s);
-}
-}
-
-template<static_schema::JsonSerializableValue InputObjectT>
-constexpr auto Serialize(const InputObjectT& obj, std::string& out)
+template<static_schema::JsonSerializableValue InputObjectT, class UserCtx = void>
+constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ctx = nullptr)
 {
-    using serializer_details::limitless_sentinel;
+    using io_details::limitless_sentinel;
 
     out.clear();
 
     auto it  = std::back_inserter(out);
     limitless_sentinel end{};
 
-    return Serialize(obj, it, end);  // calls the iterator-based core
+    return Serialize(obj, it, end, ctx);  // calls the iterator-based core
 }
 
-template<static_schema::JsonSerializableValue InputObjectT, class UserCtx>
-constexpr auto SerializeWithContext(const InputObjectT& obj, std::string& out, UserCtx * ctx)
-{
-    using serializer_details::limitless_sentinel;
 
-    out.clear();
-
-    auto it  = std::back_inserter(out);
-    limitless_sentinel end{};
-
-    return SerializeWithContext(obj, it, end, ctx);  // calls the iterator-based core
-}
 
 template <class T>
 requires (!static_schema::JsonSerializableValue<T>)

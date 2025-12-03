@@ -190,10 +190,8 @@ struct no_options {
     using get_option = void;
 };
 
-template<class T, class... Opts>
+template<class... Opts>
 struct field_options {
-
-    using underlying_type = T;
 
     template<class Tag>
     using option_type = typename detail::find_option_by_tag<Tag, Opts...>::type;
@@ -227,10 +225,10 @@ template<class T>
 struct annotation_meta {
     using value_t = T;
     using options      = no_options;
-    static constexpr decltype(auto) getRef(T & f) {
+    static constexpr inline decltype(auto) getRef(T & f) {
         return (f);
     }
-    static constexpr decltype(auto) getRef(const T & f) {
+    static constexpr inline decltype(auto) getRef(const T & f) {
         return (f);
     }
 };
@@ -251,12 +249,12 @@ template<class T, class... Opts>
 struct annotation_meta<Annotated<T, Opts...>> {
     // static_assert((requires { typename Opts::tag; } && ...));
     using value_t = T;
-    using options      = field_options<T, Opts...>;
+    using options      = field_options<Opts...>;
 
-    static constexpr decltype(auto) getRef(Annotated<T, Opts...> & f) {
+    static constexpr inline decltype(auto) getRef(Annotated<T, Opts...> & f) {
         return (f.value);
     }
-    static constexpr decltype(auto) getRef(const Annotated<T, Opts...> & f) {
+    static constexpr inline decltype(auto) getRef(const Annotated<T, Opts...> & f) {
         return (f.value);
     }
 };

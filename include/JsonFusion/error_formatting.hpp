@@ -1,5 +1,7 @@
 #pragma once
-#include "parser.hpp"
+
+#include "options.hpp"
+#include "parse_result.hpp"
 
 namespace JsonFusion {
 
@@ -8,8 +10,8 @@ template<class Options>
 struct get_opt_string_helper;
 
 // Specialization for field_options
-template<class T, class... Opts>
-struct get_opt_string_helper<options::detail::field_options<T, Opts...>> {
+template<class... Opts>
+struct get_opt_string_helper<options::detail::field_options<Opts...>> {
     static std::string_view get(std::size_t i) {
         // Build a table with all option names
         static const std::string_view table[] = { Opts::to_string()... };
@@ -47,6 +49,7 @@ inline std::string& trim(std::string& s, const char* t = ws)
 }
 
 }
+
 template <class C, CharInputIterator InpIter, std::size_t MaxSchemaDepth, bool HasMaps>
 std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMaps> & res, InpIter inp, const InpIter end, std::size_t window = 40) {
     std::string jsonPath = "$";
@@ -76,7 +79,7 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
     } else {
         auto validationResult = res.validationErrors();
         std::size_t index = res.validationErrors().validator_index();
-        validators::SchemaError err = res.validationErrors().error();
+        SchemaError err = res.validationErrors().error();
 
 
         std::string valDetail = "";
@@ -88,8 +91,10 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
         })) {
 
         }
-        std::string valInfo = std::format("validator #{}{} error: '{}'", index, valDetail, validators::validator_error_to_string(err));
+        std::string valInfo = std::format("validator #{}{} error: '{}'", index, valDetail, validator_error_to_string(err));
         return std::format("When parsing {}, {}: '...{}😖{}...'", jsonPath, valInfo, before, after);
     }
 }
+
+
 }

@@ -6,87 +6,14 @@
 
 #include "options.hpp"
 #include "string_search.hpp"
+#include "parse_errors.hpp"
+
 namespace JsonFusion {
 
 namespace validators {
 
 
-/// Helper to compute sorted keys and metadata for key set validators
-template<ConstString... Keys>
-struct KeySetHelper {
-    static constexpr std::size_t keyCount = sizeof...(Keys);
-    
-    // Build sorted array of key names at compile time
-    static constexpr std::array<string_search::StringDescr, keyCount> sortedKeys = []() consteval {
-        std::array<string_search::StringDescr, keyCount> arr;
-        std::size_t idx = 0;
-        ((arr[idx++] = string_search::StringDescr{Keys.toStringView(), idx}), ...);
-        std::ranges::sort(arr, {}, &string_search::StringDescr::name);
-        return arr;
-    }();
-    
-    static constexpr std::size_t maxKeyLength = []() consteval {
-        std::size_t maxLen = 0;
-        for (const auto& k : sortedKeys) {
-            if (k.name.size() > maxLen) maxLen = k.name.size();
-        }
-        return maxLen;
-    }();
-};
-
-// ============================================================================
-// Schema Errors
-// ============================================================================
-
-enum class SchemaError  {
-    none                             ,
-    number_out_of_range              ,
-    string_length_out_of_range       ,
-    array_items_count_out_of_range   ,
-    missing_required_fields          ,
-    map_properties_count_out_of_range,
-    map_key_length_out_of_range      ,
-    wrong_constant_value             ,
-    map_key_not_allowed              ,
-    map_key_forbidden                ,
-    map_missing_required_key
-};
-
-constexpr std::string_view validator_error_to_string(SchemaError e) {
-    switch(e) {
-    case SchemaError::none                             : return "none"; break;
-    case SchemaError::number_out_of_range              : return "number_out_of_range"; break;
-    case SchemaError::string_length_out_of_range       : return "string_length_out_of_range"; break;
-    case SchemaError::array_items_count_out_of_range   : return "array_items_count_out_of_range"; break;
-    case SchemaError::missing_required_fields          : return "missing_required_fields"; break;
-    case SchemaError::map_properties_count_out_of_range: return "map_properties_count_out_of_range"; break;
-    case SchemaError::map_key_length_out_of_range      : return "map_key_length_out_of_range"; break;
-    case SchemaError::wrong_constant_value             : return "wrong_constant_value"; break;
-    case SchemaError::map_key_not_allowed              : return "map_key_not_allowed"; break;
-    case SchemaError::map_key_forbidden                : return "map_key_forbidden"; break;
-    case SchemaError::map_missing_required_key         : return "map_missing_required_key"; break;
-    }
-    return "N/A";
-}
-
-struct ValidationResult {
-    SchemaError  m_error  = SchemaError::none;
-    std::size_t validatorIndex;
-    constexpr operator bool() const {
-        return m_error == SchemaError::none;
-    }
-
-    constexpr SchemaError error() const {
-        return m_error;
-    }
-    constexpr std::size_t validator_index() const {
-        return validatorIndex;
-    }
-};
-
-
-namespace detail {
-
+namespace validators_detail {
 
 
 struct ValidationCtx {
@@ -124,11 +51,11 @@ struct validator_state  {
 
 
 
-template<class T, class... Opts, class Storage>
-struct validator_state<options::detail::field_options<T, Opts...>, Storage> {
+template<class... Opts, class Storage>
+struct validator_state<options::detail::field_options<Opts...>, Storage> {
     static constexpr std::size_t OptsCount = sizeof...(Opts);
     using OptsTuple   = std::tuple<Opts...>;
-    using StatesTuple = std::tuple<detail::option_state_t<Opts, Storage>...>;
+    using StatesTuple = std::tuple<option_state_t<Opts, Storage>...>;
     StatesTuple states{};
     template<class Tag, class... Args>
     constexpr inline bool validate(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
@@ -217,6 +144,33 @@ struct map_entry_parsed{};
 struct map_parsing_finished{};
 
 }
+
+
+/// Helper to compute sorted keys and metadata for key set validators
+template<ConstString... Keys>
+struct KeySetHelper {
+    static constexpr std::size_t keyCount = sizeof...(Keys);
+
+    // Build sorted array of key names at compile time
+    static constexpr std::array<string_search::StringDescr, keyCount> sortedKeys = []() consteval {
+        std::array<string_search::StringDescr, keyCount> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = string_search::StringDescr{Keys.toStringView(), idx}), ...);
+        std::ranges::sort(arr, {}, &string_search::StringDescr::name);
+        return arr;
+    }();
+
+    static constexpr std::size_t maxKeyLength = []() consteval {
+        std::size_t maxLen = 0;
+        for (const auto& k : sortedKeys) {
+            if (k.name.size() > maxLen) maxLen = k.name.size();
+        }
+        return maxLen;
+    }();
+};
+
+
+
 } //namespace detail
 
 
@@ -224,8 +178,8 @@ template<auto C>
 struct constant {
     static_assert(!is_const_string<decltype(C)>::value, "Use string_constant instead");
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::bool_parsing_finished>
-    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::bool_parsing_finished>
+    static constexpr inline bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx) {
         static_assert(std::is_same_v<decltype(C), bool>, "Constant is not bool");
         if(v != C) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -235,8 +189,8 @@ struct constant {
         }
     }
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
-    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::number_parsing_finished>
+    static constexpr inline bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx) {
         if(v != C) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
             return false;
@@ -246,8 +200,8 @@ struct constant {
     }
 
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
+    static constexpr inline bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
         static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
         if(value != C.toStringView()) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -264,8 +218,8 @@ struct constant {
 template<ConstString C>
 struct string_constant {
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
+    static constexpr inline bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx, std::size_t size, const std::string_view & value) {
         static_assert(is_const_string<decltype(C)>::value, "Constant is not string");
         if(value != C.toStringView()) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
@@ -285,7 +239,7 @@ struct string_constant {
 
 template<ConstString... Values>
 struct enum_values {    
-    using ValueSet = KeySetHelper<Values...>;
+    using ValueSet = validators_detail::KeySetHelper<Values...>;
     static constexpr std::size_t valueCount = ValueSet::keyCount;
     static constexpr auto& sortedValues = ValueSet::sortedKeys;
     static constexpr std::size_t maxValueLength = ValueSet::maxKeyLength;
@@ -301,8 +255,8 @@ struct enum_values {
     // Incremental validation during string parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& str,
-                                   detail::ValidationCtx& ctx, char c)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
+                                   validators_detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsed_some_chars>
     {
         // Feed character to incremental search
         if (!st.searcher.step(c)) {
@@ -317,8 +271,8 @@ struct enum_values {
     // Final validation after string is fully parsed
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& str,
-                                   detail::ValidationCtx& ctx, std::size_t parsed_size, const std::string_view & value)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
+                                   validators_detail::ValidationCtx& ctx, std::size_t parsed_size, const std::string_view & value)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
     {
         auto result = st.searcher.result();
         st.searcher.reset();
@@ -348,8 +302,8 @@ struct enum_values {
 template<auto Min, auto Max>
 struct range {
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::number_parsing_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx&ctx) {
         if constexpr (std::is_floating_point_v<Storage>){
             static_assert(
                 std::numeric_limits<Storage>::lowest() <= Min && Min <= std::numeric_limits<Storage>::max() &&
@@ -379,8 +333,8 @@ struct range {
 template<std::size_t N>
 struct min_length {
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsing_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t size, const std::string_view & value) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t size, const std::string_view & value) {
         if(size >= N) {
             return true;
         } else {
@@ -402,8 +356,8 @@ struct max_length {
 
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& val,
-                                   detail::ValidationCtx& ctx, char c)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::string_parsed_some_chars>
+                                   validators_detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsed_some_chars>
     {
         st.char_count++;
         if (st.char_count > N) {
@@ -421,8 +375,8 @@ struct max_length {
 template<std::size_t N>
 struct min_items {
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::array_parsing_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::array_parsing_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t count) {
         if(count >= N) {
             return true;
         } else {
@@ -438,8 +392,8 @@ struct min_items {
 template<std::size_t N>
 struct max_items {
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::array_item_parsed>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, std::size_t count) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::array_item_parsed>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t count) {
         if(count <= N) {
             return true;
         } else {
@@ -455,8 +409,8 @@ struct max_items {
 template <ConstString ... NotRequiredNames>
 struct not_required {
     template<class Tag, std::size_t Index, class Storage, class FH>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::object_parsing_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
         static_assert(
             ((FH::indexInSortedByName(NotRequiredNames.toStringView()) != -1) &&...),
             "Fields in 'not_required' are not presented in json model of object, check c++ fields names or 'key' annotations");
@@ -491,8 +445,8 @@ struct min_properties {
     static constexpr std::size_t value = N;
     
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_parsing_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, std::size_t count) {
         if (count >= N) {
             return true;
         } else {
@@ -510,8 +464,8 @@ struct max_properties {
     static constexpr std::size_t value = N;
     
     template<class Tag, std::size_t Index, class Storage>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_entry_parsed>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, std::size_t count) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_entry_parsed>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, std::size_t count) {
         if (count <= N) {
             return true;
         } else {
@@ -533,8 +487,8 @@ struct min_key_length {
     static constexpr std::size_t value = N;
     
     template<class Tag, std::size_t Index, class Storage, class KeyType>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -561,8 +515,8 @@ struct max_key_length {
     static constexpr std::size_t value = N;
     
     template<class Tag, std::size_t Index, class Storage, class KeyType>
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
-    static constexpr inline bool validate(const Storage& val, detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
+    static constexpr inline bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_index) {
         // Calculate key length (up to null terminator for char arrays)
         std::size_t key_len = 0;
         if constexpr (requires { key.size(); key[0]; }) {
@@ -587,7 +541,7 @@ struct max_key_length {
 template<ConstString... Keys>
 struct required_keys {
     
-    using KeySet = KeySetHelper<Keys...>;
+    using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
     static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
@@ -604,8 +558,8 @@ struct required_keys {
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, char c)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+                                   validators_detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_parsed_some_chars>
     {
         st.searcher.step(c);  // Update search state, don't fail yet
         return true;
@@ -614,8 +568,8 @@ struct required_keys {
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+                                   validators_detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     {
         auto result = st.searcher.result();
         if (result != sortedKeys.end()) {
@@ -632,8 +586,8 @@ struct required_keys {
     // Check all required keys were seen
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, std::size_t entry_count) 
-            requires std::is_same_v<Tag, detail::parsing_events_tags::map_parsing_finished>                               
+                                   validators_detail::ValidationCtx& ctx, std::size_t entry_count)
+            requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_parsing_finished>
     {
         st.searcher.reset();
         if (st.seen.count() != keyCount) {
@@ -650,7 +604,7 @@ struct required_keys {
 template<ConstString... Keys>
 struct allowed_keys {
     
-    using KeySet = KeySetHelper<Keys...>;
+    using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
     static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
@@ -666,8 +620,8 @@ struct allowed_keys {
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, char c)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+                                   validators_detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_parsed_some_chars>
     {
         // Feed character to incremental search
         if (!st.searcher.step(c)) {
@@ -682,8 +636,8 @@ struct allowed_keys {
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+                                   validators_detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     {
         auto result = st.searcher.result();
         st.searcher.reset();
@@ -703,7 +657,7 @@ struct allowed_keys {
 template<ConstString... Keys>
 struct forbidden_keys {
     
-    using KeySet = KeySetHelper<Keys...>;
+    using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
     static constexpr std::size_t maxKeyLength = KeySet::maxKeyLength;
@@ -719,8 +673,8 @@ struct forbidden_keys {
     // Incremental validation during key parsing (per-character)
     template<class Tag, std::size_t Index, class Storage>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, char c)
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_parsed_some_chars>
+                                   validators_detail::ValidationCtx& ctx, char c)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_parsed_some_chars>
     {
         st.searcher.step(c);  // Track matching, but don't fail yet
         return true;
@@ -729,8 +683,8 @@ struct forbidden_keys {
     // Final validation after key is fully parsed
     template<class Tag, std::size_t Index, class Storage, class KeyType>
     static constexpr inline bool validate(state<Storage>& st, const Storage& map,
-                                   detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count) 
-        requires std::is_same_v<Tag, detail::parsing_events_tags::map_key_finished>
+                                   validators_detail::ValidationCtx& ctx, const KeyType& key, std::size_t entry_count)
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     {
         auto result = st.searcher.result();
         st.searcher.reset();
