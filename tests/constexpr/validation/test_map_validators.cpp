@@ -81,7 +81,7 @@ constexpr bool test_min_properties_pass() {
         min_properties<2>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 >= 2
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 >= 2
     return Parse(consumer, json);
 }
 static_assert(test_min_properties_pass());
@@ -92,7 +92,7 @@ constexpr bool test_min_properties_fail() {
         min_properties<3>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2})";  // 2 < 3
+    std::string_view json = R"({"a": 1, "b": 2})";  // 2 < 3
     return !Parse(consumer, json);
 }
 static_assert(test_min_properties_fail());
@@ -103,7 +103,7 @@ constexpr bool test_min_properties_exact() {
         min_properties<2>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2})";  // 2 == 2
+    std::string_view json = R"({"a": 1, "b": 2})";  // 2 == 2
     return Parse(consumer, json);
 }
 static_assert(test_min_properties_exact());
@@ -114,7 +114,7 @@ constexpr bool test_min_properties_empty_map() {
         min_properties<1>
     > consumer;
     
-    const char* json = R"({})";  // 0 < 1
+    std::string_view json = R"({})";  // 0 < 1
     return !Parse(consumer, json);
 }
 static_assert(test_min_properties_empty_map());
@@ -126,7 +126,7 @@ constexpr bool test_max_properties_pass() {
         max_properties<5>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 <= 5
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 <= 5
     return Parse(consumer, json);
 }
 static_assert(test_max_properties_pass());
@@ -137,7 +137,7 @@ constexpr bool test_max_properties_fail() {
         max_properties<2>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 > 2
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 > 2
     return !Parse(consumer, json);
 }
 static_assert(test_max_properties_fail());
@@ -148,7 +148,7 @@ constexpr bool test_max_properties_exact() {
         max_properties<3>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 == 3
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 == 3
     return Parse(consumer, json);
 }
 static_assert(test_max_properties_exact());
@@ -161,7 +161,7 @@ constexpr bool test_properties_range_valid() {
         max_properties<5>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 in [2, 5]
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 in [2, 5]
     return Parse(consumer, json);
 }
 static_assert(test_properties_range_valid());
@@ -173,7 +173,7 @@ constexpr bool test_properties_range_too_few() {
         max_properties<5>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2})";  // 2 < 3
+    std::string_view json = R"({"a": 1, "b": 2})";  // 2 < 3
     return !Parse(consumer, json);
 }
 static_assert(test_properties_range_too_few());
@@ -185,7 +185,7 @@ constexpr bool test_properties_range_too_many() {
         max_properties<2>
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 > 2
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 > 2
     return !Parse(consumer, json);
 }
 static_assert(test_properties_range_too_many());
@@ -201,7 +201,7 @@ constexpr bool test_min_key_length_pass() {
         min_key_length<2>
     > consumer;
     
-    const char* json = R"({"ab": 1, "xyz": 2})";  // All keys >= 2 chars
+    std::string_view json = R"({"ab": 1, "xyz": 2})";  // All keys >= 2 chars
     return Parse(consumer, json);
 }
 static_assert(test_min_key_length_pass());
@@ -212,7 +212,7 @@ constexpr bool test_min_key_length_fail() {
         min_key_length<3>
     > consumer;
     
-    const char* json = R"({"a": 1, "bcd": 2})";  // "a" has 1 char < 3
+    std::string_view json = R"({"a": 1, "bcd": 2})";  // "a" has 1 char < 3
     return !Parse(consumer, json);
 }
 static_assert(test_min_key_length_fail());
@@ -223,7 +223,7 @@ constexpr bool test_min_key_length_exact() {
         min_key_length<3>
     > consumer;
     
-    const char* json = R"({"abc": 1, "defg": 2})";  // "abc" has 3 chars == 3
+    std::string_view json = R"({"abc": 1, "defg": 2})";  // "abc" has 3 chars == 3
     return Parse(consumer, json);
 }
 static_assert(test_min_key_length_exact());
@@ -235,7 +235,7 @@ constexpr bool test_max_key_length_pass() {
         max_key_length<5>
     > consumer;
     
-    const char* json = R"({"ab": 1, "xyz": 2})";  // All keys <= 5 chars
+    std::string_view json = R"({"ab": 1, "xyz": 2})";  // All keys <= 5 chars
     return Parse(consumer, json);
 }
 static_assert(test_max_key_length_pass());
@@ -246,7 +246,7 @@ constexpr bool test_max_key_length_fail() {
         max_key_length<3>
     > consumer;
     
-    const char* json = R"({"ab": 1, "toolong": 2})";  // "toolong" has 7 chars > 3
+    std::string_view json = R"({"ab": 1, "toolong": 2})";  // "toolong" has 7 chars > 3
     return !Parse(consumer, json);
 }
 static_assert(test_max_key_length_fail());
@@ -257,7 +257,7 @@ constexpr bool test_max_key_length_exact() {
         max_key_length<3>
     > consumer;
     
-    const char* json = R"({"abc": 1, "xy": 2})";  // "abc" has 3 chars == 3
+    std::string_view json = R"({"abc": 1, "xy": 2})";  // "abc" has 3 chars == 3
     return Parse(consumer, json);
 }
 static_assert(test_max_key_length_exact());
@@ -270,7 +270,7 @@ constexpr bool test_key_length_range_valid() {
         max_key_length<5>
     > consumer;
     
-    const char* json = R"({"ab": 1, "xyz": 2, "test": 3})";  // All in [2, 5]
+    std::string_view json = R"({"ab": 1, "xyz": 2, "test": 3})";  // All in [2, 5]
     return Parse(consumer, json);
 }
 static_assert(test_key_length_range_valid());
@@ -282,7 +282,7 @@ constexpr bool test_key_length_range_too_short() {
         max_key_length<5>
     > consumer;
     
-    const char* json = R"({"ab": 1, "xyz": 2})";  // "ab" has 2 < 3
+    std::string_view json = R"({"ab": 1, "xyz": 2})";  // "ab" has 2 < 3
     return !Parse(consumer, json);
 }
 static_assert(test_key_length_range_too_short());
@@ -294,7 +294,7 @@ constexpr bool test_key_length_range_too_long() {
         max_key_length<4>
     > consumer;
     
-    const char* json = R"({"ab": 1, "toolong": 2})";  // "toolong" has 7 > 4
+    std::string_view json = R"({"ab": 1, "toolong": 2})";  // "toolong" has 7 > 4
     return !Parse(consumer, json);
 }
 static_assert(test_key_length_range_too_long());
@@ -309,7 +309,7 @@ constexpr bool test_allowed_keys_valid() {
         allowed_keys<"a", "b", "c">
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -322,7 +322,7 @@ constexpr bool test_allowed_keys_reject() {
         allowed_keys<"x", "y">
     > consumer;
     
-    const char* json = R"({"x": 1, "z": 2})";  // "z" not allowed
+    std::string_view json = R"({"x": 1, "z": 2})";  // "z" not allowed
     
     auto result = Parse(consumer, json);
     return !result;  // Should fail
@@ -336,7 +336,7 @@ constexpr bool test_allowed_keys_incremental() {
     > consumer;
     
     // "gamma" should be rejected incrementally when we reach 'g'
-    const char* json = R"({"alpha": 1, "gamma": 2})";
+    std::string_view json = R"({"alpha": 1, "gamma": 2})";
     
     auto result = Parse(consumer, json);
     return !result;  // Should fail early
@@ -349,7 +349,7 @@ constexpr bool test_allowed_keys_partial_match() {
         allowed_keys<"key">
     > consumer;
     
-    const char* json = R"({"keyExtra": 1})";  // "keyExtra" != "key"
+    std::string_view json = R"({"keyExtra": 1})";  // "keyExtra" != "key"
     return !Parse(consumer, json);
 }
 static_assert(test_allowed_keys_partial_match());
@@ -360,7 +360,7 @@ constexpr bool test_empty_allowed_list() {
         allowed_keys<>  // No keys allowed!
     > consumer;
     
-    const char* json = R"({"anything": 1})";
+    std::string_view json = R"({"anything": 1})";
     return !Parse(consumer, json);
 }
 static_assert(test_empty_allowed_list());
@@ -374,7 +374,7 @@ constexpr bool test_many_allowed_keys() {
         >
     > consumer;
     
-    const char* json = R"({"a": 1, "t": 20, "m": 13})";
+    std::string_view json = R"({"a": 1, "t": 20, "m": 13})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -391,7 +391,7 @@ constexpr bool test_forbidden_keys_valid() {
         forbidden_keys<"bad", "evil">
     > consumer;
     
-    const char* json = R"({"good": 1, "nice": 2})";
+    std::string_view json = R"({"good": 1, "nice": 2})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 2;
@@ -404,7 +404,7 @@ constexpr bool test_forbidden_keys_reject() {
         forbidden_keys<"__proto__", "constructor">
     > consumer;
     
-    const char* json = R"({"name": 1, "__proto__": 2})";
+    std::string_view json = R"({"name": 1, "__proto__": 2})";
     
     auto result = Parse(consumer, json);
     return !result;  // Should fail
@@ -417,7 +417,7 @@ constexpr bool test_forbidden_keys_similar() {
         forbidden_keys<"bad">
     > consumer;
     
-    const char* json = R"({"badge": 1, "badminton": 2})";  // "badge" != "bad"
+    std::string_view json = R"({"badge": 1, "badminton": 2})";  // "badge" != "bad"
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 2;
@@ -430,7 +430,7 @@ constexpr bool test_empty_forbidden_list() {
         forbidden_keys<>  // Nothing forbidden
     > consumer;
     
-    const char* json = R"({"anything": 1, "goes": 2})";
+    std::string_view json = R"({"anything": 1, "goes": 2})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 2;
@@ -447,7 +447,7 @@ constexpr bool test_required_keys_valid() {
         required_keys<"id", "name">
     > consumer;
     
-    const char* json = R"({"id": 1, "name": 2, "optional": 3})";
+    std::string_view json = R"({"id": 1, "name": 2, "optional": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -460,7 +460,7 @@ constexpr bool test_required_keys_missing() {
         required_keys<"id", "email", "age">
     > consumer;
     
-    const char* json = R"({"id": 1, "email": 2})";  // Missing "age"
+    std::string_view json = R"({"id": 1, "email": 2})";  // Missing "age"
     
     auto result = Parse(consumer, json);
     return !result;  // Should fail
@@ -473,7 +473,7 @@ constexpr bool test_required_keys_empty_map() {
         required_keys<"a", "b">
     > consumer;
     
-    const char* json = R"({})";
+    std::string_view json = R"({})";
     return !Parse(consumer, json);
 }
 static_assert(test_required_keys_empty_map());
@@ -484,7 +484,7 @@ constexpr bool test_required_keys_with_duplicates() {
         required_keys<"a">
     > consumer;
     
-    const char* json = R"({"a": 1, "a": 2})";  // Duplicate key
+    std::string_view json = R"({"a": 1, "a": 2})";  // Duplicate key
     
     auto result = Parse(consumer, json);
     return !result;  // Should fail on duplicate
@@ -505,7 +505,7 @@ constexpr bool test_all_basic_constraints() {
         max_key_length<6>
     > consumer;
     
-    const char* json = R"({"name": 1, "age": 2, "city": 3})";
+    std::string_view json = R"({"name": 1, "age": 2, "city": 3})";
     // 3 entries in [2, 4] ✓
     // Keys: "name"(4), "age"(3), "city"(4) all in [2, 6] ✓
     
@@ -521,7 +521,7 @@ constexpr bool test_allowed_and_required() {
         required_keys<"id", "name">
     > consumer;
     
-    const char* json = R"({"id": 1, "name": 2, "age": 3})";
+    std::string_view json = R"({"id": 1, "name": 2, "age": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -535,7 +535,7 @@ constexpr bool test_allowed_and_required_missing() {
         required_keys<"id", "name">
     > consumer;
     
-    const char* json = R"({"id": 1, "age": 3})";  // Missing "name"
+    std::string_view json = R"({"id": 1, "age": 3})";  // Missing "name"
     return !Parse(consumer, json);
 }
 static_assert(test_allowed_and_required_missing());
@@ -547,7 +547,7 @@ constexpr bool test_allowed_and_required_not_allowed() {
         required_keys<"id", "name">
     > consumer;
     
-    const char* json = R"({"id": 1, "name": 2, "extra": 3})";  // "extra" not allowed
+    std::string_view json = R"({"id": 1, "name": 2, "extra": 3})";  // "extra" not allowed
     return !Parse(consumer, json);
 }
 static_assert(test_allowed_and_required_not_allowed());
@@ -561,7 +561,7 @@ constexpr bool test_all_three_validators() {
         forbidden_keys<"__proto__">
     > consumer;
     
-    const char* json = R"({"id": 1, "name": 2, "email": 3})";
+    std::string_view json = R"({"id": 1, "name": 2, "email": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -576,7 +576,7 @@ constexpr bool test_all_three_forbidden_detected() {
         forbidden_keys<"__proto__">  // But blacklist it!
     > consumer;
     
-    const char* json = R"({"id": 1, "__proto__": 666})";
+    std::string_view json = R"({"id": 1, "__proto__": 666})";
     
     auto result = Parse(consumer, json);
     return !result;  // forbidden_keys should reject
@@ -591,7 +591,7 @@ constexpr bool test_min_properties_and_required() {
         required_keys<"a", "b">
     > consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -605,7 +605,7 @@ constexpr bool test_max_properties_and_allowed() {
         allowed_keys<"x", "y", "z">
     > consumer;
     
-    const char* json = R"({"x": 1, "y": 2})";
+    std::string_view json = R"({"x": 1, "y": 2})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 2;
@@ -620,7 +620,7 @@ constexpr bool test_key_length_and_allowed() {
         max_key_length<4>
     > consumer;
     
-    const char* json = R"({"ab": 1, "abc": 2, "abcd": 3})";
+    std::string_view json = R"({"ab": 1, "abc": 2, "abcd": 3})";
     
     auto result = Parse(consumer, json);
     return result && consumer->count == 3;
@@ -637,7 +637,7 @@ constexpr bool test_case_sensitivity() {
         allowed_keys<"Name", "AGE">
     > consumer;
     
-    const char* json = R"({"name": 1})";  // Lowercase "name"
+    std::string_view json = R"({"name": 1})";  // Lowercase "name"
     return !Parse(consumer, json);  // Should fail - case sensitive
 }
 static_assert(test_case_sensitivity());
@@ -670,7 +670,7 @@ constexpr bool test_nested_map_with_validators() {
         required_keys<"user">
     > outer;
     
-    const char* json = R"({"user": {"id": 1, "name": 2}})";
+    std::string_view json = R"({"user": {"id": 1, "name": 2}})";
     
     auto result = Parse(outer, json);
     return result && outer->count == 1;
@@ -686,7 +686,7 @@ constexpr bool test_nested_map_validation() {
     using OuterMap = MapConsumer<std::array<char, 16>, InnerMap, 3>;
     
     OuterMap outer;
-    const char* json = R"({"m1": {"a": 1}, "m2": {"b": 2, "c": 3}})";
+    std::string_view json = R"({"m1": {"a": 1}, "m2": {"b": 2, "c": 3}})";
     
     auto result = Parse(outer, json);
     return result;  // Both inner maps have >= 1 entry
@@ -702,7 +702,7 @@ constexpr bool test_nested_map_validation_inner_fail() {
     using OuterMap = MapConsumer<std::array<char, 16>, InnerMap, 3>;
     
     OuterMap outer;
-    const char* json = R"({"m1": {"a": 1}, "m2": {"b": 2, "c": 3}})";
+    std::string_view json = R"({"m1": {"a": 1}, "m2": {"b": 2, "c": 3}})";
     // m1 has only 1 entry < 2
     
     auto result = Parse(outer, json);
@@ -722,7 +722,7 @@ constexpr bool test_map_with_struct_values() {
         max_properties<3>
     > consumer;
     
-    const char* json = R"({"p1": {"x": 10, "y": 20}, "p2": {"x": 30, "y": 40}})";
+    std::string_view json = R"({"p1": {"x": 10, "y": 20}, "p2": {"x": 30, "y": 40}})";
     
     auto result = Parse(consumer, json);
     return result;  // 2 entries in [1, 3]
@@ -736,7 +736,7 @@ constexpr bool test_map_with_array_values() {
         max_key_length<10>
     > consumer;
     
-    const char* json = R"({"arr1": [1, 2, 3], "arr2": [4, 5, 6]})";
+    std::string_view json = R"({"arr1": [1, 2, 3], "arr2": [4, 5, 6]})";
     
     auto result = Parse(consumer, json);
     return result;  // 2 entries >= 1, keys "arr1"(4), "arr2"(4) <= 10

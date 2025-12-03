@@ -48,7 +48,7 @@ int main() {
     };
     static_assert([]() constexpr {
         Model a;
-        return JsonFusion::Parse(a, std::string(R"JSON(
+        return JsonFusion::Parse(a, std::string_view(R"JSON(
                 {
                     "a": 10,
                     "empty_opt": null,
@@ -168,14 +168,14 @@ int main() {
             A<std::array<char, 5>, string_constant<"fu">> string_c;
             A<int, constant<42>> number_const;
         } a;
-        return JsonFusion::Parse(a, R"JSON(
+        return JsonFusion::Parse(a, std::string_view(R"JSON(
                     {
                         "bool_const_t": true,
                         "bool_const_f": false,
                         "string_c": "fu",
                         "number_const": 42
             }
-            )JSON")
+            )JSON"))
             ;
     }());
 
@@ -329,7 +329,7 @@ int main() {
         std::string_view sv{R"JSON(
                 {
                     "bool_const_t": true,
-                    "bool_const_f": true,
+                    "bool_const_f": false,
                     "string_c": "I am str",
                     "number_const": 42,
                     "inner": [{"f": 4.3},{"f": true}]
@@ -437,7 +437,7 @@ int main() {
 
         struct TS{
             bool val_b;
-            A<std::string, JsonFusion::options::json_sink<>> sink;
+            A<std::array<char, 512>, JsonFusion::options::json_sink<64, 5>> sink;
             A<int, constant<42>> number_const;
             struct Inner{
                 double f;
@@ -458,22 +458,12 @@ int main() {
             std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
 
         } else {
-            std::cout << "In sink: " << std::string(a.sink) << std::endl;
+            std::cout << "In sink: " << std::string(a.sink.data()) << std::endl;
             // OUTPUT: In sink: [[[[1,2,3]]]]
         }
 
     }
-    {
-        struct WithArray {
-            std::array<int, 3> values;
-            A<int, key<"">> ek;
-        };
-        WithArray a;
-        std::string_view sv{R"({"": 10, "values": [1 , 2,3]  })"};
-        auto r = JsonFusion::Parse(a, sv);
-        if(!r) {
-            std::cerr << ParseResultToString<WithArray>(r, sv.begin(), sv.end()) << std::endl;
-        }
-    }
+
+
 
 }

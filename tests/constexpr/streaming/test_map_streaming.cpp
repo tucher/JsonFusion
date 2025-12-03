@@ -147,7 +147,7 @@ static_assert(JsonSerializableMap<MapProducer<std::array<char, 32>, int, 10>>);
 constexpr bool test_parse_simple_string_int_map() {
     MapConsumer<std::array<char, 32>, int, 5> consumer;
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -173,7 +173,7 @@ static_assert(test_parse_simple_string_int_map());
 constexpr bool test_parse_empty_map() {
     MapConsumer<std::array<char, 32>, int, 5> consumer;
     
-    const char* json = R"({})";
+    std::string_view json = R"({})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -190,7 +190,7 @@ static_assert(test_parse_empty_map());
 constexpr bool test_parse_map_string_values() {
     MapConsumer<std::array<char, 32>, std::array<char, 32>, 5> consumer;
     
-    const char* json = R"({"greeting": "hello", "name": "world"})";
+    std::string_view json = R"({"greeting": "hello", "name": "world"})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -235,7 +235,7 @@ constexpr bool test_parse_nested_map() {
     using InnerMap = InnerMapConsumer<std::array<char, 16>, int, 3>;
     MapConsumer<std::array<char, 16>, InnerMap, 3> outer;
     
-    const char* json = R"({"m1": {"a": 1, "b": 2}, "m2": {"c": 3}})";
+    std::string_view json = R"({"m1": {"a": 1, "b": 2}, "m2": {"c": 3}})";
     
     auto result = Parse(outer, json);
     if (!result) return false;
@@ -260,7 +260,7 @@ static_assert(test_parse_nested_map());
 constexpr bool test_duplicate_key_error() {
     MapConsumer<std::array<char, 32>, int, 5> consumer;
     
-    const char* json = R"({"key": 1, "key": 2})";
+    std::string_view json = R"({"key": 1, "key": 2})";
     
     auto result = Parse(consumer, json);
     
@@ -278,7 +278,7 @@ static_assert(test_duplicate_key_error());
 constexpr bool test_map_overflow() {
     MapConsumer<std::array<char, 16>, int, 2> consumer;  // Only 2 slots
     
-    const char* json = R"({"a": 1, "b": 2, "c": 3})";  // 3 entries
+    std::string_view json = R"({"a": 1, "b": 2, "c": 3})";  // 3 entries
     
     auto result = Parse(consumer, json);
     
@@ -389,7 +389,7 @@ static_assert(test_roundtrip_map());
 constexpr bool test_map_bool_values() {
     MapConsumer<std::array<char, 16>, bool, 3> consumer;
     
-    const char* json = R"({"active": true, "enabled": false})";
+    std::string_view json = R"({"active": true, "enabled": false})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -421,7 +421,7 @@ struct Point {
 constexpr bool test_map_struct_values() {
     MapConsumer<std::array<char, 16>, Point, 3> consumer;
     
-    const char* json = R"({"p1": {"x": 10, "y": 20}, "p2": {"x": 30, "y": 40}})";
+    std::string_view json = R"({"p1": {"x": 10, "y": 20}, "p2": {"x": 30, "y": 40}})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -444,7 +444,7 @@ static_assert(test_map_struct_values());
 constexpr bool test_map_array_values() {
     MapConsumer<std::array<char, 16>, std::array<int, 3>, 3> consumer;
     
-    const char* json = R"({"arr1": [1, 2, 3], "arr2": [4, 5, 6]})";
+    std::string_view json = R"({"arr1": [1, 2, 3], "arr2": [4, 5, 6]})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -470,7 +470,7 @@ static_assert(test_map_array_values());
 constexpr bool test_map_whitespace() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
     
-    const char* json = R"(  {  "a"  :  1  ,  "b"  :  2  }  )";
+    std::string_view json = R"(  {  "a"  :  1  ,  "b"  :  2  }  )";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -492,21 +492,21 @@ static_assert(test_map_whitespace());
 
 constexpr bool test_map_missing_colon() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
-    const char* json = R"({"key" 123})";
+    std::string_view json = R"({"key" 123})";
     return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_missing_colon());
 
 constexpr bool test_map_missing_comma() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
-    const char* json = R"({"a": 1 "b": 2})";
+    std::string_view json = R"({"a": 1 "b": 2})";
     return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_missing_comma());
 
 constexpr bool test_map_trailing_comma() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
-    const char* json = R"({"a": 1, "b": 2,})";
+    std::string_view json = R"({"a": 1, "b": 2,})";
     return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_trailing_comma());
@@ -518,7 +518,7 @@ static_assert(test_map_trailing_comma());
 constexpr bool test_map_single_entry() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
     
-    const char* json = R"({"only": 42})";
+    std::string_view json = R"({"only": 42})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;
@@ -538,7 +538,7 @@ static_assert(test_map_single_entry());
 constexpr bool test_map_escaped_keys() {
     MapConsumer<std::array<char, 32>, int, 3> consumer;
     
-    const char* json = R"({"key\"with\"quotes": 100, "line\nbreak": 200})";
+    std::string_view json = R"({"key\"with\"quotes": 100, "line\nbreak": 200})";
     
     auto result = Parse(consumer, json);
     if (!result) return false;

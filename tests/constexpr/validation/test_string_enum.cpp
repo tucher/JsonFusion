@@ -16,7 +16,7 @@ constexpr bool test_enum_valid_single() {
         enum_values<"red", "green", "blue">
     > color;
     
-    const char* json = R"("red")";
+    std::string_view json = R"("red")";
     auto result = Parse(color, json);
     
     return result;
@@ -40,9 +40,9 @@ constexpr bool test_enum_valid_all_values() {
         enum_values<"alpha", "beta", "gamma">
     > value3;
     
-    auto r1 = Parse(value1, R"("alpha")");
-    auto r2 = Parse(value2, R"("beta")");
-    auto r3 = Parse(value3, R"("gamma")");
+    auto r1 = Parse(value1, std::string_view(R"("alpha")"));
+    auto r2 = Parse(value2, std::string_view(R"("beta")"));
+    auto r3 = Parse(value3, std::string_view(R"("gamma")"));
     
     return r1 && r2 && r3;
 }
@@ -58,7 +58,7 @@ constexpr bool test_enum_invalid() {
         enum_values<"small", "medium", "large">
     > size;
     
-    const char* json = R"("extra-large")";
+    std::string_view json = R"("extra-large")";
     auto result = Parse(size, json);
     
     return !result;  // Should fail
@@ -71,7 +71,7 @@ constexpr bool test_enum_empty_string() {
         enum_values<"a", "b", "c">
     > value;
     
-    const char* json = R"("")";
+    std::string_view json = R"("")";
     auto result = Parse(value, json);
     
     return !result;  // Empty string should fail
@@ -89,7 +89,7 @@ constexpr bool test_enum_early_rejection() {
     > fruit;
     
     // "cherry" should be rejected early when we hit 'c'
-    const char* json = R"("cherry")";
+    std::string_view json = R"("cherry")";
     auto result = Parse(fruit, json);
     
     return !result;
@@ -103,7 +103,7 @@ constexpr bool test_enum_prefix_not_match() {
     > value;
     
     // "testing" is longer than "test"
-    const char* json = R"("testing")";
+    std::string_view json = R"("testing")";
     auto result = Parse(value, json);
     
     return !result;  // Should fail - not exact match
@@ -117,7 +117,7 @@ constexpr bool test_enum_partial_match() {
     > value;
     
     // "hell" is shorter than "hello"
-    const char* json = R"("hell")";
+    std::string_view json = R"("hell")";
     auto result = Parse(value, json);
     
     return !result;  // Should fail - not complete
@@ -134,8 +134,8 @@ constexpr bool test_enum_case_sensitive() {
         enum_values<"Active", "Inactive">
     > status;
     
-    const char* json = R"("active")";  // lowercase
-    auto result = Parse(status, json);
+    std::string_view json = R"("active")";  // lowercase
+    auto result = Parse(status, std::string_view(json));
     
     return !result;  // Should fail - case sensitive
 }
@@ -154,7 +154,7 @@ constexpr bool test_enum_many_values() {
         >
     > month;
     
-    auto r1 = Parse(month, R"("jan")");
+    auto r1 = Parse(month, std::string_view(R"("jan")"));
     
     Annotated<
         std::array<char, 32>,
@@ -163,7 +163,7 @@ constexpr bool test_enum_many_values() {
             "jul", "aug", "sep", "oct", "nov", "dec"
         >
     > month2;
-    auto r2 = Parse(month2, R"("dec")");
+    auto r2 = Parse(month2, std::string_view(R"("dec")"));
     
     Annotated<
         std::array<char, 32>,
@@ -172,7 +172,7 @@ constexpr bool test_enum_many_values() {
             "jul", "aug", "sep", "oct", "nov", "dec"
         >
     > month3;
-    auto r3 = Parse(month3, R"("xyz")");
+    auto r3 = Parse(month3, std::string_view(R"("xyz")"));
     
     return r1 && r2 && !r3;
 }
@@ -188,13 +188,13 @@ constexpr bool test_enum_single_value() {
         enum_values<"only_this">
     > value;
     
-    auto r1 = Parse(value, R"("only_this")");
+    auto r1 = Parse(value, std::string_view(R"("only_this")"));
     
     Annotated<
         std::array<char, 32>,
         enum_values<"only_this">
     > value2;
-    auto r2 = Parse(value2, R"("something_else")");
+    auto r2 = Parse(value2, std::string_view(R"("something_else")"));
     
     return r1 && !r2;
 }
@@ -210,19 +210,19 @@ constexpr bool test_enum_similar_values() {
         enum_values<"read", "readwrite", "readonly">
     > permission;
     
-    auto r1 = Parse(permission, R"("read")");
+    auto r1 = Parse(permission, std::string_view(R"("read")"));
     
     Annotated<
         std::array<char, 32>,
         enum_values<"read", "readwrite", "readonly">
     > permission2;
-    auto r2 = Parse(permission2, R"("readonly")");
+    auto r2 = Parse(permission2, std::string_view(R"("readonly")"));
     
     Annotated<
         std::array<char, 32>,
         enum_values<"read", "readwrite", "readonly">
     > permission3;
-    auto r3 = Parse(permission3, R"("readwrite")");
+    auto r3 = Parse(permission3, std::string_view(R"("readwrite")"));
     
     return r1 && r2 && r3;
 }
@@ -246,7 +246,7 @@ struct Config {
 
 constexpr bool test_enum_in_struct() {
     Config config;
-    const char* json = R"({"environment": "production", "log_level": "error"})";
+    std::string_view json = R"({"environment": "production", "log_level": "error"})";
     
     auto result = Parse(config, json);
     return result;
@@ -255,7 +255,7 @@ static_assert(test_enum_in_struct());
 
 constexpr bool test_enum_in_struct_invalid_value() {
     Config config;
-    const char* json = R"({"environment": "testing", "log_level": "error"})";
+    std::string_view json = R"({"environment": "testing", "log_level": "error"})";
     
     auto result = Parse(config, json);
     return !result;  // "testing" is not valid for environment
@@ -275,7 +275,7 @@ constexpr bool test_enum_in_array() {
         3
     > methods;
     
-    const char* json = R"(["GET", "POST", "DELETE"])";
+    std::string_view json = R"(["GET", "POST", "DELETE"])";
     
     auto result = Parse(methods, json);
     return result;
@@ -291,7 +291,7 @@ constexpr bool test_enum_in_array_invalid() {
         3
     > methods;
     
-    const char* json = R"(["GET", "PATCH", "DELETE"])";
+    std::string_view json = R"(["GET", "PATCH", "DELETE"])";
     
     auto result = Parse(methods, json);
     return !result;  // "PATCH" is not in the enum
@@ -308,7 +308,7 @@ constexpr bool test_enum_with_string() {
         enum_values<"active", "inactive", "pending">
     > status;
     
-    const char* json = R"("active")";
+    std::string_view json = R"("active")";
     auto result = Parse(status, json);
     
     return result;
@@ -325,13 +325,13 @@ constexpr bool test_enum_special_chars() {
         enum_values<"status-ok", "status-error", "status-pending">
     > status;
     
-    auto r1 = Parse(status, R"("status-ok")");
+    auto r1 = Parse(status, std::string_view(R"("status-ok")"));
     
     Annotated<
         std::array<char, 32>,
         enum_values<"status-ok", "status-error", "status-pending">
     > status2;
-    auto r2 = Parse(status2, R"("status-unknown")");
+    auto r2 = Parse(status2, std::string_view(R"("status-unknown")"));
     
     return r1 && !r2;
 }

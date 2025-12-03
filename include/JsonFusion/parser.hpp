@@ -202,45 +202,48 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         obj.clear();
     }
     validators::detail::validator_state<Opts, ObjT> validatorsState;
-    auto inserter = [&obj, &parsedSize, &ctx, &reader, &validatorsState] (char c) -> bool {
+
+    char ch;
+    while(true) {
+        auto st = reader.read_string_char(ch);
+        if (st == tokenizer::StringCharStatus::no_match) {
+            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+            return false;
+        }
+        if (st == tokenizer::StringCharStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
+            return false;
+        }
+        if (st == tokenizer::StringCharStatus::end) {
+            break;
+        }
         if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
             if (parsedSize < obj.size()-1) {
-                obj[parsedSize] = c;
+                obj[parsedSize] = ch;
             } else {
                 ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                 return false;
             }
         }  else {
-            obj.push_back(c);
+            obj.push_back(ch);
         }
         parsedSize++;
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), c)) {
+        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
+    }
 
-        return true;
-    };
-
-    if(tokenizer::TryParseStatus st = reader.read_string(inserter); st == tokenizer::TryParseStatus::ok) {
-        if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-            if(parsedSize < obj.size())
-                obj[parsedSize] = 0;
-        }
-        if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
-            return false;
-        }
-
-        return true;
-    } else if(st == tokenizer::TryParseStatus::no_match) {
-        ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
-        return false;
-    } else {
-        if(ctx.currentError() == ParseError::NO_ERROR)
-            ctx.setError(reader.getError(), reader.current());
+    if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
+        if(parsedSize < obj.size())
+            obj[parsedSize] = 0;
+    }
+    if(!validatorsState.template validate<validators::detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
+        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     }
+
+    return true;
 }
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
@@ -410,39 +413,43 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             key.clear();
         }
         
-        auto inserter = [&](char c) -> bool {
+
+        char ch;
+        while(true) {
+            auto st = reader.read_string_char(ch);
+            if (st == tokenizer::StringCharStatus::no_match) {
+                cursor.finalize(false);
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                return false;
+            }
+            if (st == tokenizer::StringCharStatus::error) {
+                cursor.finalize(false);
+                ctx.setError(reader.getError(), reader.current());
+                return false;
+            }
+            if (st == tokenizer::StringCharStatus::end) {
+                break;
+            }
             if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
                 if (parsedSize < key.size()-1) {
-                    key[parsedSize] = c;
+                    key[parsedSize] = ch;
                 } else {
                     ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
                     return false;
                 }
             } else {
-                key.push_back(c);
+                key.push_back(ch);
             }
             parsedSize++;
-            
+
             // Emit incremental key parsing event for validators
             if(!validatorsState.template validate<validators::detail::parsing_events_tags::map_key_parsed_some_chars>
-                            (obj, ctx.validationCtx(), c)) {
+                 (obj, ctx.validationCtx(), ch)) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
-            
-            return true;
-        };
-        if(tokenizer::TryParseStatus st = reader.read_string(inserter); st != tokenizer::TryParseStatus::ok) {
-            cursor.finalize(false);
-            if(st == tokenizer::TryParseStatus::error) {
-                if(ctx.currentError() == ParseError::NO_ERROR) {
-                    ctx.setError(reader.getError(), reader.current());
-                }
-            } else  if(st == tokenizer::TryParseStatus::no_match) {
-                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-            }
-            return false;
         }
+
 
         if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
             if(parsedSize < key.size())
@@ -454,6 +461,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
+
 
         if (!reader.consume_kv_separator()) {
             ctx.setError(reader.getError(), reader.current());
@@ -647,25 +655,30 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         bool fieldRejected = false;
 
-        auto inserter = [&](char c){
-            // Early rejection optimization: stop searching once no candidates remain
-            // if(!searcher2.step(c)) {
-            if(!searcher.step(c)) {
-                fieldRejected = true;
-                return false; // Signal to stop inserting (parseString won't call us again)
-            }
-            return true;
-        };
-        if(tokenizer::TryParseStatus st = reader.read_string(inserter, true); st != tokenizer::TryParseStatus::ok) {
-            if(st == tokenizer::TryParseStatus::no_match) {
+
+
+
+        char ch;
+        while(true) {
+            auto st = reader.read_string_char(ch);
+            if (st == tokenizer::StringCharStatus::no_match) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-            } else {
-                if(ctx.currentError() == ParseError::NO_ERROR) {
-                    ctx.setError(reader.getError(), reader.current());
-                }
+                return false;
             }
-            return false;
+            if (st == tokenizer::StringCharStatus::error) {
+                ctx.setError(reader.getError(), reader.current());
+                return false;
+            }
+            if (st == tokenizer::StringCharStatus::end) {
+                break;
+            }
+
+            if(!fieldRejected && !searcher.step(ch)) {
+                fieldRejected = true;
+            }
+
         }
+
 
         auto res = searcher.result();
         // int dfaRes = searcher2.result();
@@ -689,27 +702,19 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
         } else {
+            std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
+            if(parsedFieldsByIndex[arrIndex] == true) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                return false;
+            }
             auto try_one = [&](auto ic) {
                 constexpr std::size_t StructIndex = decltype(ic)::value;
                 if constexpr(FH::template fieldIsNotJSON<StructIndex>()) {
                     return true;
                 } else {
-                    std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
-                    if(parsedFieldsByIndex[arrIndex] == true) {
-                        ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-                        return false;
-                    } else {
-                        auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
 
-                        if (!ParseValue(
-                                   introspection::getStructElementByIndex<StructIndex>(obj),
-                                       reader, ctx, userCtx)) {
-                            return false;
-                        } else  {
-                            parsedFieldsByIndex[arrIndex] = true;
-                            return true;
-                        }
-                    }
+                    auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
+                    return ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx, userCtx);
                 }
             };
 
@@ -727,6 +732,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             if(!field_parse_result) {
                 return false;
             }
+            parsedFieldsByIndex[arrIndex] = true;
         }
         isFirst = false;
         if (!reader.consume_value_separator(has_trailing_comma)) {
@@ -825,12 +831,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             } else {
                 auto guard = ctx.getMapItemGuard(introspection::structureElementNameByIndex<StructIndex, ObjT>);
-
-                if(ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx, userCtx)) {
-                    return true;
-                } else {
-                    return false;
-                }
+                return ParseValue(introspection::getStructElementByIndex<StructIndex>(obj), reader, ctx, userCtx);
             }
         };
         bool field_parse_result = false;
@@ -941,11 +942,11 @@ constexpr auto Parse(InputObjectT& obj, std::string_view sv, UserCtx * userCtx =
 }
 
 
-// // string front-end TODO
-// template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
-// constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
-//     return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
-// }
+// string front-end TODO
+template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
+constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
+    return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
+}
 
 
 template <class T>

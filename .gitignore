@@ -5,3 +5,8 @@ examples/validation_example
 examples/c_interop/c_interop_test
 *.o
 settings.json
+benchmarks/twitter_json_parsing
+benchmarks/json_fusion_benchmark
+benchmarks/canada_json_parsing
+benchmarks/glaze_like
+
