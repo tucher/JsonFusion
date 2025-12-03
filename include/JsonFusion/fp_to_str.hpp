@@ -20,7 +20,7 @@ inline constexpr std::size_t NumberBufSize = JSONFUSION_NUMBER_BUF_SIZE;
 #endif
 
 
-bool parse_number_to_double(const char * buf, double& out) {
+inline bool parse_number_to_double(const char * buf, double& out) {
 #if JSONFUSION_USE_FAST_FLOAT
     const char* endp = fast_double_parser::parse_number(buf, &out);
     if (!endp) return false;

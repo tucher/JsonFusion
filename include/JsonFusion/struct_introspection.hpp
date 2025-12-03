@@ -1,16 +1,9 @@
 #pragma once
 
-#include <array>
-#include <cstdint>
-#include <iterator>
+#include <cstddef>
 #include <string_view>
-#include <utility>  // std::declval
-#include <ranges>
-#include <type_traits>
 #include <pfr.hpp>
-#include <algorithm>
 
-#include "options.hpp"
 
 namespace JsonFusion {
 namespace introspection {

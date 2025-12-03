@@ -1,13 +1,11 @@
 #pragma once
 
 #include <array>
-#include <cstdint>
+// #include <cstdint>
 #include <iterator>
-#include <optional>
 #include <string_view>
 #include <utility>  // std::declval
-#include <ranges>
-#include <type_traits>
+// #include <type_traits>
 #include <algorithm>
 #include <limits>
 #include <bitset>
@@ -151,7 +149,7 @@ public:
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
-constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.read_bool(obj); st == tokenizer::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
         return false;
@@ -174,7 +172,7 @@ constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserC
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
                 st == tokenizer::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
@@ -196,7 +194,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     std::size_t parsedSize = 0;
     if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
         obj.clear();
@@ -248,7 +246,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableArray<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(!reader.read_array_begin()) {
         ctx.setError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader.current());
@@ -339,7 +337,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableMap<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if(!reader.read_object_begin()) {
         ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
@@ -611,7 +609,7 @@ struct FieldsHelper {
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
 
@@ -749,7 +747,7 @@ template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX,
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(!reader.read_array_begin()) {
         ctx.setError(ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT, reader.current());
         return false;
@@ -865,7 +863,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 
 template <static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
-constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr inline bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using FieldMeta    = options::detail::annotation_meta_getter<Field>;
 
     if constexpr (FieldMeta::options::template has_option<options::detail::skip_json_tag>) {
@@ -909,14 +907,24 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
 
 } // namespace parser_details
 
+template <class M, CharInputIterator It>
+struct ModelParsingTraits {
+    static constexpr std::size_t SchemaDepth = schema_analyzis::calc_type_depth<M>();
+    static constexpr bool SchemaHasMaps = schema_analyzis::has_maps<M>();
+    using ResultT = ParseResult<It,SchemaDepth, SchemaHasMaps>;
+};
+
+template <class M, CharInputIterator It>
+using ParseResultT = ModelParsingTraits<M, It>::ResultT;
+
 template <static_schema::JsonParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCtx = void>
-constexpr auto Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
+constexpr ParseResultT<InputObjectT, It> Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
     It b = begin;
 
-    constexpr std::size_t SchemaDepth = schema_analyzis::calc_type_depth<InputObjectT>();
-    constexpr bool SchemaHasMaps = schema_analyzis::has_maps<InputObjectT>();
 
-    using CtxT = parser_details::DeserializationContext<decltype(begin), SchemaDepth, SchemaHasMaps>;
+    using Tr = ModelParsingTraits<InputObjectT, It>;
+
+    using CtxT = parser_details::DeserializationContext<decltype(begin), Tr::SchemaDepth, Tr::SchemaHasMaps>;
     CtxT ctx(b);
 
     tokenizer::JsonIteratorReader<It, Sent> reader(begin, end);

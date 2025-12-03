@@ -1,11 +1,8 @@
 #pragma once
 #include <cstdint>
-#include <algorithm>
 #include <string_view>
 #include <type_traits>
 #include <optional>
-#include <limits>
-#include <utility>
 #include <memory>
 #include "annotated.hpp"
 
@@ -20,7 +17,9 @@ template <typename CharT, std::size_t N> struct ConstString
         return true;
     }
     constexpr ConstString(const CharT (&foo)[N+1]) {
-        std::copy_n(foo, N+1, m_data);
+        for(std::size_t i = 0; i < N+1; i ++) {
+            m_data[i] = foo[i];
+        }
     }
     CharT m_data[N+1];
     static constexpr std::size_t Length = N;

@@ -1,16 +1,11 @@
 #pragma once
-#include <cstdint>
 #include <type_traits>
 #include <limits>
 #include <utility>
 #include <bitset>
 
 #include "options.hpp"
-#include "struct_introspection.hpp"
-#include "static_schema.hpp"
 #include "string_search.hpp"
-#include <iostream>
-#include <map>
 namespace JsonFusion {
 
 namespace validators {
@@ -242,7 +237,6 @@ struct constant {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, detail::parsing_events_tags::number_parsing_finished>
     static constexpr inline bool validate(const Storage&  v, detail::ValidationCtx&  ctx) {
-        static_assert(static_schema::JsonNumber<decltype(C)>, "Constant is not number");
         if(v != C) {
             ctx.setError(SchemaError::wrong_constant_value, Index);
             return false;
