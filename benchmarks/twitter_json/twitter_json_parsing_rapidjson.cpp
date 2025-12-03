@@ -1,7 +1,23 @@
-#pragma once
 
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <chrono>
+#include <vector>
+#include <format>
+#include <filesystem>
+
+#include <JsonFusion/parser.hpp>
 #include <rapidjson/document.h>
+#include <rapidjson/error/en.h>
+
 #include "twitter_model.hpp"
+#include "rapidjson_populate.hpp"
+#include "benchmark.hpp"
+
+
+
 
 namespace RapidJSONPopulate {
 
@@ -169,7 +185,7 @@ inline void populate_entities(Entities& entities, const Value& json) {
         }
         entities.hashtags = std::move(hashtags);
     }
-    
+
     if (json.HasMember("symbols") && json["symbols"].IsArray()) {
         vector<string> symbols;
         for (auto& symbol_json : json["symbols"].GetArray()) {
@@ -179,7 +195,7 @@ inline void populate_entities(Entities& entities, const Value& json) {
         }
         entities.symbols = std::move(symbols);
     }
-    
+
     if (json.HasMember("urls") && json["urls"].IsArray()) {
         vector<Urls_item> urls;
         for (auto& url_json : json["urls"].GetArray()) {
@@ -189,7 +205,7 @@ inline void populate_entities(Entities& entities, const Value& json) {
         }
         entities.urls = std::move(urls);
     }
-    
+
     if (json.HasMember("user_mentions") && json["user_mentions"].IsArray()) {
         vector<Entities::User_mentions_item> mentions;
         for (auto& mention_json : json["user_mentions"].GetArray()) {
@@ -199,7 +215,7 @@ inline void populate_entities(Entities& entities, const Value& json) {
         }
         entities.user_mentions = std::move(mentions);
     }
-    
+
     if (json.HasMember("media") && json["media"].IsArray()) {
         vector<Entities::Media_item> media;
         for (auto& media_json : json["media"].GetArray()) {
@@ -226,7 +242,7 @@ inline void populate_user_entities(UserEntities& entities, const Value& json) {
         }
         entities.description = std::move(desc);
     }
-    
+
     if (json.HasMember("url") && json["url"].IsObject()) {
         UserEntities::Url url;
         if (json["url"].HasMember("urls") && json["url"]["urls"].IsArray()) {
@@ -252,12 +268,12 @@ inline void populate_user(User& user, const Value& json) {
     user.location = get_optional<string>(json, "location", get_string);
     user.description = get_optional<string>(json, "description", get_string);
     user.url = get_optional<string>(json, "url", get_string);
-    
+
     if (json.HasMember("entities") && json["entities"].IsObject()) {
         user.entities = std::make_unique<UserEntities>();
         populate_user_entities(*user.entities, json["entities"]);
     }
-    
+
     user.protected_ = get_optional<bool>(json, "protected", get_bool);
     user.followers_count = get_optional<double>(json, "followers_count", get_double);
     user.friends_count = get_optional<double>(json, "friends_count", get_double);
@@ -300,7 +316,7 @@ inline void populate_retweeted_status(TwitterData::Statuses_item::Retweeted_stat
         status.metadata = std::make_unique<Metadata>();
         populate_metadata(*status.metadata, json["metadata"]);
     }
-    
+
     status.created_at = get_optional<string>(json, "created_at", get_string);
     status.id = get_optional<double>(json, "id", get_double);
     status.id_str = get_optional<string>(json, "id_str", get_string);
@@ -312,24 +328,24 @@ inline void populate_retweeted_status(TwitterData::Statuses_item::Retweeted_stat
     status.in_reply_to_user_id = get_optional<double>(json, "in_reply_to_user_id", get_double);
     status.in_reply_to_user_id_str = get_optional<string>(json, "in_reply_to_user_id_str", get_string);
     status.in_reply_to_screen_name = get_optional<string>(json, "in_reply_to_screen_name", get_string);
-    
+
     if (json.HasMember("user") && json["user"].IsObject()) {
         status.user = std::make_unique<User>();
         populate_user(*status.user, json["user"]);
     }
-    
+
     status.geo = get_optional<bool>(json, "geo", get_bool);
     status.coordinates = get_optional<bool>(json, "coordinates", get_bool);
     status.place = get_optional<bool>(json, "place", get_bool);
     status.contributors = get_optional<bool>(json, "contributors", get_bool);
     status.retweet_count = get_optional<double>(json, "retweet_count", get_double);
     status.favorite_count = get_optional<double>(json, "favorite_count", get_double);
-    
+
     if (json.HasMember("entities") && json["entities"].IsObject()) {
         status.entities = std::make_unique<Entities>();
         populate_entities(*status.entities, json["entities"]);
     }
-    
+
     status.favorited = get_optional<bool>(json, "favorited", get_bool);
     status.retweeted = get_optional<bool>(json, "retweeted", get_bool);
     status.possibly_sensitive = get_optional<bool>(json, "possibly_sensitive", get_bool);
@@ -341,7 +357,7 @@ inline void populate_status(TwitterData::Statuses_item& status, const Value& jso
     if (json.HasMember("metadata") && json["metadata"].IsObject()) {
         populate_metadata(status.metadata, json["metadata"]);
     }
-    
+
     if (json.HasMember("created_at") && json["created_at"].IsString()) {
         status.created_at = get_string(json["created_at"]);
     }
@@ -360,33 +376,33 @@ inline void populate_status(TwitterData::Statuses_item& status, const Value& jso
     if (json.HasMember("truncated") && json["truncated"].IsBool()) {
         status.truncated = json["truncated"].GetBool();
     }
-    
+
     status.in_reply_to_status_id = get_optional<double>(json, "in_reply_to_status_id", get_double);
     status.in_reply_to_status_id_str = get_optional<string>(json, "in_reply_to_status_id_str", get_string);
     status.in_reply_to_user_id = get_optional<double>(json, "in_reply_to_user_id", get_double);
     status.in_reply_to_user_id_str = get_optional<string>(json, "in_reply_to_user_id_str", get_string);
     status.in_reply_to_screen_name = get_optional<string>(json, "in_reply_to_screen_name", get_string);
-    
+
     if (json.HasMember("user") && json["user"].IsObject()) {
         populate_user(status.user, json["user"]);
     }
-    
+
     status.geo = get_optional<bool>(json, "geo", get_bool);
     status.coordinates = get_optional<bool>(json, "coordinates", get_bool);
     status.place = get_optional<bool>(json, "place", get_bool);
     status.contributors = get_optional<bool>(json, "contributors", get_bool);
-    
+
     if (json.HasMember("retweet_count") && json["retweet_count"].IsNumber()) {
         status.retweet_count = json["retweet_count"].GetDouble();
     }
     if (json.HasMember("favorite_count") && json["favorite_count"].IsNumber()) {
         status.favorite_count = json["favorite_count"].GetDouble();
     }
-    
+
     if (json.HasMember("entities") && json["entities"].IsObject()) {
         populate_entities(status.entities, json["entities"]);
     }
-    
+
     if (json.HasMember("favorited") && json["favorited"].IsBool()) {
         status.favorited = json["favorited"].GetBool();
     }
@@ -396,11 +412,11 @@ inline void populate_status(TwitterData::Statuses_item& status, const Value& jso
     if (json.HasMember("lang") && json["lang"].IsString()) {
         status.lang = get_string(json["lang"]);
     }
-    
+
     if (json.HasMember("retweeted_status") && json["retweeted_status"].IsObject()) {
         populate_retweeted_status(status.retweeted_status, json["retweeted_status"]);
     }
-    
+
     if (json.HasMember("possibly_sensitive") && json["possibly_sensitive"].IsBool()) {
         status.possibly_sensitive = json["possibly_sensitive"].GetBool();
     }
@@ -430,7 +446,7 @@ inline void populate_twitter_data(TwitterData& data, const Value& json) {
         }
         data.statuses = std::move(statuses);
     }
-    
+
     if (json.HasMember("search_metadata") && json["search_metadata"].IsObject()) {
         TwitterData::Search_metadata metadata;
         populate_search_metadata(metadata, json["search_metadata"]);
@@ -439,3 +455,36 @@ inline void populate_twitter_data(TwitterData& data, const Value& json) {
 }
 
 } // namespace RapidJSONPopulate
+
+
+
+void rj_parse_only(int iterations, std::string json_data)
+{
+    rapidjson::Document doc;
+
+    benchmark("RapidJSON DOM Parse ONLY", iterations, [&]() {
+        std::string copy = json_data;
+        doc.ParseInsitu(copy.data());
+        if (doc.HasParseError()) {
+            throw std::runtime_error(std::format("RapidJSON parse error: {}",
+                                                 rapidjson::GetParseError_En(doc.GetParseError())));
+        }
+    });
+}
+
+void rj_parse_populate(int iterations, std::string json_data)
+{
+    TwitterData model;
+    rapidjson::Document doc;
+
+    benchmark("RapidJSON parsing + populating (manual)", iterations, [&]() {
+        std::string copy = json_data;
+        doc.ParseInsitu(copy.data());
+        if (doc.HasParseError()) {
+            throw std::runtime_error(std::format("RapidJSON parse error: {}",
+                                                 rapidjson::GetParseError_En(doc.GetParseError())));
+        }
+
+        RapidJSONPopulate::populate_twitter_data(model, doc);
+    });
+}
