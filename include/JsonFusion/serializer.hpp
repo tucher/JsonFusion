@@ -249,7 +249,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent
             }
             char * endChar = fp_to_str_detail::format_double_to_chars(buf, buf + sizeof (buf), content, decimals_value);
             auto s = endChar-buf;
-            if(endChar-buf == sizeof (buf))  [[unlikely]] {
+            if(endChar-buf == sizeof (buf)) {
                 return false;
             }
 

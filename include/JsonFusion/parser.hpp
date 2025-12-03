@@ -146,31 +146,30 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     char ch;
     while(true) {
-        tokenizer::StringCharStatus st = reader.read_string_char(ch);
-        if (st == tokenizer::StringCharStatus::no_match) {
-            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
-            return false;
-        }
-        if (st == tokenizer::StringCharStatus::error) {
-            ctx.setError(reader.getError(), reader.current());
-            return false;
-        }
-        if (st == tokenizer::StringCharStatus::end) {
-            break;
-        }
-        if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-            if (parsedSize < obj.size()-1) {
-                obj[parsedSize] = ch;
-            } else {
-                ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+
+        if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
+            if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
+                if (parsedSize < obj.size()-1) {
+                    obj[parsedSize] = ch;
+                } else {
+                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+                    return false;
+                }
+            }  else {
+                obj.push_back(ch);
+            }
+            parsedSize++;
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
-        }  else {
-            obj.push_back(ch);
-        }
-        parsedSize++;
-        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+        }  else if (st == tokenizer::StringCharStatus::end) {
+             break;
+        } else if (st == tokenizer::StringCharStatus::no_match) {
+            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+            return false;
+        } else {
+            ctx.setError(reader.getError(), reader.current());
             return false;
         }
     }
@@ -358,36 +357,35 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         char ch;
         while(true) {
-            tokenizer::StringCharStatus st = reader.read_string_char(ch);
-            if (st == tokenizer::StringCharStatus::no_match) {
+
+            if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
+                if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
+                    if (parsedSize < key.size()-1) {
+                        key[parsedSize] = ch;
+                    } else {
+                        ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+                        return false;
+                    }
+                } else {
+                    key.push_back(ch);
+                }
+                parsedSize++;
+
+                // Emit incremental key parsing event for validators
+                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_parsed_some_chars>
+                     (obj, ctx.validationCtx(), ch)) {
+                    ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+                    return false;
+                }
+            } else if (st == tokenizer::StringCharStatus::end) {
+                 break;
+            } else if (st == tokenizer::StringCharStatus::no_match) {
                 cursor.finalize(false);
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
-            }
-            if (st == tokenizer::StringCharStatus::error) {
+            } else {
                 cursor.finalize(false);
                 ctx.setError(reader.getError(), reader.current());
-                return false;
-            }
-            if (st == tokenizer::StringCharStatus::end) {
-                break;
-            }
-            if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-                if (parsedSize < key.size()-1) {
-                    key[parsedSize] = ch;
-                } else {
-                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
-                    return false;
-                }
-            } else {
-                key.push_back(ch);
-            }
-            parsedSize++;
-
-            // Emit incremental key parsing event for validators
-            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_parsed_some_chars>
-                 (obj, ctx.validationCtx(), ch)) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
         }
@@ -625,28 +623,21 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         bool fieldRejected = false;
 
-
-
-
         char ch;
         while(true) {
-            tokenizer::StringCharStatus st = reader.read_string_char(ch);
-            if (st == tokenizer::StringCharStatus::no_match) {
+            if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
+                if(!fieldRejected && !searcher.step(ch)) {
+                    fieldRejected = true;
+                }
+            } else if (st == tokenizer::StringCharStatus::end) {
+                 break;
+            } else if (st == tokenizer::StringCharStatus::no_match) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
-            }
-            if (st == tokenizer::StringCharStatus::error) {
+            } else {
                 ctx.setError(reader.getError(), reader.current());
                 return false;
             }
-            if (st == tokenizer::StringCharStatus::end) {
-                break;
-            }
-
-            if(!fieldRejected && !searcher.step(ch)) {
-                fieldRejected = true;
-            }
-
         }
 
 
