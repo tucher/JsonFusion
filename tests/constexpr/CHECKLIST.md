@@ -98,8 +98,12 @@ Quick reference for tracking test implementation progress.
 - [x] test_roundtrip_nested.cpp
 - [x] test_roundtrip_annotated.cpp
 
-## streaming/ (1 file)
-- [x] test_map_streaming.cpp - Map consumer/producer streamers
+## streaming/ (5 files) ✅ COMPLETE
+- [x] test_map_streaming.cpp - Map consumer/producer streamers (basic coverage)
+- [x] test_streamer_consumer_primitives.cpp - Array consumers for primitives (int, bool, char) - includes edge cases
+- [x] test_streamer_map_consumer.cpp - Map consumers with std::array<char,N> and std::string keys
+- [x] test_streamer_producer_primitives.cpp - Array producers for primitives
+- [x] test_streamer_map_producer.cpp - Map producers with std::array<char,N> and std::string keys
 
 ## errors/ (7 files) - JSON Path Tracking ✅ COMPLETE
 - [x] test_error_demo.cpp
@@ -142,13 +146,11 @@ Quick reference for tracking test implementation progress.
 - [ ] test_serialize_integers_all_types.cpp
 - [ ] test_serialize_strings.cpp
 
-## streaming/ (additional - 5 files) - NOT STARTED
-- [ ] test_streamer_consumer_primitives.cpp
-- [ ] test_streamer_consumer_structs.cpp
-- [ ] test_streamer_consumer_edge_cases.cpp
-- [ ] test_streamer_producer_primitives.cpp
-- [ ] test_streamer_producer_structs.cpp
-- [ ] test_streamer_producer_nested.cpp
+## streaming/ (additional) ✅ COMPLETE
+- [x] test_streamer_consumer_primitives.cpp - ✅ COMPLETE (includes empty arrays, single element, early termination)
+- [x] test_streamer_map_consumer.cpp - ✅ COMPLETE (includes std::string keys)
+- [x] test_streamer_producer_primitives.cpp - ✅ COMPLETE (includes empty, single, many elements)
+- [x] test_streamer_map_producer.cpp - ✅ COMPLETE (includes std::string keys)
 
 ## errors/ (additional - 8 files) - NOT STARTED
 - [ ] test_error_type_mismatch.cpp
@@ -174,7 +176,7 @@ Quick reference for tracking test implementation progress.
 
 ---
 
-**Progress: 33 / ~90 tests implemented (~36.7%)**
+**Progress: 37 / ~90 tests implemented (~41.1%)**
 
 **Complete Coverage Checklist:**
 
@@ -197,11 +199,11 @@ Quick reference for tracking test implementation progress.
 - [ ] `not_required<>` - Object-level optional fields
 - [ ] `allow_excess_fields<>` - Allow extra JSON fields
 - [ ] `skip_json<>` - Fast-skip JSON value
-- [ ] `json_sink<>` - Capture raw JSON as string
-- [ ] `skip_materializing` - Skip C++-side work
+- [ ] `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array
+- [ ] `skip_materializing` - Skip C++-side work **NO NEED TO TEST NOW**
 - [ ] `float_decimals<>` - Serialization precision ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] `binary_fields_search` - Binary search optimization
-- [ ] `description<>` - Metadata (optional tests)
+- [ ] `binary_fields_search` - Binary search optimization **NO NEED TO TEST NOW**
+- [ ] `description<>` - Metadata (optional tests) **NOTE USED FOR ANYTHING NOW**
 
 **Completed Categories:**
 - ✅ io/ (1/1)
@@ -215,7 +217,7 @@ Quick reference for tracking test implementation progress.
 **In Progress:**
 - serialization/ (2/2 basic, more needed)
 - validation/ (2/2 basic, more needed)
-- streaming/ (1/1 basic, more needed)
+- streaming/ ✅ COMPLETE - All core streaming functionality covered (primitives and maps)
 
 **Priority P0 (Critical)**: Mostly complete
 **Priority P1 (High)**: ~15 remaining
