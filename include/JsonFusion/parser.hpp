@@ -141,7 +141,8 @@ constexpr bool read_json_string_into(
     Cont&        out,
     std::size_t  max_len,   // validator limit or SIZE_MAX
     Ctx&         ctx,
-    std::size_t& outSize
+    std::size_t& outSize,
+    bool         read_rest_on_overflow = false
     )
 {
     std::size_t total = 0;
@@ -159,11 +160,59 @@ constexpr bool read_json_string_into(
         // Remaining bytes we are *allowed* to store into the container.
         const std::size_t remaining = max_len - total;
         if (remaining == 0) {
-            // We hit the validator limit but the reader still has data for this
-            // string → report overflow.
-            ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
-                         reader.current());
-            return false;
+            if (read_rest_on_overflow) {
+                // Consume and discard the rest of the string so the reader ends
+                // in a sane state (past the closing quote).
+                char scratch[STRING_CHUNK_SIZE];
+
+                for (;;) {
+                    JsonFusion::tokenizer::StringChunkResult rest =
+                        reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
+
+                    switch (rest.status) {
+                    case JsonFusion::tokenizer::StringChunkStatus::no_match:
+                        // Shouldn't happen mid-string, but treat as ill-formed.
+                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                                     reader.current());
+                        return false;
+
+                    case JsonFusion::tokenizer::StringChunkStatus::error:
+                        ctx.setError(reader.getError(), reader.current());
+                        return false;
+
+                    case JsonFusion::tokenizer::StringChunkStatus::ok:
+                        break;
+                    }
+
+                    if (rest.bytes_written > STRING_CHUNK_SIZE) {
+                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                                     reader.current());
+                        return false;
+                    }
+
+                    if (rest.done) {
+                        // We’ve reached the end of the JSON string.
+                        ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
+                                     reader.current());
+                        // outSize stays at the number of bytes we actually stored.
+                        outSize = total;
+                        return false;
+                    }
+
+                    if (rest.bytes_written == 0) {
+                        // Reader made no progress but not done → malformed.
+                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                                     reader.current());
+                        return false;
+                    }
+                }
+            } else {
+                // Old behavior: fail immediately at overflow, leaving reader
+                // mid-string.
+                ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
+                             reader.current());
+                return false;
+            }
         }
 
         const std::size_t ask =
@@ -708,6 +757,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
+            if constexpr (!Opts::template has_option<options::detail::not_required_tag>) {
+                if(!parsedFieldsByIndex.all()) {
+                    ctx.setError(ParseError::DEFAULT_ALL_REQUIRED_CHECK_FAILURE, reader.current());
+                    return false;
+                }
+            }
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
@@ -721,11 +776,15 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         };
 
         char * b = searcher.buffer();
-        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, ctx, searcher.current_length())) {
+        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, ctx, searcher.current_length(), true)) {
             if(ctx.currentError() == ParseError::NON_STRING_IN_STRING_STORAGE) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            } else if (ctx.currentError() == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                ctx.setError(ParseError::NO_ERROR, reader.current());
+                searcher.set_overflow();
+            } else {
+                return false;
             }
-            return false;
         }
 
         // DFARunner searcher2(FH::dfa);
@@ -748,27 +807,26 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 if(!reader.template skip_json_value<Opt::SkipDepthLimit>()) {
                     ctx.setError(reader.getError(), reader.current());
                     return false;
-                } else {
-                    return true;
                 }
             } else {
                 ctx.setError(ParseError::EXCESS_FIELD, reader.current());
                 return false;
             }
-        } 
-        std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
-        if(parsedFieldsByIndex[arrIndex] == true) {
-            ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-            return false;
-        }
-        typename CTX::PathGuard guard = ctx.getMapItemGuard(res->name);
-        std::size_t structIndex = res->originalIndex;
+        } else {
+            std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
+            if(parsedFieldsByIndex[arrIndex] == true) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                return false;
+            }
+            typename CTX::PathGuard guard = ctx.getMapItemGuard(res->name);
+            std::size_t structIndex = res->originalIndex;
 
 
-        if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
-            return false;
+            if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
+                return false;
+            }
+            parsedFieldsByIndex[arrIndex] = true;
         }
-        parsedFieldsByIndex[arrIndex] = true;
 
 
         isFirst = false;

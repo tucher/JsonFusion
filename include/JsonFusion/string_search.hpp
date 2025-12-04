@@ -324,6 +324,7 @@ struct BufferedLinearFieldSearch {
     constexpr std::size_t & current_length() {
         return length;
     }
+    constexpr void set_overflow(){overflown = true;}
 };
 
 // Adapter that selects strategy at compile time based on field count and max length
@@ -361,6 +362,8 @@ struct AdaptiveStringSearch {
     constexpr std::size_t & current_length() {
         return impl.current_length();
     }
+    constexpr void set_overflow(){impl.set_overflow();}
+
 };
 
 

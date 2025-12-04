@@ -391,6 +391,7 @@ struct max_items {
 
 template <ConstString ... NotRequiredNames>
 struct not_required {
+    using tag = options::detail::not_required_tag;
     template<class Tag, std::size_t Index, class Storage, class FH>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {

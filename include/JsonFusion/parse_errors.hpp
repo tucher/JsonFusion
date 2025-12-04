@@ -20,6 +20,7 @@ enum class ParseError {
     ILLFORMED_BOOL,
     EXCESS_FIELD,
     NULL_IN_NON_OPTIONAL,
+    DEFAULT_ALL_REQUIRED_CHECK_FAILURE,
 
     EXCESS_DATA,
     SKIPPING_STACK_OVERFLOW,
@@ -66,6 +67,7 @@ constexpr std::string_view error_to_string(ParseError e) {
     case ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE: return "NON_ARRAY_IN_ARRAY_LIKE_VALUE"; break;
     case ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE: return "NON_OBJECT_IN_MAP_LIKE_VALUE"; break;
     case ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT: return "NON_ARRAY_IN_DESTRUCTURED_STRUCT"; break;
+    case ParseError::DEFAULT_ALL_REQUIRED_CHECK_FAILURE: return "DEFAULT_ALL_REQUIRED_CHECK_FAILURE"; break;
 
 
     }

@@ -30,6 +30,7 @@ max_items<N>                 // Array must have at most N elements (streaming)
 #### Struct Validators
 ```cpp
 not_required<"field1", ...>  // Mark specific fields as optional (struct-level)
+allow_excess_fields<depth=64>  // Allow unknown JSON fields (don't reject and silently skip up to `depth` values)
 ```
 
 #### Map Validators
@@ -62,7 +63,6 @@ json_sink<depth=64, max_length=1<<16>          // Capture RAW JSON into underlyi
 
 #### Struct-Level Options
 ```cpp
-allow_excess_fields<depth=64>          // Allow unknown JSON fields (don't reject and silently skip up to `depth` values)
 as_array                     // Serialize/parse struct as JSON array instead of object: [x, y, z] <-> struct{float x, y, z;}
 ```
 
