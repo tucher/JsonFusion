@@ -46,7 +46,7 @@ template<template<class...> class Template, class... Args>
 struct is_specialization_of<Template<Args...>, Template> : std::true_type {};
 
 template<class T, template<class...> class Template>
-inline constexpr bool is_specialization_of_v =
+constexpr bool is_specialization_of_v =
     is_specialization_of<std::remove_cvref_t<T>, Template>::value;
 
 // Top-level forbidden shapes: no recursion, no PFR, no ranges.
@@ -63,7 +63,7 @@ struct is_directly_forbidden {
 };
 
 template<class T>
-inline constexpr bool is_directly_forbidden_v =
+constexpr bool is_directly_forbidden_v =
     is_directly_forbidden<T>::value;
 
 
@@ -642,7 +642,7 @@ constexpr bool isNull(const Field &f) {
 }
 
 template<JsonNullableParsableValue Field>
-constexpr inline decltype(auto) getRef(Field & f) {
+constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     if constexpr (is_specialization_of<typename S::value_t, std::optional>::value) {
         auto& opt = S::getRef(f);
@@ -661,19 +661,19 @@ constexpr inline decltype(auto) getRef(Field & f) {
 }
 
 template<JsonNullableSerializableValue Field>
-constexpr inline decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
+constexpr decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
     using S = annotation_meta_getter<Field>;
     return (*S::getRef(f));
 }
 
 template<JsonNonNullableParsableValue Field>
-constexpr inline decltype(auto) getRef(Field & f) {
+constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }
 
 template<JsonNonNullableSerializableValue Field>
-constexpr inline decltype(auto) getRef(const Field & f) {
+constexpr decltype(auto) getRef(const Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }

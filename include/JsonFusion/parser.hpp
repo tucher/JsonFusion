@@ -67,23 +67,23 @@ public:
         m_begin(b), m_pos(b), currentPath() {
 
     }
-    constexpr inline void setError(ParseError err, InpIter pos) {
+    constexpr void setError(ParseError err, InpIter pos) {
         error = err;
         m_pos = pos;
     }
-    constexpr inline ParseError currentError(){return error;}
+    constexpr ParseError currentError(){return error;}
 
     constexpr ParseResult<InpIter, SchemaDepth, SchemaHasMaps> result() const {
         return ParseResult<InpIter, SchemaDepth, SchemaHasMaps>(error, _validationCtx.result(), m_begin, m_pos, currentPath);
     }
-    constexpr inline validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
 
 
-    constexpr inline PathGuard getArrayItemGuard(std::size_t index) {
+    constexpr PathGuard getArrayItemGuard(std::size_t index) {
         currentPath.push_child({index});
         return PathGuard{*this};
     }
-    constexpr inline PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
+    constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
         currentPath.push_child({std::numeric_limits<std::size_t>::max(), key, is_static});
         return PathGuard{*this};
     }
@@ -92,7 +92,7 @@ public:
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.read_bool(obj); st == tokenizer::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
         return false;
@@ -115,7 +115,7 @@ constexpr inline bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
-constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (tokenizer::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
                 st == tokenizer::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
@@ -133,52 +133,185 @@ constexpr inline bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx,
 
     return true;
 }
+constexpr std::size_t STRING_CHUNK_SIZE = 256;
 
+template<class Reader, class Cont, class Ctx>
+constexpr bool read_json_string_into(
+    Reader&      reader,
+    Cont& out,
+    std::size_t  max_len,  // validator limit or SIZE_MAX
+    Ctx&         ctx,
+    std::size_t & outSize
+    )
+{
+    std::size_t total = 0;
+    bool done = false;
+
+    // Optional: pre-reserve up to max_len to reduce reallocations
+    if (max_len == std::numeric_limits<std::size_t>::max()) {
+        out.reserve(STRING_CHUNK_SIZE);
+    }
+
+    while (!done) {
+        std::size_t remaining = max_len - total;
+        if (remaining == 0) {
+            // Overflow: we hit the max_len but reader still has string data
+            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+
+            // Optionally drain the rest of the JSON string to keep reader in sync
+            char dummy[STRING_CHUNK_SIZE];
+            bool local_done = false;
+            while (!local_done) {
+                auto drain = reader.read_string_chunk(dummy, sizeof(dummy));
+                if (drain.status == tokenizer::StringChunkStatus::error) {
+                    ctx.setError(reader.getError(), reader.current());
+                    return false;
+                }
+                if (drain.status == tokenizer::StringChunkStatus::no_match) {
+                    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+                    return false;
+                }
+                local_done = drain.done;
+                if (!drain.bytes_written && !drain.done) {
+                    break;
+                }
+            }
+
+            return false;
+        }
+
+        constexpr std::size_t CHUNK = STRING_CHUNK_SIZE;
+        std::size_t ask = remaining < CHUNK ? remaining : CHUNK;
+
+        // Make sure string has space [total, total+ask) to write into.
+        // This also keeps size() in a valid state.
+        out.resize(total + ask);
+        char* write_ptr = out.data() + total;
+
+        auto res = reader.read_string_chunk(write_ptr, ask);
+
+        switch (res.status) {
+        case tokenizer::StringChunkStatus::no_match:
+            // We expected a string here and didn't get one.
+            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+            return false;
+
+        case tokenizer::StringChunkStatus::error:
+            // Reader already set an error
+            ctx.setError(reader.getError(), reader.current());
+            return false;
+
+        case tokenizer::StringChunkStatus::ok:
+            break;
+        }
+
+        if (res.bytes_written > ask) {
+            // Should never happen if reader respects the contract
+            ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+            return false;
+        }
+
+        total += res.bytes_written;
+
+        if (res.done) {
+            // Shrink to actual number of bytes written
+            outSize = total;
+            out.resize(total);
+            return true;
+        }
+
+        // Not done yet; if reader filled less than asked but not done,
+        // you might optionally treat that as suspicious, but generally fine.
+        // Loop continues.
+    }
+
+    // Shouldn’t be reachable
+    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+    return false;
+}
+
+template<class Reader, class Ctx>
+constexpr bool read_json_string_into(
+    Reader&      reader,
+    char * key_buf,
+    std::size_t  max_bytes,  // validator limit or SIZE_MAX
+    Ctx&         ctx,
+    std::size_t & outSize
+    )
+{
+    std::size_t total = 0;
+    bool done = false;
+
+    while (!done) {
+        auto res = reader.read_string_chunk(key_buf + total,
+                                            max_bytes - total);
+
+        if (res.status == tokenizer::StringChunkStatus::no_match) {
+            // Not at a string where we expected a key
+            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+            return false;
+        }
+        if (res.status == tokenizer::StringChunkStatus::error) {
+            ctx.setError(reader.getError(), reader.current());
+            return false;
+        }
+
+        total += res.bytes_written;
+        done   = res.done;
+
+        if (total == max_bytes && !done) {
+            // Overflow: we hit the max_len but reader still has string data
+            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
+
+            // Optionally drain the rest of the JSON string to keep reader in sync
+            char dummy[STRING_CHUNK_SIZE];
+            bool local_done = false;
+            while (!local_done) {
+                auto drain = reader.read_string_chunk(dummy, sizeof(dummy));
+                if (drain.status == tokenizer::StringChunkStatus::error) {
+                    ctx.setError(reader.getError(), reader.current());
+                    return false;
+                }
+                if (drain.status == tokenizer::StringChunkStatus::no_match) {
+                    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+                    return false;
+                }
+                local_done = drain.done;
+                if (!drain.bytes_written && !drain.done) {
+                    break;
+                }
+            }
+
+            return false;
+        }
+    }
+    outSize = total;
+    return true;
+}
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    std::size_t parsedSize = 0;
-    if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
-        obj.clear();
-    }
+
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
-    char ch;
-    while(true) {
-
-        if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
-            if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-                if (parsedSize < obj.size()-1) {
-                    obj[parsedSize] = ch;
-                } else {
-                    ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
-                    return false;
-                }
-            }  else {
-                obj.push_back(ch);
-            }
-            parsedSize++;
-            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsed_some_chars>(obj, ctx.validationCtx(), ch)) {
-                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
-                return false;
-            }
-        }  else if (st == tokenizer::StringCharStatus::end) {
-             break;
-        } else if (st == tokenizer::StringCharStatus::no_match) {
-            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+    //TODO extract MAX_SIZE from validators here
+    constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
+    std::size_t parsedSize = 0;
+    if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
+        if(!read_json_string_into(reader, obj.data(), std::min(obj.size()-1, MAX_SIZE), ctx, parsedSize)) {
             return false;
-        } else {
-            ctx.setError(reader.getError(), reader.current());
+        }
+        obj[parsedSize] = 0;
+    } else {
+        obj.clear();
+        if(!read_json_string_into(reader, obj, MAX_SIZE, ctx, parsedSize)) {
             return false;
         }
     }
 
-    if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-        if(parsedSize < obj.size())
-            obj[parsedSize] = 0;
-    }
-    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), parsedSize, std::string_view(obj.data(), obj.data() + parsedSize))) {
+
+    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), std::string_view(obj.data(), obj.data() + parsedSize))) {
         ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
         return false;
     }
@@ -350,54 +483,26 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         
         // Custom string parsing with incremental key validation
         std::size_t parsedSize = 0;
-        if constexpr (static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-            key.clear();
-        }
-        
 
-        char ch;
-        while(true) {
+        //TODO extract MAX_SIZE from validators here
+        constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
 
-            if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
-                if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-                    if (parsedSize < key.size()-1) {
-                        key[parsedSize] = ch;
-                    } else {
-                        ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
-                        return false;
-                    }
-                } else {
-                    key.push_back(ch);
-                }
-                parsedSize++;
-
-                // Emit incremental key parsing event for validators
-                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_parsed_some_chars>
-                     (obj, ctx.validationCtx(), ch)) {
-                    ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
-                    return false;
-                }
-            } else if (st == tokenizer::StringCharStatus::end) {
-                 break;
-            } else if (st == tokenizer::StringCharStatus::no_match) {
-                cursor.finalize(false);
-                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+        if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
+            if(!read_json_string_into(reader, key.data(), std::min(key.size()-1, MAX_SIZE), ctx, parsedSize)) {
                 return false;
-            } else {
-                cursor.finalize(false);
-                ctx.setError(reader.getError(), reader.current());
+            }
+            key[parsedSize] = 0;
+        } else {
+            key.clear();
+            if(!read_json_string_into(reader, key, MAX_SIZE, ctx, parsedSize)) {
                 return false;
             }
         }
 
-
-        if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-            if(parsedSize < key.size())
-                key[parsedSize] = 0;
-        }
         
         // Emit key finished event
-        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key, parsed_entries_count)) {
+
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), std::string_view (key.data(), key.data() + parsedSize))) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
             return false;
         }
@@ -556,7 +661,7 @@ using StructFieldMeta = options::detail::annotation_meta_getter<
 >;
 template <class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
     requires static_schema::JsonObject<ObjT>
-constexpr inline bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
+constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
     bool ok = false;
     (
         (requiredIndex == StructIndex
@@ -619,26 +724,17 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
+        std::size_t s = 0;
+        if(!read_json_string_into(reader, searcher.buffer(),FH::maxFieldNameLength, ctx, s)) {
+            if(ctx.currentError() == ParseError::NON_STRING_IN_STRING_STORAGE) {
+                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+            }
+            return false;
+        }
+        searcher.set_size(s);
+
         // DFARunner searcher2(FH::dfa);
 
-        bool fieldRejected = false;
-
-        char ch;
-        while(true) {
-            if (tokenizer::StringCharStatus st = reader.read_string_char(ch); st == tokenizer::StringCharStatus::ok) {
-                if(!fieldRejected && !searcher.step(ch)) {
-                    fieldRejected = true;
-                }
-            } else if (st == tokenizer::StringCharStatus::end) {
-                 break;
-            } else if (st == tokenizer::StringCharStatus::no_match) {
-                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-                return false;
-            } else {
-                ctx.setError(reader.getError(), reader.current());
-                return false;
-            }
-        }
 
 
         auto res = searcher.result();
@@ -693,7 +789,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */
 
 template <class ObjT, std::size_t... StructIndex>
-constexpr inline bool IsFieldSkipped(std::index_sequence<StructIndex...>, std::size_t index) {
+constexpr bool IsFieldSkipped(std::index_sequence<StructIndex...>, std::size_t index) {
     bool ok = false;
     (
         (index == StructIndex
@@ -712,7 +808,7 @@ template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX,
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr  bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if(!reader.read_array_begin()) {
         ctx.setError(ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT, reader.current());
         return false;
@@ -782,7 +878,7 @@ constexpr  bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserC
 }
 
 template <class FieldOptions, static_schema::JsonParsableValue Field, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
-constexpr  bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
         return false; // cannot parse non-json

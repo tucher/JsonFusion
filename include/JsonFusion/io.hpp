@@ -37,22 +37,22 @@ concept CharSentinelForOut =
 namespace io_details {
 struct limitless_sentinel {};
 
-constexpr inline bool operator==(const std::back_insert_iterator<std::string>&,
+constexpr bool operator==(const std::back_insert_iterator<std::string>&,
                                  const limitless_sentinel&) noexcept {
     return false;
 }
 
-constexpr inline bool operator==(const limitless_sentinel&,
+constexpr bool operator==(const limitless_sentinel&,
                                  const std::back_insert_iterator<std::string>&) noexcept {
     return false;
 }
 
-constexpr inline bool operator!=(const std::back_insert_iterator<std::string>& it,
+constexpr bool operator!=(const std::back_insert_iterator<std::string>& it,
                                  const limitless_sentinel& s) noexcept {
     return !(it == s);
 }
 
-constexpr inline bool operator!=(const limitless_sentinel& s,
+constexpr bool operator!=(const limitless_sentinel& s,
                                  const std::back_insert_iterator<std::string>& it) noexcept {
     return !(it == s);
 }

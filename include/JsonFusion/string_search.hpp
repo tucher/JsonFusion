@@ -221,12 +221,12 @@ struct IncrementalBinaryFieldSearch {
     It original_end;  // original end, used as "empty result"
     std::size_t depth = 0; // how many characters have been fed
 
-    constexpr inline IncrementalBinaryFieldSearch(It begin, It end)
+    constexpr IncrementalBinaryFieldSearch(It begin, It end)
         : first(begin), last(end), original_begin(begin), original_end(end), depth(0) {}
 
     // Feed next character; narrows [first, last) by character at position `depth`.
     // Returns true if any candidates remain after this step.
-    constexpr inline bool step(char ch) {
+    constexpr bool step(char ch) {
         if (first == last)
             return false;
 
@@ -257,7 +257,7 @@ struct IncrementalBinaryFieldSearch {
     //   - pointer to unique StringDescr if exactly one matches AND
     //     fully typed (depth >= name.size())
     //   - original_end if 0 matches OR >1 matches OR undertyped.
-    constexpr inline It result() const {
+    constexpr It result() const {
         if (first == last)
             return original_end; // 0 matches
 
@@ -272,7 +272,7 @@ struct IncrementalBinaryFieldSearch {
         return first;
     }
     // Reset for next key
-    constexpr inline void reset() {
+    constexpr void reset() {
         first = original_begin;
         last = original_end;
         depth = 0;
@@ -290,11 +290,11 @@ struct BufferedLinearFieldSearch {
     std::size_t length = 0;
     bool overflown = false;
 
-    constexpr inline BufferedLinearFieldSearch(It begin_, It end_)
+    constexpr BufferedLinearFieldSearch(It begin_, It end_)
         : begin(begin_), end(end_), buffer{}, length(0), overflown(false) {}
 
     // Simply buffer the character, no searching yet
-    constexpr inline  bool step(char ch) {
+    constexpr  bool step(char ch) {
         if (length < MaxLen) {
             buffer[length++] = ch;
             return true;
@@ -305,7 +305,7 @@ struct BufferedLinearFieldSearch {
     }
 
     // Perform linear search through all fields
-    constexpr inline It result() const {
+    constexpr It result() const {
         if(overflown) return end;
         std::string_view key(buffer, length);
         for (It it = begin; it != end; ++it) {
@@ -316,12 +316,13 @@ struct BufferedLinearFieldSearch {
         return end; // not found
     }
     // Reset for next key
-    constexpr inline void reset() {
-        for (std::size_t i = 0; i < MaxLen; ++i) {
-            buffer[i] = '\0';
-        }
+    constexpr void reset() {
         length = 0;
         overflown = false;
+    }
+    constexpr char*get_buffer() {return buffer;}
+    constexpr void set_size(std::size_t s) {
+        length = s;
     }
 };
 
@@ -341,18 +342,24 @@ struct AdaptiveStringSearch {
 
     SearchImpl impl;
 
-    constexpr inline AdaptiveStringSearch(It begin, It end)
+    constexpr AdaptiveStringSearch(It begin, It end)
         : impl(begin, end) {}
 
-    constexpr inline  bool step(char ch) {
+    constexpr  bool step(char ch) {
         return impl.step(ch);
     }
 
-    constexpr inline It result() const {
+    constexpr It result() const {
         return impl.result();
     }
-    constexpr inline void reset() {
+    constexpr void reset() {
         impl.reset();
+    }
+    constexpr char* buffer() {
+        return impl.get_buffer();
+    }
+    constexpr void set_size(std::size_t s) {
+        return impl.set_size(s);
     }
 };
 

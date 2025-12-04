@@ -16,12 +16,18 @@ enum class TryParseStatus {
 };
 
 
-enum class StringCharStatus {
-    no_match, // current_ is not at a string
-    ok,       // produced one UTF-8 char in `out`
-    end,      // finished string, just consumed closing '"'
-    error     // parse error, ctx already set
+enum class StringChunkStatus {
+    ok,       // wrote some bytes (maybe zero), no error
+    no_match, // not at a string (no '"' at start, and not already in_string_)
+    error     // parse error set in ctx
 };
+
+struct StringChunkResult {
+    StringChunkStatus status;
+    std::size_t       bytes_written; // how many bytes we put into `out`
+    bool              done;          // true if closing '"' was consumed
+};
+
 template<class C>
 concept TokenizerLike = true;
 
@@ -47,7 +53,7 @@ public:
 
 
 
-    constexpr inline  TryParseStatus read_null() {
+    constexpr  TryParseStatus read_null() {
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
@@ -64,7 +70,7 @@ public:
         return TryParseStatus::ok;
     }
 
-    constexpr inline  TryParseStatus read_bool(bool & b) {
+    constexpr  TryParseStatus read_bool(bool & b) {
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
@@ -96,7 +102,7 @@ public:
             return TryParseStatus::no_match;
         }
     }
-    constexpr inline  bool skip_whitespaces_till_the_end() {
+    constexpr  bool skip_whitespaces_till_the_end() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
@@ -106,7 +112,7 @@ public:
         }
         return true;
     }
-    constexpr inline  bool skip_whitespaces_till_any() {
+    constexpr  bool skip_whitespaces_till_any() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
@@ -118,7 +124,7 @@ public:
     }
 
     // Array/object structural events
-    constexpr inline  bool read_array_begin() {
+    constexpr  bool read_array_begin() {
         if(*current_ != '[')  {
             return false;
 
@@ -126,7 +132,7 @@ public:
         current_++;
         return skip_whitespace();
     }
-    constexpr inline  bool read_object_begin() {
+    constexpr  bool read_object_begin() {
         if(*current_ != '{')  {
             return false;
 
@@ -136,7 +142,7 @@ public:
     }
 
     // Try-peek style helpers
-    constexpr inline  TryParseStatus read_array_end() {
+    constexpr  TryParseStatus read_array_end() {
         if(!skip_whitespace()) {
             return TryParseStatus::error;
         }
@@ -146,7 +152,7 @@ public:
         }
         return TryParseStatus::no_match;
     }
-    constexpr inline  TryParseStatus read_object_end() {
+    constexpr  TryParseStatus read_object_end() {
         if(!skip_whitespace()) {
             return TryParseStatus::error;
         }
@@ -158,7 +164,7 @@ public:
     }
 
     // Comma handling
-    constexpr inline  bool consume_value_separator(bool& had_comma) {
+    constexpr  bool consume_value_separator(bool& had_comma) {
         had_comma = false;
         if(!skip_whitespace())  {
             return false;
@@ -172,7 +178,7 @@ public:
         }
         return true;
     }
-    constexpr inline  bool consume_kv_separator() {
+    constexpr  bool consume_kv_separator() {
         if(!skip_whitespace()) {
             return false;
         }
@@ -189,8 +195,8 @@ public:
 
     // Value parsing is handled by higher-level ParseValue(T&, Reader&, Ctx&),
     // so reader doesn’t know types; it just supplies char-level ops.
-    constexpr inline  It current() const { return current_; }
-    constexpr inline  Sent end()  const { return end_; }
+    constexpr  It current() const { return current_; }
+    constexpr  Sent end()  const { return end_; }
 
 
     constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
@@ -360,182 +366,206 @@ public:
         }
     }
 
+    constexpr StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+        std::size_t written = 0;
 
-
-
-    constexpr StringCharStatus read_string_char(char &out) {
         // If we're not currently inside a string, expect an opening quote
         if (!in_string_) {
             if (atEnd()) {
                 setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                return StringCharStatus::error;
+                return {StringChunkStatus::error, 0, false};
             }
             if (*current_ != '"') {
-                return StringCharStatus::no_match;
+                return {StringChunkStatus::no_match, 0, false};
             }
             in_string_ = true;
             ++current_; // consume opening '"'
+            // No output yet, fall through into main loop
         }
 
-        // Flush any buffered UTF-8 bytes from a previous escape
-        if (string_buf_pos_ < string_buf_len_) {
-            out = string_buf_[string_buf_pos_++];
-            return StringCharStatus::ok;
-        }
+        while (true) {
+            // 1) Flush any buffered UTF-8 bytes (from previous \uXXXX)
+            while (string_buf_pos_ < string_buf_len_ && written < capacity) {
+                out[written++] = string_buf_[string_buf_pos_++];
+            }
 
-        // No buffered chars left; read next raw char from input
-        if (atEnd()) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            in_string_ = false;
-            return StringCharStatus::error;
-        }
+            // If we filled the caller's buffer, stop here
+            if (written == capacity) {
+                if(*current_ == '"') {
+                    ++current_;
+                    in_string_      = false;
+                    string_buf_len_ = 0;
+                    string_buf_pos_ = 0;
+                    return {StringChunkStatus::ok, written, true};
+                } else
+                    return {StringChunkStatus::ok, written, false};
+            }
 
-        char c = *current_;
-        switch (c) {
-        case '"': {
-            // End of string
-            ++current_;
-            in_string_      = false;
-            string_buf_len_ = 0;
-            string_buf_pos_ = 0;
-            return StringCharStatus::end;
-        }
-
-        case '\\': {
-            // Escape sequence
-            ++current_;
+            // No buffered bytes left, read next raw char
             if (atEnd()) {
                 setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                in_string_ = false;
-                return StringCharStatus::error;
+                in_string_      = false;
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+                return {StringChunkStatus::error, written, false};
             }
 
-            char esc = *current_;
-            ++current_;
+            char c = *current_;
 
-            // Simple 1-byte escapes
-            char simple = 0;
-            switch (esc) {
-            case '"':  simple = '"';  break;
-            case '/':  simple = '/';  break;
-            case '\\': simple = '\\'; break;
-            case 'b':  simple = '\b'; break;
-            case 'f':  simple = '\f'; break;
-            case 'r':  simple = '\r'; break;
-            case 'n':  simple = '\n'; break;
-            case 't':  simple = '\t'; break;
-            case 'u':  break; // handled below
+            switch (c) {
+            case '"': {
+                // End of string
+                ++current_;
+                in_string_      = false;
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+                return {StringChunkStatus::ok, written, true};
+            }
+
+            case '\\': {
+                // Escape sequence
+                ++current_;
+                if (atEnd()) {
+                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                    in_string_ = false;
+                    return {StringChunkStatus::error, written, false};
+                }
+
+                char esc = *current_;
+                ++current_;
+
+                // Simple 1-byte escapes
+                char simple = 0;
+                switch (esc) {
+                case '"':  simple = '"';  break;
+                case '/':  simple = '/';  break;
+                case '\\': simple = '\\'; break;
+                case 'b':  simple = '\b'; break;
+                case 'f':  simple = '\f'; break;
+                case 'r':  simple = '\r'; break;
+                case 'n':  simple = '\n'; break;
+                case 't':  simple = '\t'; break;
+                case 'u':  break; // handled below
+                default:
+                    setError(ParseError::ILLFORMED_STRING, current_);
+                    in_string_ = false;
+                    return {StringChunkStatus::error, written, false};
+                }
+
+                if (esc != 'u') {
+                    // Simple escape → either write now or buffer it
+                    if (written < capacity) {
+                        out[written++] = simple;
+                    } else {
+                        // no room this chunk: buffer for next time
+                        string_buf_len_ = 1;
+                        string_buf_pos_ = 0;
+                        string_buf_[0]  = simple;
+                        return {StringChunkStatus::ok, written, false};
+                    }
+                    break; // continue main loop
+                }
+
+                // ---- \uXXXX handling ----
+                std::uint16_t u1 = 0;
+                if (!readHex4(u1)) {
+                    in_string_ = false;
+                    return {StringChunkStatus::error, written, false};
+                }
+
+                std::uint32_t codepoint = 0;
+
+                if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
+                    // High surrogate, expect a second \uXXXX
+                    if (atEnd()) {
+                        setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+                    if (*current_ != '\\') {
+                        setError(ParseError::ILLFORMED_STRING, current_);
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+                    ++current_;
+                    if (atEnd()) {
+                        setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+                    if (*current_ != 'u') {
+                        setError(ParseError::ILLFORMED_STRING, current_);
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+                    ++current_;
+
+                    std::uint16_t u2 = 0;
+                    if (!readHex4(u2)) {
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+                    if (u2 < 0xDC00u || u2 > 0xDFFFu) {
+                        setError(ParseError::ILLFORMED_STRING, current_);
+                        in_string_ = false;
+                        return {StringChunkStatus::error, written, false};
+                    }
+
+                    codepoint = 0x10000u
+                                + ((static_cast<std::uint32_t>(u1) - 0xD800u) << 10)
+                                + (static_cast<std::uint32_t>(u2) - 0xDC00u);
+                } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
+                    // Lone low surrogate → invalid
+                    setError(ParseError::ILLFORMED_STRING, current_);
+                    in_string_ = false;
+                    return {StringChunkStatus::error, written, false};
+                } else {
+                    codepoint = u1;
+                }
+
+                // Encode codepoint as UTF-8 into internal buffer
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+
+                if (codepoint <= 0x7Fu) {
+                    string_buf_[string_buf_len_++] = static_cast<char>(codepoint);
+                } else if (codepoint <= 0x7FFu) {
+                    string_buf_[string_buf_len_++] = static_cast<char>(0xC0 | (codepoint >> 6));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                } else if (codepoint <= 0xFFFFu) {
+                    string_buf_[string_buf_len_++] = static_cast<char>(0xE0 | (codepoint >> 12));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                } else { // up to 0x10FFFF
+                    string_buf_[string_buf_len_++] = static_cast<char>(0xF0 | (codepoint >> 18));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                }
+
+                // Next loop iteration will immediately flush from string_buf_
+                break;
+            }
+
             default:
-                setError(ParseError::ILLFORMED_STRING, current_);
-                in_string_ = false;
-                return StringCharStatus::error;
-            }
-
-            if (esc != 'u') {
-                // Simple escape
-                out = simple;
-                return StringCharStatus::ok;
-            }
-
-            // ---- \uXXXX handling ----
-
-            std::uint16_t u1 = 0;
-            if (!readHex4(u1)) {
-                // readHex4 should set error in ctx
-                in_string_ = false;
-                return StringCharStatus::error;
-            }
-
-            std::uint32_t codepoint = 0;
-
-            if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
-                // High surrogate, expect a second \uXXXX
-                if (atEnd()) {
-                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                    in_string_ = false;
-                    return StringCharStatus::error;
-                }
-                if (*current_ != '\\') {
+                // RFC 8259 §7: Control chars U+0000–U+001F must be escaped
+                if (static_cast<unsigned char>(c) <= 0x1F) {
                     setError(ParseError::ILLFORMED_STRING, current_);
                     in_string_ = false;
-                    return StringCharStatus::error;
+                    return {StringChunkStatus::error, written, false};
                 }
+
+                // Normal unescaped char
+                if (written == capacity) {
+                    // no space; defer this char to next chunk
+                    return {StringChunkStatus::ok, written, false};
+                }
+                out[written++] = c;
                 ++current_;
-                if (atEnd()) {
-                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                    in_string_ = false;
-                    return StringCharStatus::error;
-                }
-                if (*current_ != 'u') {
-                    setError(ParseError::ILLFORMED_STRING, current_);
-                    in_string_ = false;
-                    return StringCharStatus::error;
-                }
-                ++current_;
-
-                std::uint16_t u2 = 0;
-                if (!readHex4(u2)) {
-                    in_string_ = false;
-                    return StringCharStatus::error;
-                }
-                if (u2 < 0xDC00u || u2 > 0xDFFFu) {
-                    setError(ParseError::ILLFORMED_STRING, current_);
-                    in_string_ = false;
-                    return StringCharStatus::error;
-                }
-
-                codepoint = 0x10000u
-                            + ((static_cast<std::uint32_t>(u1) - 0xD800u) << 10)
-                            + (static_cast<std::uint32_t>(u2) - 0xDC00u);
-            } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
-                // Lone low surrogate → invalid
-                setError(ParseError::ILLFORMED_STRING, current_);
-                in_string_ = false;
-                return StringCharStatus::error;
-            } else {
-                codepoint = u1;
-            }
-
-            // Encode codepoint as UTF-8 into internal buffer
-            string_buf_len_ = 0;
-            string_buf_pos_ = 0;
-
-            if (codepoint <= 0x7Fu) {
-                string_buf_[string_buf_len_++] = static_cast<char>(codepoint);
-            } else if (codepoint <= 0x7FFu) {
-                string_buf_[string_buf_len_++] = static_cast<char>(0xC0 | (codepoint >> 6));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-            } else if (codepoint <= 0xFFFFu) {
-                string_buf_[string_buf_len_++] = static_cast<char>(0xE0 | (codepoint >> 12));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-            } else { // up to 0x10FFFF
-                string_buf_[string_buf_len_++] = static_cast<char>(0xF0 | (codepoint >> 18));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
-            }
-
-            // Now serve the first byte from the buffer
-            out = string_buf_[string_buf_pos_++];
-            return StringCharStatus::ok;
-        }
-
-        default:
-            // RFC 8259 §7: Control chars U+0000–U+001F must be escaped
-            if (static_cast<unsigned char>(c) <= 0x1F) {
-                setError(ParseError::ILLFORMED_STRING, current_);
-                in_string_ = false;
-                return StringCharStatus::error;
-            }
-
-            // Normal unescaped char
-            out = c;
-            ++current_;
-            return StringCharStatus::ok;
-        }
+                break;
+            } // switch
+        }     // while
     }
-
 
 
     template <std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
@@ -777,10 +807,10 @@ private:
 
 
 
-    constexpr inline bool atEnd() {
+    constexpr bool atEnd() {
         return current_ == end_;
     }
-    constexpr inline bool isSpace(char a) {
+    constexpr bool isSpace(char a) {
         switch(a) {
         case 0x20:
         case 0x0A:
@@ -791,7 +821,7 @@ private:
         return false;
     }
 
-    constexpr inline bool isPlainEnd(char a) {
+    constexpr bool isPlainEnd(char a) {
         switch(a) {
         case ']':
         case ',':
@@ -806,7 +836,7 @@ private:
     }
 
     // Basic whitespace skipping for all callers
-    constexpr inline  bool skip_whitespace() {
+    constexpr  bool skip_whitespace() {
         while(isSpace(*current_)) {
             if (atEnd())  {
                 setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
@@ -819,7 +849,7 @@ private:
         return true;
     }
 
-    constexpr inline  bool match_literal(const std::string_view & lit) {
+    constexpr  bool match_literal(const std::string_view & lit) {
         for (char c : lit) {
             if (atEnd())  {
                 setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
@@ -936,7 +966,7 @@ private:
         std::size_t maxSize = 0;
         std::size_t inserted = 0;
 
-        constexpr inline bool operator()(char ch) {
+        constexpr bool operator()(char ch) {
             if (inserted >= maxSize) {
                 return false;
             }
@@ -953,7 +983,7 @@ private:
         char * data = nullptr;
         std::size_t maxSize = 0;
         std::size_t inserted = 0;
-        constexpr inline bool operator()(char ch) {
+        constexpr bool operator()(char ch) {
             if (inserted >= maxSize - 1) {
                 return false;
             }
@@ -961,40 +991,42 @@ private:
             inserted ++;
             return true;
         }
-        constexpr inline void finish(){
+        constexpr void finish(){
             data[inserted] = 0;
         }
     };
     struct NoOpFiller {
 
-        constexpr inline bool operator()(char ch) {
+        constexpr bool operator()(char ch) {
 
             return true;
         }
-        constexpr inline void finish(){}
+        constexpr void finish(){}
     };
 
     template<class Filler>
     constexpr bool read_string_with_filler(Filler & f) {
-        char ch;
-        for (;;) {
-            auto st = read_string_char(ch);
-            if (st == StringCharStatus::no_match) {
-                // not a string at this position
-                return false;
-            }
-            if (st == StringCharStatus::error) {
-                return false;
-            }
-            if (st == StringCharStatus::end) {
-                return true;
-            }
 
-            if(!f(ch)) {
-                setError(ParseError::JSON_SINK_OVERFLOW, current_);
-                return false;
-            }
-        }
+        return false;
+        char ch;
+        // for (;;) {
+        //     auto st = read_string_char(ch);
+        //     if (st == StringCharStatus::no_match) {
+        //         // not a string at this position
+        //         return false;
+        //     }
+        //     if (st == StringCharStatus::error) {
+        //         return false;
+        //     }
+        //     if (st == StringCharStatus::end) {
+        //         return true;
+        //     }
+
+        //     if(!f(ch)) {
+        //         setError(ParseError::JSON_SINK_OVERFLOW, current_);
+        //         return false;
+        //     }
+        // }
     }
 };
 }

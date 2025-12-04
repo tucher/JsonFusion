@@ -158,7 +158,7 @@ constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sen
 // Returns pointer one past last written char.
 // Caller guarantees buffer is large enough (e.g. NumberBufSize).
 template <class Int>
-constexpr inline char* format_decimal_integer(Int value,
+constexpr char* format_decimal_integer(Int value,
                                     char* first,
                                     char* last) noexcept {
     static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
@@ -409,7 +409,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
 
 template <bool AsArray, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
-constexpr inline bool SerializeOneStructField(bool & first, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
     using Meta =  options::detail::annotation_meta_getter<Field>;
     using FieldOpts    = typename Meta::options;
@@ -457,7 +457,7 @@ constexpr inline bool SerializeOneStructField(bool & first, ObjT& structObj, It 
 
 }
 template <bool AsArray, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
-constexpr inline bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
+constexpr bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
     bool first = true;
     return (
         SerializeOneStructField<AsArray, StructIndex>(first, structObj, outputPos, end, ctx, userCtx)

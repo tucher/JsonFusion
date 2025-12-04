@@ -14,9 +14,9 @@
 namespace JsonFusion::fp_to_str_detail {
 
 #ifndef JSONFUSION_NUMBER_BUF_SIZE
-inline constexpr std::size_t NumberBufSize = 64;
+constexpr std::size_t NumberBufSize = 64;
 #else
-inline constexpr std::size_t NumberBufSize = JSONFUSION_NUMBER_BUF_SIZE;
+constexpr std::size_t NumberBufSize = JSONFUSION_NUMBER_BUF_SIZE;
 #endif
 
 

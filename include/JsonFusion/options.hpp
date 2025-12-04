@@ -213,7 +213,7 @@ template<class U, class... Opts>
 struct is_annotated<Annotated<U, Opts...>> : std::true_type {};
 
 template<class T>
-inline constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
+constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
 
 
 
@@ -225,10 +225,10 @@ template<class T>
 struct annotation_meta {
     using value_t = T;
     using options      = no_options;
-    static constexpr inline decltype(auto) getRef(T & f) {
+    static constexpr decltype(auto) getRef(T & f) {
         return (f);
     }
-    static constexpr inline decltype(auto) getRef(const T & f) {
+    static constexpr decltype(auto) getRef(const T & f) {
         return (f);
     }
 };
@@ -251,10 +251,10 @@ struct annotation_meta<Annotated<T, Opts...>> {
     using value_t = T;
     using options      = field_options<Opts...>;
 
-    static constexpr inline decltype(auto) getRef(Annotated<T, Opts...> & f) {
+    static constexpr decltype(auto) getRef(Annotated<T, Opts...> & f) {
         return (f.value);
     }
-    static constexpr inline decltype(auto) getRef(const Annotated<T, Opts...> & f) {
+    static constexpr decltype(auto) getRef(const Annotated<T, Opts...> & f) {
         return (f.value);
     }
 };
