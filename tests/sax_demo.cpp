@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <map>
 
 void streaming_demo () {
 
@@ -235,7 +236,7 @@ void nested_producers () {
     int ctx = 100;
     StreamerOuter s {};
     s.ctx_int = &ctx;
-    JsonFusion::SerializeWithContext(s, out, &ctx);
+    JsonFusion::Serialize(s, out, &ctx);
 
     std::cout << out << std::endl;
     std::cout << ctx << std::endl;

@@ -158,6 +158,8 @@ concept ArrayWritable = requires(C& c) {
     { array_write_cursor<C>{c}.allocate_slot() } -> std::same_as<stream_write_result>;
     { array_write_cursor<C>{c}.get_slot() } -> std::same_as<typename array_write_cursor<C>::element_type&>;
     { array_write_cursor<C>{c}.finalize(std::declval<bool>()) } -> std::same_as<stream_write_result>;
+    { array_write_cursor<C>{c}.finalize_item(std::declval<bool>()) } -> std::same_as<stream_write_result>;
+
     array_write_cursor<C>{c}.reset();
 
 };
@@ -212,6 +214,9 @@ struct array_write_cursor<C> {
     constexpr stream_write_result finalize(bool) {
         return  stream_write_result::value_processed;
     }
+    constexpr stream_write_result finalize_item(bool) {
+        return  stream_write_result::value_processed;
+    }
     constexpr void reset(){
         c.clear();
     }
@@ -241,6 +246,9 @@ struct array_write_cursor<std::array<T, N>> {
         return c[index];
     }
     constexpr stream_write_result finalize(bool) {
+        return  stream_write_result::value_processed;
+    }
+    constexpr stream_write_result finalize_item(bool ok) {
         return  stream_write_result::value_processed;
     }
     constexpr void reset(){
@@ -293,7 +301,7 @@ struct map_write_cursor<M> {
         );
         
         return inserted ? stream_write_result::value_processed 
-                        : stream_write_result::error;  // duplicate key
+                        : stream_write_result::overflow;  // duplicate key
     }
     constexpr stream_write_result finalize(bool) {
         return  stream_write_result::value_processed;
@@ -873,7 +881,6 @@ struct array_write_cursor<Streamer> {
     using element_type = Streamer::value_type;
     Streamer & streamer;
     element_type buffer{};
-    bool first_read = true;
 
     constexpr array_write_cursor(Streamer& s)
         : streamer(s)
@@ -887,15 +894,7 @@ struct array_write_cursor<Streamer> {
     }
 
     constexpr stream_write_result allocate_slot() {
-        if(first_read) {
-            first_read = false;
-            return stream_write_result::slot_allocated;
-        }
-        if(!streamer.consume(buffer)) {
-            return stream_write_result::error;
-        } else {
-            return stream_write_result::slot_allocated;
-        }
+        return stream_write_result::slot_allocated;
     }
 
     constexpr element_type& get_slot() {
@@ -903,9 +902,6 @@ struct array_write_cursor<Streamer> {
     }
 
     constexpr stream_write_result finalize(bool res) {
-        if(!streamer.consume(buffer)) {
-            return stream_write_result::error;
-        }
         if(!streamer.finalize(res)) {
             return stream_write_result::error;
         } else {
@@ -913,8 +909,17 @@ struct array_write_cursor<Streamer> {
         }
     }
 
+    constexpr stream_write_result finalize_item(bool ok) {
+        if (!ok) return stream_write_result::error;
+
+        if (!streamer.consume(buffer)) {
+            return stream_write_result::error;
+        }
+
+        return stream_write_result::value_processed;
+    }
+
     constexpr void reset(){
-        first_read = true;
         streamer.reset();
     }
 };
@@ -964,9 +969,8 @@ struct map_write_cursor<Streamer> {
         
         if (!streamer.consume(buffer)) {
             return stream_write_result::error;
-        }
-        
-        return stream_write_result::value_processed;
+        } else
+            return stream_write_result::value_processed;
     }
     constexpr stream_write_result finalize(bool res) {
 

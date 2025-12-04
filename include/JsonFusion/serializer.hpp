@@ -321,7 +321,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             *outputPos ++ = ',';
         }
         using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
-        if(!SerializeValue<typename Meta::options>(Meta::getRef(ch), outputPos, end, ctx)) {
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(ch), outputPos, end, ctx, userCtx)) {
             return false;
         }
     }
@@ -382,7 +382,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         
         // Serialize key as string
 
-        if(!SerializeValue<options::detail::no_options>(key, outputPos, end, ctx)) {
+        if(!SerializeValue<options::detail::no_options>(key, outputPos, end, ctx, userCtx)) {
             return false;
         }
         
@@ -394,7 +394,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         
         // Serialize value
         using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
-        if(!SerializeValue<typename Meta::options>(Meta::getRef(value), outputPos, end, ctx)) {
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(value), outputPos, end, ctx, userCtx)) {
             return false;
         }
     }
@@ -452,7 +452,7 @@ constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &output
 
     return SerializeValue<FieldOpts>(Meta::getRef(
                                          introspection::getStructElementByIndex<StructIndex>(structObj)
-                                         ), outputPos, end, ctx);
+                                         ), outputPos, end, ctx, userCtx);
 
 
 }

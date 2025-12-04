@@ -373,9 +373,22 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(newItem), reader, ctx, userCtx)) {
+            cursor.finalize_item(false);
             cursor.finalize(false);
             return false;
         }
+
+        stream_write_result finalize_r = cursor.finalize_item(true);
+        if(finalize_r != stream_write_result::value_processed) {
+            if(finalize_r == stream_write_result::overflow) {
+                ctx.setError(ParseError::DUPLICATE_KEY_IN_MAP, reader.current());
+                return false;
+            } else {
+                ctx.setError(ParseError::DATA_CONSUMER_ERROR, reader.current());
+                return false;
+            }
+        }
+
 
         parsed_items_count ++;
         if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count)) {
