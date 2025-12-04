@@ -320,9 +320,9 @@ struct BufferedLinearFieldSearch {
         length = 0;
         overflown = false;
     }
-    constexpr char*get_buffer() {return buffer;}
-    constexpr void set_size(std::size_t s) {
-        length = s;
+    constexpr char*  get_buffer() {return buffer;}
+    constexpr std::size_t & current_length() {
+        return length;
     }
 };
 
@@ -355,11 +355,11 @@ struct AdaptiveStringSearch {
     constexpr void reset() {
         impl.reset();
     }
-    constexpr char* buffer() {
+    constexpr char*  buffer() {
         return impl.get_buffer();
     }
-    constexpr void set_size(std::size_t s) {
-        return impl.set_size(s);
+    constexpr std::size_t & current_length() {
+        return impl.current_length();
     }
 };
 

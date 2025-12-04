@@ -574,12 +574,14 @@ public:
             NoOpFiller filler{};
             return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
         } else if constexpr(detail::DynamicContainerTypeConcept<OutputSinkContainer>) {
-            DynContainerFiller filler{*outputContainer, MaxStringLength};
+            DynContainerFiller filler{outputContainer, MaxStringLength};
             outputContainer->clear();
             return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
         } else {
             StContainerFiller filler{outputContainer->data(), std::min(MaxStringLength, outputContainer->size())};
-            return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
+            auto r = skip_json_value_internal<MAX_SKIP_NESTING>(filler);
+
+            return r;
         }
     }
 
@@ -962,15 +964,15 @@ private:
 
     template<class Cont>
     struct DynContainerFiller {
-        Cont & c;
-        std::size_t maxSize = 0;
+        Cont * out;
+        std::size_t max_size = 0;
         std::size_t inserted = 0;
 
         constexpr bool operator()(char ch) {
-            if (inserted >= maxSize) {
+            if (inserted >= max_size) {
                 return false;
             }
-            c.push_back(ch);
+            out->push_back(ch);
             inserted++;
             return true;
         }
@@ -980,25 +982,27 @@ private:
     };
 
     struct StContainerFiller {
-        char * data = nullptr;
-        std::size_t maxSize = 0;
+        char * out = nullptr;
+        std::size_t max_size = 0;
         std::size_t inserted = 0;
         constexpr bool operator()(char ch) {
-            if (inserted >= maxSize - 1) {
+            if (inserted >= max_size - 1) {
                 return false;
             }
-            data[inserted] = ch;
+            out[inserted] = ch;
             inserted ++;
             return true;
         }
         constexpr void finish(){
-            data[inserted] = 0;
+            out[inserted] = 0;
         }
     };
     struct NoOpFiller {
-
+        void * out = nullptr;
+        std::size_t max_size = std::numeric_limits<std::size_t>::max();
+        std::size_t inserted = 0;
         constexpr bool operator()(char ch) {
-
+            inserted ++;
             return true;
         }
         constexpr void finish(){}
@@ -1006,28 +1010,87 @@ private:
 
     template<class Filler>
     constexpr bool read_string_with_filler(Filler & f) {
-
-        return false;
-        char ch;
-        // for (;;) {
-        //     auto st = read_string_char(ch);
-        //     if (st == StringCharStatus::no_match) {
-        //         // not a string at this position
-        //         return false;
-        //     }
-        //     if (st == StringCharStatus::error) {
-        //         return false;
-        //     }
-        //     if (st == StringCharStatus::end) {
-        //         return true;
-        //     }
-
-        //     if(!f(ch)) {
-        //         setError(ParseError::JSON_SINK_OVERFLOW, current_);
-        //         return false;
-        //     }
-        // }
+        std::size_t added = 0;
+        f('"');
+        bool r = read_json_string_into(f.out, f.inserted, f.max_size - f.inserted, added);
+        if(r) {
+            f.inserted += added;
+            f('"');
+        }
+        return r;
     }
+    static constexpr std::size_t STRING_CHUNK_SIZE = 64;
+
+    template<class Cont>
+    constexpr bool read_json_string_into(
+        Cont * out,
+        std::size_t initS,
+        std::size_t  max_len,  // validator limit or SIZE_MAX
+        std::size_t & outSize
+        )
+    {
+        std::size_t total = 0;
+        bool done = false;
+
+        // Optional: pre-reserve up to max_len to reduce reallocations
+        if constexpr(!std::is_same_v<Cont, void> && !std::is_same_v<Cont, char>) {
+            if (max_len == std::numeric_limits<std::size_t>::max()) {
+                out->reserve(STRING_CHUNK_SIZE);
+
+            }
+        }
+
+        while (!done) {
+            std::size_t remaining = max_len - total;
+            if (remaining == 0) {
+                // Overflow: we hit the max_len but reader still has string data
+                setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                return false;
+            }
+
+            constexpr std::size_t CHUNK = STRING_CHUNK_SIZE;
+            std::size_t ask = remaining < CHUNK ? remaining : CHUNK;
+
+            // Make sure string has space [total, total+ask) to write into.
+            // This also keeps size() in a valid state.
+            StringChunkResult res;
+            if constexpr(!std::is_same_v<Cont, void> && !std::is_same_v<Cont, char>) {
+                out->resize(initS + total + ask);
+                res = read_string_chunk(out->data() + initS + total, ask);
+            } else if constexpr (std::is_same_v<Cont, char>) {
+                res = read_string_chunk(out + initS + total,
+                                        max_len - total);
+            } else {
+                char b[CHUNK];
+                res = read_string_chunk(b, ask);
+            }
+
+            if(res.status != tokenizer::StringChunkStatus::ok) {
+                return false;
+            }
+
+            total += res.bytes_written;
+
+            if (res.done) {
+                // Shrink to actual number of bytes written
+                outSize = total;
+                if constexpr(!std::is_same_v<Cont, void> && !std::is_same_v<Cont, char>) {
+                    out->resize(initS + total);
+                }
+                return true;
+            }
+
+            // Not done yet; if reader filled less than asked but not done,
+            // you might optionally treat that as suspicious, but generally fine.
+            // Loop continues.
+        }
+
+        // Shouldn’t be reachable
+        setError(ParseError::ILLFORMED_STRING, current_);
+        return false;
+    }
+
+
 };
 }
 

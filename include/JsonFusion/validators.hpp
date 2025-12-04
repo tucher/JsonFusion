@@ -79,7 +79,7 @@ private:
     template<class Tag, std::size_t I, class... Args>
     constexpr bool validate_one(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
         using Opt   = std::tuple_element_t<I, OptsTuple>;
-        using State = std::tuple_element_t<I, StatesTuple>;
+        // using State = std::tuple_element_t<I, StatesTuple>;
 
         auto& st = std::get<I>(states);
         return call_one<Tag, I, Opt>(st, storage, ctx, args...);

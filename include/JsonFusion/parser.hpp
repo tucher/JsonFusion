@@ -133,160 +133,142 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     return true;
 }
-constexpr std::size_t STRING_CHUNK_SIZE = 256;
+constexpr std::size_t STRING_CHUNK_SIZE = 64;
 
 template<class Reader, class Cont, class Ctx>
 constexpr bool read_json_string_into(
     Reader&      reader,
-    Cont& out,
-    std::size_t  max_len,  // validator limit or SIZE_MAX
+    Cont&        out,
+    std::size_t  max_len,   // validator limit or SIZE_MAX
     Ctx&         ctx,
-    std::size_t & outSize
+    std::size_t& outSize
     )
 {
     std::size_t total = 0;
-    bool done = false;
 
-    // Optional: pre-reserve up to max_len to reduce reallocations
-    if (max_len == std::numeric_limits<std::size_t>::max()) {
-        out.reserve(STRING_CHUNK_SIZE);
+    // Pre-reserve for dynamic containers to minimize reallocations.
+    if constexpr (false && JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
+        const std::size_t reserve_size =
+            (max_len == std::numeric_limits<std::size_t>::max())
+                ? STRING_CHUNK_SIZE
+                : max_len;
+        out.reserve(reserve_size);
     }
 
-    while (!done) {
-        std::size_t remaining = max_len - total;
+    for (;;) {
+        // Remaining bytes we are *allowed* to store into the container.
+        const std::size_t remaining = max_len - total;
         if (remaining == 0) {
-            // Overflow: we hit the max_len but reader still has string data
-            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
-
-            // Optionally drain the rest of the JSON string to keep reader in sync
-            char dummy[STRING_CHUNK_SIZE];
-            bool local_done = false;
-            while (!local_done) {
-                auto drain = reader.read_string_chunk(dummy, sizeof(dummy));
-                if (drain.status == tokenizer::StringChunkStatus::error) {
-                    ctx.setError(reader.getError(), reader.current());
-                    return false;
-                }
-                if (drain.status == tokenizer::StringChunkStatus::no_match) {
-                    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
-                    return false;
-                }
-                local_done = drain.done;
-                if (!drain.bytes_written && !drain.done) {
-                    break;
-                }
-            }
-
+            // We hit the validator limit but the reader still has data for this
+            // string → report overflow.
+            ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
+                         reader.current());
             return false;
         }
 
-        constexpr std::size_t CHUNK = STRING_CHUNK_SIZE;
-        std::size_t ask = remaining < CHUNK ? remaining : CHUNK;
+        const std::size_t ask =
+            remaining < STRING_CHUNK_SIZE ? remaining : STRING_CHUNK_SIZE;
 
-        // Make sure string has space [total, total+ask) to write into.
-        // This also keeps size() in a valid state.
-        out.resize(total + ask);
-        char* write_ptr = out.data() + total;
+        JsonFusion::tokenizer::StringChunkResult res;
 
-        auto res = reader.read_string_chunk(write_ptr, ask);
+        if constexpr (!JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
+            res = reader.read_string_chunk(out + total, ask);
+
+        } else if constexpr (std::is_same_v<typename Cont::value_type, char>) {
+            // Dynamic string-like container: use a stack buffer + append
+            char buf[STRING_CHUNK_SIZE];
+            res = reader.read_string_chunk(buf, ask);
+
+            switch (res.status) {
+            case JsonFusion::tokenizer::StringChunkStatus::ok:
+                break;
+            case JsonFusion::tokenizer::StringChunkStatus::no_match:
+                ctx.setError(JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE,
+                             reader.current());
+                return false;
+            case JsonFusion::tokenizer::StringChunkStatus::error:
+                ctx.setError(reader.getError(), reader.current());
+                return false;
+            }
+
+            if (res.bytes_written > ask) {
+                ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                             reader.current());
+                return false;
+            }
+
+            if (res.bytes_written > 0) {
+                out.append(buf, res.bytes_written);
+                total += res.bytes_written;
+            }
+
+            if (res.done) {
+                outSize = total;
+                return true;
+            }
+
+            if (res.bytes_written == 0) {
+                ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                             reader.current());
+                return false;
+            }
+
+            continue; // go to next chunk
+        }else {
+            // Dynamic non-char container (unlikely here, but keep it generic)
+            out.resize(total + ask);
+            res = reader.read_string_chunk(out.data() + total, ask);
+        }
 
         switch (res.status) {
-        case tokenizer::StringChunkStatus::no_match:
+        case JsonFusion::tokenizer::StringChunkStatus::no_match:
             // We expected a string here and didn't get one.
-            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
+            ctx.setError(JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE,
+                         reader.current());
             return false;
 
-        case tokenizer::StringChunkStatus::error:
-            // Reader already set an error
+        case JsonFusion::tokenizer::StringChunkStatus::error:
+            // Reader already set a specific error.
             ctx.setError(reader.getError(), reader.current());
             return false;
 
-        case tokenizer::StringChunkStatus::ok:
+        case JsonFusion::tokenizer::StringChunkStatus::ok:
             break;
         }
 
+        // Defensive check: reader must not overrun the supplied chunk.
         if (res.bytes_written > ask) {
-            // Should never happen if reader respects the contract
-            ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+            ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                         reader.current());
             return false;
         }
 
         total += res.bytes_written;
 
         if (res.done) {
-            // Shrink to actual number of bytes written
+            // String fully consumed.
             outSize = total;
-            out.resize(total);
+            if constexpr (JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
+                out.resize(total);
+            }
             return true;
         }
 
-        // Not done yet; if reader filled less than asked but not done,
-        // you might optionally treat that as suspicious, but generally fine.
-        // Loop continues.
+        // Safety net: if reader made no progress and says not done, bail
+        // to avoid accidental infinite loops if the implementation ever regresses.
+        if (res.bytes_written == 0) {
+            ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
+                         reader.current());
+            return false;
+        }
+
+        // Otherwise: not done, made progress → loop again.
     }
 
-    // Shouldn’t be reachable
-    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
+    // Unreachable, but keeps compilers happy.
+    // If we ever fall through, treat it as a malformed string.
+    ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING, reader.current());
     return false;
-}
-
-template<class Reader, class Ctx>
-constexpr bool read_json_string_into(
-    Reader&      reader,
-    char * key_buf,
-    std::size_t  max_bytes,  // validator limit or SIZE_MAX
-    Ctx&         ctx,
-    std::size_t & outSize
-    )
-{
-    std::size_t total = 0;
-    bool done = false;
-
-    while (!done) {
-        auto res = reader.read_string_chunk(key_buf + total,
-                                            max_bytes - total);
-
-        if (res.status == tokenizer::StringChunkStatus::no_match) {
-            // Not at a string where we expected a key
-            ctx.setError(ParseError::NON_STRING_IN_STRING_STORAGE, reader.current());
-            return false;
-        }
-        if (res.status == tokenizer::StringChunkStatus::error) {
-            ctx.setError(reader.getError(), reader.current());
-            return false;
-        }
-
-        total += res.bytes_written;
-        done   = res.done;
-
-        if (total == max_bytes && !done) {
-            // Overflow: we hit the max_len but reader still has string data
-            ctx.setError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader.current());
-
-            // Optionally drain the rest of the JSON string to keep reader in sync
-            char dummy[STRING_CHUNK_SIZE];
-            bool local_done = false;
-            while (!local_done) {
-                auto drain = reader.read_string_chunk(dummy, sizeof(dummy));
-                if (drain.status == tokenizer::StringChunkStatus::error) {
-                    ctx.setError(reader.getError(), reader.current());
-                    return false;
-                }
-                if (drain.status == tokenizer::StringChunkStatus::no_match) {
-                    ctx.setError(ParseError::ILLFORMED_STRING, reader.current());
-                    return false;
-                }
-                local_done = drain.done;
-                if (!drain.bytes_written && !drain.done) {
-                    break;
-                }
-            }
-
-            return false;
-        }
-    }
-    outSize = total;
-    return true;
 }
 
 template <class Opts, class ObjT, tokenizer::TokenizerLike Tokenizer, class CTX, class UserCtx = void>
@@ -299,10 +281,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
     std::size_t parsedSize = 0;
     if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-        if(!read_json_string_into(reader, obj.data(), std::min(obj.size()-1, MAX_SIZE), ctx, parsedSize)) {
+        char * b = obj.data();
+        if(!read_json_string_into(reader, b, std::min(obj.size()-1, MAX_SIZE), ctx, parsedSize)) {
             return false;
         }
-        obj[parsedSize] = 0;
+        b[parsedSize] = 0;
     } else {
         obj.clear();
         if(!read_json_string_into(reader, obj, MAX_SIZE, ctx, parsedSize)) {
@@ -479,7 +462,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         
         // Parse key as string with incremental validation
         typename FH::key_type& key = cursor.key_ref();
-        using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
+        // using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
         
         // Custom string parsing with incremental key validation
         std::size_t parsedSize = 0;
@@ -488,12 +471,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
 
         if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-            if(!read_json_string_into(reader, key.data(), std::min(key.size()-1, MAX_SIZE), ctx, parsedSize)) {
+            char * b = key.data();
+            if(!read_json_string_into(reader, b, std::min(key.size()-1, MAX_SIZE), ctx, parsedSize)) {
                 return false;
             }
-            key[parsedSize] = 0;
+            b[parsedSize] = 0;
         } else {
-            key.clear();
             if(!read_json_string_into(reader, key, MAX_SIZE, ctx, parsedSize)) {
                 return false;
             }
@@ -724,14 +707,13 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
         };
 
-        std::size_t s = 0;
-        if(!read_json_string_into(reader, searcher.buffer(),FH::maxFieldNameLength, ctx, s)) {
+        char * b = searcher.buffer();
+        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, ctx, searcher.current_length())) {
             if(ctx.currentError() == ParseError::NON_STRING_IN_STRING_STORAGE) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
             }
             return false;
         }
-        searcher.set_size(s);
 
         // DFARunner searcher2(FH::dfa);
 
