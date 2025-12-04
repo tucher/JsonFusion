@@ -31,7 +31,7 @@ This is the **fundamental reason** why JsonFusion can be:
 
 ---
 
-## 1. `null` → `std::optional<T>`
+## 1. `null` → `std::optional<T>`/`std::unique_ptr<T>`
 
 ### JSON Standard
 ```json
@@ -48,7 +48,7 @@ struct Data {
 
 ### Implicit Schema (Type System)
 - Non-optional field: **null is rejected**
-- Optional field: **null is accepted**
+- Optional field: **null is accepted** (but field must still be present in JSON)
 
 ```cpp
 struct Required {
@@ -60,11 +60,38 @@ struct Optional {
 };
 ```
 
+### ⚠️ Important: Nullable vs Absent
+
+**`std::optional<T>`/`std::unique_ptr<T>` means nullable, NOT absent:**
+- ✅ Field present with `null` value → accepted (stored as `std::nullopt`/`nullptr`)
+- ✅ Field present with value → accepted
+- ❌ Field absent from JSON → **error** (field is still required)
+
+**To allow a field to be absent from JSON, use `not_required<>` validator:**
+```cpp
+struct Config {
+    int required;
+    std::optional<int> nullable;      // Must be present (can be null)
+    int can_be_absent;                // Can be absent with not_required<>
+};
+
+Annotated<Config, not_required<"can_be_absent">> config;
+
+// ✅ Valid: {"required": 1, "nullable": null, "can_be_absent": 2}
+// ✅ Valid: {"required": 1, "nullable": null}  // can_be_absent absent
+// ❌ Invalid: {"required": 1, "can_be_absent": 2}  // nullable absent (error)
+```
+
+**Design Rationale:**
+- `std::optional<T>`/`std::unique_ptr<T>` handles **nullability** (field-level concern: "can this value be null?")
+- `not_required<>` handles **presence** (object-level concern: "must this field be in JSON?")
+- This separation allows precise control: a field can be nullable but required, or non-nullable but optional
+
 ### Design Rule
-**All nullability is expressed via `std::optional<T>`.** There is no "unknown type behind null" - the type is always known at compile time.
+**All nullability is expressed via `std::optional<T>`/`std::unique_ptr<T>`.** There is no "unknown type behind null" - the type is always known at compile time. However, **all fields (including `std::optional`/`std::unique_ptr<T>`) must be present in JSON by default** - use `not_required<>` to allow absence.
 
 ### Explicit Schema
-None. Nullability is purely a type system concern.
+None. Nullability is purely a type system concern. To allow absence, use `not_required<>` validator.
 
 ---
 
@@ -356,7 +383,7 @@ struct Person {
 1. **Field names**: Compile-time fixed (or via `key<"name">` annotation)
 2. **Field types**: Each field has its own type (can differ)
 3. **Field count**: Fixed at compile time
-4. **Required fields**: By default all struct fields are required; this can be relaxed with a struct-level not_required<...>.
+4. **Required fields**: By default all struct fields are required (must be present in JSON), including `std::optional`/`std::unique_ptr<T>` fields. `std::optional`/`std::unique_ptr<T>` only allows `null` values, not absence. To allow absence, use struct-level `not_required<...>` validator.
 5. **Unknown fields**: Rejected by default
 
 ```cpp

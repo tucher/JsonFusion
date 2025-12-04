@@ -192,11 +192,9 @@ static_assert(
 // The "by default all required" policy means ALL fields (including std::optional)
 // must be present in JSON. std::optional only allows null values, not absence.
 // To allow a field to be absent from JSON, use not_required<> validator.
-// This test correctly fails because opt2 is absent from JSON (should fail from the beginning).
-
 static_assert(
     !TestParse(R"({"opt1": 2, "required": 1})", 
         WithOptional{1, 2, std::nullopt}),
-    "With optional: some present, different order - EXPECTED TO FAIL: opt2 absent"
+    "With optional: missing opt2 field fails (all fields required by default, even std::optional)"
 );
 

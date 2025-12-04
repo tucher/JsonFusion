@@ -207,7 +207,7 @@ static_assert(test_not_required_mix_required_missing(), "Mix - one required miss
 // Test: not_required<> - Interaction with std::optional
 // ============================================================================
 
-// Note: std::optional provides field-level optionality (can be null/absent)
+// Note: std::optional provides field-level nullability (can be null, but field must be present in JSON)
 // not_required provides object-level optionality (field can be absent from JSON)
 // They work independently - a field can be both std::optional AND not_required
 

@@ -29,9 +29,11 @@ max_items<N>                 // Array must have at most N elements (streaming)
 
 #### Struct Validators
 ```cpp
-not_required<"field1", ...>  // Mark specific fields as optional (struct-level)
+not_required<"field1", ...>  // Mark specific fields as optional - allows field to be absent from JSON (struct-level)
 allow_excess_fields<depth=64>  // Allow unknown JSON fields (don't reject and silently skip up to `depth` values)
 ```
+
+**Important**: `std::optional<T>`/`std::unique_ptr<T>` allows `null` values but the field must still be present in JSON. Use `not_required<>` to allow a field to be completely absent from JSON.
 
 #### Map Validators
 ```cpp
