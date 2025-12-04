@@ -71,7 +71,7 @@ JsonFusion::Serialize(conf, output);
   - [You Own Your Containers](#you-own-your-containers)
   - [Embedded-Friendliness](#embedded-friendliness)
   - [C Interoperability](#c-interoperability)
-  - [Comparison with Glaze and reflect-cpp]()
+  - [Related Work / Comparison](#related-work--comparison)
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)
@@ -226,6 +226,25 @@ C++26 reflection becomes mainstream, this layer can be replaced with a standards
 JsonFusion's public API or core design. Better reflection support will only improve capabilities (including more 
 seamless C interop) without forcing users to rewrite code. See the [philosophy](docs/WHY_REFLECTION.md) for details.
 
+### Related Work / Comparison
+
+**JsonFusion vs Glaze vs reflect-cpp**
+
+JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space, but with different priorities.
+
+**Glaze**
+- Typically significantly faster than JsonFusion on flat, in-memory JSON: its tokenizer is tuned for contiguous buffers and low-level tricks.
+- Uses its own metadata/registration style rather than "the struct is the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
+- Oriented around parsing/serializing whole buffers; JsonFusion treats streaming over generic forward iterators and fine-grained skipping (`skip_json`, `json_sink`, streamers) as first-class features.
+- JsonFusion leans harder on constexpr, validators and typed options baked into the model; Glaze leans harder on pure throughput.
+
+**reflect-cpp**
+- Performance is broadly comparable to JsonFusion on typical object graphs.
+- Focuses on being a general reflection + multi-format serialization layer (JSON via yyjson, etc.), with a more DOM-centric backend.
+- JsonFusion is narrower but deeper: JSON-only, header-only, no hidden allocations, with schema-attached validation, skipping, streaming, and rich error contexts.
+- JsonFusion offers first-class streaming / forward-iterator parsing and compile-time constraints; reflect-cpp focuses more on "reflect types, then hand them to fast runtime backends."
+
+In short: JsonFusion trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
 
 ## Declarative Schema and Runtime Validation
 
