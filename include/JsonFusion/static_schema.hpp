@@ -941,7 +941,7 @@ struct map_write_cursor<Streamer> {
         , buffer{} {}
 
     template<class Ctx>
-    constexpr map_write_cursor(Streamer& s, Ctx& ctx)
+    constexpr map_write_cursor(Streamer& s, Ctx * ctx)
         : streamer(s)
         , buffer{} {
         streamer_context_setter(s, ctx);
@@ -1001,7 +1001,7 @@ struct map_read_cursor<Streamer> {
         , buffer{} {}
 
     template<class Ctx>
-    constexpr map_read_cursor(const Streamer& s, const Ctx& ctx)
+    constexpr map_read_cursor(const Streamer& s, Ctx* ctx)
         : streamer(s)
         , buffer{} {
         streamer_context_setter(s, ctx);
