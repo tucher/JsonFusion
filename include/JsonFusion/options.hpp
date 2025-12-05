@@ -5,6 +5,7 @@
 #include <optional>
 #include <memory>
 #include "annotated.hpp"
+#include "struct_introspection.hpp"
 
 namespace JsonFusion {
 
@@ -192,8 +193,9 @@ struct no_options {
     using get_option = void;
 };
 
+template<class OptPack> struct field_options;
 template<class... Opts>
-struct field_options {
+struct field_options<OptionsPack<Opts...>> {
 
     template<class Tag>
     using option_type = typename detail::find_option_by_tag<Tag, Opts...>::type;
@@ -207,26 +209,42 @@ struct field_options {
 };
 
 
-// Detect Annotated<T, ...>
-template<class T>
-struct is_annotated : std::false_type {};
-
-template<class U, class... Opts>
-struct is_annotated<Annotated<U, Opts...>> : std::true_type {};
 
 template<class T>
-constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
+struct is_options_pack : std::false_type {};
+
+template<class... Opts>
+struct is_options_pack<OptionsPack<Opts...>> : std::true_type {};
+
+template<class T>
+inline constexpr bool is_options_pack_v = is_options_pack<T>::value;
 
 
+template<class T, class = void>
+struct has_annotation_specialization_impl : std::false_type {};
+
+template<class T>
+struct has_annotation_specialization_impl<T,
+                                          std::void_t<typename Annotated<T>::Options>
+                                          > : std::bool_constant<
+                                                                 is_options_pack_v<typename Annotated<T>::Options>
+                                                                    && (Annotated<T>::Options::Count > 0)
+                                                                 > {};
+
+template<class T>
+inline constexpr bool has_annotation_specialization =
+    has_annotation_specialization_impl<T>::value;
 
 template<class Field>
-struct annotation_meta;
+struct annotation_meta{};
 
 // Base: non-annotated, non-optional
 template<class T>
-struct annotation_meta {
+    requires (!has_annotation_specialization<T>)
+struct annotation_meta<T> {
     using value_t = T;
     using options      = no_options;
+    using OptionsP = OptionsPack<>;
     static constexpr decltype(auto) getRef(T & f) {
         return (f);
     }
@@ -246,12 +264,31 @@ struct annotation_meta<std::unique_ptr<Annotated<T, Opts...>>> {
     static_assert(!sizeof(T), "[[[ JsonFusion ]]] Use Annotated<std::unique_ptr<T>, ...> instead of std::unique_ptr<Annotated<T, ...>>");
 };
 
+
+template <class P1, class P2> struct merge_options;
+template <class ... Opts1, class ... Opts2> struct merge_options<OptionsPack<Opts1...>, OptionsPack<Opts2...>> {
+    using type = OptionsPack<Opts1..., Opts2...>;
+};
+
+
 // Annotated<T, Opts...>
 template<class T, class... Opts>
 struct annotation_meta<Annotated<T, Opts...>> {
     // static_assert((requires { typename Opts::tag; } && ...));
+
+    using OptionsP = OptionsPack<Opts...>;
+
     using value_t = T;
-    using options      = field_options<Opts...>;
+    // using external_opts =
+    //     std::conditional_t<has_annotation_specialization<T>,
+    //                        typename Annotated<T>::Options,
+    //                        OptionsPack<>>;
+    // using options      = field_options< // Concat them??
+    //     typename merge_options<external_opts, OptionsPack<Opts...>>::type
+    // >;
+    using options      = field_options<
+        OptionsPack<Opts...>
+        >;
 
     static constexpr decltype(auto) getRef(Annotated<T, Opts...> & f) {
         return (f.value);
@@ -262,9 +299,60 @@ struct annotation_meta<Annotated<T, Opts...>> {
 };
 
 
+
+// Externally Annotated<T>
+template<class T> requires has_annotation_specialization<T>
+struct annotation_meta<T> {
+    // static_assert((requires { typename Opts::tag; } && ...));
+    using value_t = T;
+    using options      = field_options<typename Annotated<T>::Options>;
+
+    using OptionsP = Annotated<T>::Options;
+
+    static constexpr decltype(auto) getRef(T & f) {
+        return (f);
+    }
+    static constexpr decltype(auto) getRef(const T & f) {
+        return (f);
+    }
+};
+
 // Entry point with decay
 template<class Field>
 struct annotation_meta_getter : annotation_meta<std::remove_cvref_t<Field>> {};
+
+
+
+template<class T, std::size_t I, class = void>
+struct has_field_annotation_specialization_impl : std::false_type {
+    using Options = OptionsPack<>;
+};
+
+template<class T, std::size_t I>
+struct has_field_annotation_specialization_impl<T, I,
+                                          std::void_t<typename AnnotatedField<T, I>::Options>
+                                          > : std::bool_constant<
+                                                  is_options_pack_v<typename AnnotatedField<T, I>::Options>
+                                                  && (AnnotatedField<T, I>::Options::Count > 0)
+                                                  > {
+    using Options = AnnotatedField<T, I>::Options;
+};
+
+template<class AggregateT, std::size_t Index>
+struct aggregate_field_opts {
+    using Field   = introspection::structureElementTypeByIndex<Index, AggregateT>;
+    using Meta = annotation_meta_getter<Field>;
+    using ExternalOpts = typename has_field_annotation_specialization_impl<AggregateT, Index>::Options;
+    using options      = field_options<
+        typename merge_options<ExternalOpts, typename Meta::OptionsP>::type
+    >;
+};
+
+template<class AggregateT, std::size_t Index>
+using aggregate_field_opts_getter =  aggregate_field_opts<std::remove_cvref_t<AggregateT>, Index>::options;
+
+
+
 
 
 

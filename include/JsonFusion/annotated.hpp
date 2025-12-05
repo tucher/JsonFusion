@@ -9,7 +9,7 @@ namespace JsonFusion {
 
 template <class ... Options>
 struct OptionsPack {
-
+    static constexpr std::size_t Count = sizeof...(Options);
 };
 
 template <class T, typename... OptionsAndAnnotations>
@@ -195,4 +195,15 @@ constexpr bool operator!=(const U& lhs,
 
 template<class T, class ... O>
     using A = JsonFusion::Annotated<T, O...>;
+
+
+template <class T, std::size_t Index>
+struct AnnotatedField {
+    // using Options = OptionsPack<>;
+};
+
+
+
 } // namespace JsonFusion
+
+

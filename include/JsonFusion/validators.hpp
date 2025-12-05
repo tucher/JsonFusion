@@ -52,7 +52,7 @@ struct validator_state  {
 
 
 template<class... Opts, class Storage>
-struct validator_state<options::detail::field_options<Opts...>, Storage> {
+struct validator_state<options::detail::field_options<OptionsPack<Opts...>>, Storage> {
     static constexpr std::size_t OptsCount = sizeof...(Opts);
     using OptsTuple   = std::tuple<Opts...>;
     using StatesTuple = std::tuple<option_state_t<Opts, Storage>...>;

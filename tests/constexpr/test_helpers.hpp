@@ -149,10 +149,21 @@ constexpr bool ArrayEqual(const std::array<T, N>& arr, const T (&expected)[N]) {
 
 /// Compare two values field-by-field (constexpr-safe)
 /// Handles nested structs, arrays, optionals, Annotated types
+// Detect Annotated<T, ...>
+template<class T>
+struct is_annotated : std::false_type {};
+
+template<class U, class... Opts>
+struct is_annotated<JsonFusion::Annotated<U, Opts...>> : std::true_type {};
+
+template<class T>
+constexpr bool is_annotated_v = is_annotated<std::remove_cvref_t<T>>::value;
+
+
 template<typename T>
 constexpr bool DeepEqual(const T& a, const T& b) {
     // For Annotated<T> types, unwrap and compare underlying value
-    if constexpr (JsonFusion::options::detail::is_annotated_v<T>) {
+    if constexpr (is_annotated_v<T>) {
         return DeepEqual(a.get(), b.get());
     }
     // For primitive types, use operator==

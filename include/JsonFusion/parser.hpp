@@ -524,7 +524,6 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         
         // Parse key as string with incremental validation
         typename FH::key_type& key = cursor.key_ref();
-        // using KeyOpts = options::detail::annotation_meta_getter<typename FH::key_type>::options;
         
         // Custom string parsing with incremental key validation
         std::size_t parsedSize = 0;
@@ -618,8 +617,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 template<class T, std::size_t I>
 static consteval bool fieldIsNotJSON() {
-    using Field   = introspection::structureElementTypeByIndex<I, T>;
-    using Opts    = options::detail::annotation_meta_getter<Field>::options;
+    using Opts    = options::detail::aggregate_field_opts_getter<T, I>;
     if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
         return true;
     } else {
@@ -642,9 +640,7 @@ struct FieldsHelper {
 
     template<std::size_t I>
     static consteval std::string_view fieldName() {
-        using Field   = introspection::structureElementTypeByIndex<I, T>;
-        using Opts    = options::detail::annotation_meta_getter<Field>::options;
-
+        using Opts    = options::detail::aggregate_field_opts_getter<T, I>;
         if constexpr (Opts::template has_option<options::detail::key_tag>) {
             using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
             return KeyOpt::desc.toStringView();
@@ -699,7 +695,6 @@ struct FieldsHelper {
 };
 
 
-
 template<class StructT, std::size_t StructIndex>
 using StructFieldMeta = options::detail::annotation_meta_getter<
     introspection::structureElementTypeByIndex<StructIndex, StructT>
@@ -711,7 +706,7 @@ constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, s
     (
         (requiredIndex == StructIndex
              ? (
-                ok = ParseValue<typename StructFieldMeta<ObjT, StructIndex>::options>(
+                ok = ParseValue< options::detail::aggregate_field_opts_getter<ObjT, StructIndex>>(
                        StructFieldMeta<ObjT, StructIndex>::getRef(
                            introspection::getStructElementByIndex<StructIndex>(structObj)
                            ),

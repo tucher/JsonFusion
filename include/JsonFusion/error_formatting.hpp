@@ -11,7 +11,7 @@ struct get_opt_string_helper;
 
 // Specialization for field_options
 template<class... Opts>
-struct get_opt_string_helper<options::detail::field_options<Opts...>> {
+struct get_opt_string_helper<options::detail::field_options<OptionsPack<Opts...>>> {
     static std::string_view get(std::size_t i) {
         // Build a table with all option names
         static const std::string_view table[] = { Opts::to_string()... };

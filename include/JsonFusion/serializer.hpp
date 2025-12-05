@@ -412,47 +412,49 @@ template <bool AsArray, std::size_t StructIndex, class ObjT, CharOutputIterator 
 constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
     using Meta =  options::detail::annotation_meta_getter<Field>;
-    using FieldOpts    = typename Meta::options;
+    // using FieldOpts    = typename Meta::options;
+    using FieldOpts = options::detail::aggregate_field_opts_getter<ObjT, StructIndex>;
     if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
         return true;
-    }
-    if(first) {
-        first = false;
     } else {
-        if(outputPos == end) {
-            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-            return false;
-        }
-        *outputPos ++ = ',';
-    }
-
-    if constexpr(!AsArray) {
-        if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
-            using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
-            const auto & f =  KeyOpt::desc.toStringView();
-            if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                ctx.setError(err, outputPos);
-                return false;
-            }
+        if(first) {
+            first = false;
         } else {
-            const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
-            if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                ctx.setError(err, outputPos);
+            if(outputPos == end) {
+                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
                 return false;
             }
+            *outputPos ++ = ',';
         }
 
-        if(outputPos == end) {
-            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-            return false;
+        if constexpr(!AsArray) {
+            if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
+                using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
+                const auto & f =  KeyOpt::desc.toStringView();
+                if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
+                    ctx.setError(err, outputPos);
+                    return false;
+                }
+            } else {
+                const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
+                if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
+                    ctx.setError(err, outputPos);
+                    return false;
+                }
+            }
+
+            if(outputPos == end) {
+                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                return false;
+            }
+            *outputPos ++ = ':';
         }
-        *outputPos ++ = ':';
+
+
+        return SerializeValue<FieldOpts>(Meta::getRef(
+                                             introspection::getStructElementByIndex<StructIndex>(structObj)
+                                             ), outputPos, end, ctx, userCtx);
     }
-
-
-    return SerializeValue<FieldOpts>(Meta::getRef(
-                                         introspection::getStructElementByIndex<StructIndex>(structObj)
-                                         ), outputPos, end, ctx, userCtx);
 
 
 }
