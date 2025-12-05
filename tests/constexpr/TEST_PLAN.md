@@ -50,7 +50,7 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - `255`, `65535`, etc.
 
 - `test_parse_integers_edge_cases.cpp`
-  - Leading zeros: `{"x": 007}` (should work or reject per JSON spec?)
+  - Leading zeros: `{"x": 007}`
   - Negative zero: `{"x": -0}`
   - Large numbers that fit/don't fit
   - Overflow detection (if implemented)
@@ -147,6 +147,9 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Field absent entirely (if supported)
   - `null` vs `"null"` (string)
   - Optional in various positions (first, middle, last field)
+
+- `test_parse_unique_ptr_primiteves.cpp`
+- `test_parse_unique_ptr_nested.cpp`
 
 ### 2.4 Dynamic Containers (`std::string`, `std::vector<T>`)
 
@@ -597,7 +600,7 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.1 Type Mismatches
 
-- `test_error_type_mismatch.cpp`
+- `test_error_type_mismatch.cpp` 🔲 **NOT STARTED**
   - String where int expected
   - Int where bool expected
   - Array where object expected
@@ -607,7 +610,7 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.2 Malformed JSON
 
-- `test_error_malformed_json.cpp`
+- `test_error_malformed_json.cpp` 🔲 **NOT STARTED**
   - Unclosed braces, brackets
   - Missing quotes on strings
   - Invalid escape sequences
@@ -617,21 +620,21 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.3 Validation Failures
 
-- `test_error_validation_range.cpp`
+- `test_error_validation_range.cpp` 🔲 **NOT STARTED**
   - Value outside `range<>`
   - `result.validationResult()` contains schema errors
   - `result.validationResult().hasSchemaError(SchemaError::number_out_of_range)`
   - Parse error vs validation error distinction
   - **Verify `result.errorJsonPath()` shows correct field path (e.g., `$.config.port`)**
 
-- `test_error_validation_length.cpp`
+- `test_error_validation_length.cpp` 🔲 **NOT STARTED**
   - String too short/long
   - Array too short/long
   - `SchemaError::string_length_out_of_range`
   - `SchemaError::array_items_count_out_of_range`
   - **Verify JSON path for nested validation errors**
 
-- `test_error_validation_map.cpp`
+- `test_error_validation_map.cpp` 🔲 **NOT STARTED**
   - `SchemaError::map_properties_count_out_of_range`
   - `SchemaError::map_key_length_out_of_range`
   - `SchemaError::map_key_not_allowed`
@@ -639,7 +642,7 @@ Tests should use user-defined parsing/serializing contexts
   - `SchemaError::map_missing_required_key`
   - **Verify JSON path includes map key context**
 
-- `test_error_validation_enum.cpp`
+- `test_error_validation_enum.cpp` 🔲 **NOT STARTED**
   - String not in `enum_values`
   - `SchemaError::wrong_constant_value`
   - Early rejection during parsing
@@ -647,24 +650,24 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.4 Buffer Overflow
 
-- `test_error_string_overflow.cpp`
+- `test_error_string_overflow.cpp` 🔲 **NOT STARTED**
   - String longer than `std::array<char, N>`
   - Behavior: truncate, error, or undefined?
   - **JSON path should point to the overflowing string field**
 
-- `test_error_array_overflow.cpp`
+- `test_error_array_overflow.cpp` 🔲 **NOT STARTED**
   - JSON array longer than `std::array<T, N>`
   - **JSON path includes array index where overflow occurred**
 
 ### 8.5 Error Result Object
 
-- `test_error_result_object.cpp`
+- `test_error_result_object.cpp` 🔲 **NOT STARTED**
   - Parse errors: `result.error()` returns `ParseError` enum
   - Parse error position: `result.offset()` points to error location in byte stream
   - Boolean conversion: `!result` for errors, `result` for success
   - Different error codes for different parse failures
 
-- `test_error_validation_result.cpp`
+- `test_error_validation_result.cpp` 🔲 **NOT STARTED**
   - Validation errors: `result.validationResult()` returns `ValidationResult`
   - `result.validationResult().schema_errors()` returns bitmask
   - `result.validationResult().hasSchemaError(SchemaError::...)` checks specific error
@@ -672,7 +675,7 @@ Tests should use user-defined parsing/serializing contexts
   - Parse succeeds but validation fails
   - Both parse and validation errors
 
-- `test_error_result_combinations.cpp`
+- `test_error_result_combinations.cpp` 🔲 **NOT STARTED**
   - Success: no parse error, no validation error
   - Parse error only (malformed JSON)
   - Validation error only (well-formed but invalid)
@@ -680,33 +683,33 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.6 JSON Path Tracking
 
-- `test_error_json_path_primitives.cpp`
+- ✅ `test_error_json_path_primitives.cpp` **COMPLETE**
   - Error in primitive field: `$.field`
   - Error in nested object field: `$.outer.inner.field`
   - Error in array element: `$.items[3]`
   - Error in deeply nested structure: `$.a.b.c.d.e`
   - Path for root-level errors: `$`
 
-- `test_error_json_path_arrays.cpp`
+- ✅ `test_error_json_path_arrays.cpp` **COMPLETE**
   - Error in first array element: `$.array[0]`
   - Error in middle element: `$.array[5]`
   - Error in nested array: `$.matrix[2][3]`
   - Error in array of objects: `$.users[10].name`
   - 3D array paths: `$.tensor[1][2][3]`
 
-- `test_error_json_path_maps.cpp`
+- ✅ `test_error_json_path_maps.cpp` **COMPLETE**
   - Error in map value: `$.config["server"]`
   - Error in nested map: `$.config["db"]["host"]`
   - Map key validation error shows key context
   - Dynamic map keys vs struct field names
 
-- `test_error_json_path_mixed.cpp`
+- ✅ `test_error_json_path_mixed.cpp` **COMPLETE**
   - Complex paths: `$.statuses[3].user.entities.urls[0].display_url`
   - Arrays of maps: `$.items[5]["metadata"]`
   - Maps of arrays: `$.groups["admins"][2]`
   - Annotated fields with `key<>` remapping show JSON key, not C++ name
 
-- `test_error_json_path_depth_calculation.cpp`
+- ✅ `test_error_json_path_depth_calculation.cpp` **COMPLETE**
   - Compile-time depth calculation: `calc_type_depth<Type>()`
   - Simple flat struct: depth = 1
   - Nested struct: depth = max(field depths) + 1
@@ -714,21 +717,21 @@ Tests should use user-defined parsing/serializing contexts
   - Recursive type detection with `SeenTypes` tracking
   - Cyclic recursive types return `SCHEMA_UNBOUNDED`
 
-- `test_error_json_path_storage.cpp`
+- `test_error_json_path_storage.cpp` 🔲 **NOT STARTED**
   - `JsonStaticPath<N>` for non-cyclic schemas
   - Stack-allocated, compile-time sized from `calc_type_depth`
   - `JsonDynamicPath` for cyclic schemas (with macro flag)
   - Path operations: `push_child()`, `pop()`, `currentLength`
   - `PathElement` structure: `array_index`, `field_name`
 
-- `test_error_json_path_constexpr.cpp`
+- `test_error_json_path_constexpr.cpp` 🔲 **NOT STARTED**
   - JSON path tracking works in constexpr parsing
   - Verify path at compile time in `static_assert`
   - Example: `result.errorJsonPath().storage[1].field_name == "name"`
   - Constexpr path depth calculation
   - Zero runtime allocation overhead
 
-- `test_error_json_path_formatting.cpp`
+- `test_error_json_path_formatting.cpp` 🔲 **NOT STARTED**
   - Path to string conversion: `ParseResultToString()`
   - Format: `$.field`, `$.array[3]`, `$.obj.nested`
   - Context window around error: `...before😖after...`
@@ -737,20 +740,20 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 8.7 Error Path Correctness
 
-- `test_error_path_validation.cpp`
+- `test_error_path_validation.cpp` 🔲 **NOT STARTED**
   - Every error type has correct JSON path
   - Path matches actual location in JSON
   - Nested errors at correct depth
   - Array indices are accurate
   - Map keys are tracked correctly
 
-- `test_error_path_incremental.cpp`
+- `test_error_path_incremental.cpp` 🔲 **NOT STARTED**
   - Path is maintained during incremental parsing
   - Path updates as parser descends into structures
   - Path restored correctly on backtracking (if applicable)
   - Early validation rejection has correct path
 
-- `test_error_path_annotations.cpp`
+- ✅ `test_error_path_annotations.cpp` **COMPLETE**
   - Fields with `key<"json_name">` show JSON name in path
   - `as_array` structures show field names, not array indices (JSON path reflects C++ structure)
   - `not_json` fields don't appear in paths
@@ -758,7 +761,7 @@ Tests should use user-defined parsing/serializing contexts
 
 ---
 
-## 9. C++ Type System Edge Cases
+## 9. C++ Type System Edge Cases **NOT NEEDED / FOR REMOVAL**
 
 ### 9.1 Zero-Sized Types
 
@@ -847,73 +850,11 @@ Tests should use user-defined parsing/serializing contexts
 
 ### 11.4 Validator Performance
 
-- `test_limits_many_validators.cpp`
-  - Multiple validators on same field
-  - 5+ validators combined
-  - Compilation time impact
-  - Zero runtime overhead
-
 - `test_limits_map_many_keys.cpp`
   - `allowed_keys` with 50+ keys
   - Binary search vs linear search threshold
   - `required_keys` with many keys
   - `std::bitset` size limits
-
-### 11.5 Constexpr Evaluation Limits
-
-- `test_limits_constexpr_steps.cpp`
-  - Complex nested structures in constexpr
-  - Large data structures (1000+ elements)
-  - `-fconstexpr-steps` requirements
-  - Incremental validation reduces constexpr steps
-
----
-
-## 12. Integration Tests
-
-### 12.1 Real-World Configs
-
-- `test_integration_server_config.cpp`
-  - Realistic server config structure
-  - Mix of primitives, nested objects, arrays, maps
-  - Validation constraints: `range`, `enum_values`, `required_keys`
-  - Environment-specific configs with `enum_values<"dev", "staging", "prod">`
-  - Connection pools with min/max constraints
-
-- `test_integration_sensor_data.cpp`
-  - Embedded sensor data format
-  - Fixed-size buffers (`std::array`)
-  - Timestamps, readings, metadata
-  - Arrays of sensor readings
-  - Validation: `range` for sensor values
-
-- `test_integration_ui_state.cpp`
-  - UI state serialization
-  - Optional fields (not all UI elements present)
-  - Nested components
-  - Maps for dynamic UI elements: `std::map<std::string, UIComponent>`
-
-- `test_integration_api_response.cpp`
-  - REST API response models
-  - Status codes with `enum_values`
-  - Headers as maps: `std::map<std::string, std::string>`
-  - Nested data payload
-  - Error responses with validation
-
-- `test_integration_json_schema.cpp`
-  - Implementing JSON Schema patterns
-  - Complex validation rules
-  - `required_keys` + `allowed_keys` + `forbidden_keys`
-  - `min`/`max` constraints on numbers, strings, arrays, maps
-  - Enum values for restricted strings
-
-### 12.2 Edge-to-Edge
-
-- `test_integration_full_stack.cpp`
-  - Parse → Process → Serialize → Parse
-  - With streaming consumers/producers
-  - With validation
-  - With annotations
 
 ---
 

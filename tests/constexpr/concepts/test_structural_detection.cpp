@@ -3,7 +3,7 @@
 #include <JsonFusion/serializer.hpp>
 #include <array>
 #include <optional>
-
+#include <map>
 using namespace JsonFusion;
 using namespace JsonFusion::static_schema;
 
@@ -33,7 +33,7 @@ struct TestObject {
 using TestArray = std::array<int, 10>;
 
 // 7. Map (custom map type)
-struct TestMap {
+struct TestCustomMap {
     using key_type = std::array<char, 32>;
     using mapped_type = int;
     
@@ -42,10 +42,12 @@ struct TestMap {
     }
     constexpr void clear() {}
 };
+using TestMap = std::map<std::array<char, 32>, int>;
+using TestUnorderedMap = std::unordered_map<std::array<char, 32>, int>;
 
 // 8. Optional (nullable type)
 using TestOptional = std::optional<int>;
-
+using TestUniquePtr = std::unique_ptr<int>;
 // 9. Invalid type (pointer - should fail all concepts)
 using TestPointer = int*;
 
@@ -72,8 +74,11 @@ namespace test_bool_concept {
     static_assert(!JsonBool<TestString>);
     static_assert(!JsonBool<TestObject>);
     static_assert(!JsonBool<TestArray>);
+    static_assert(!JsonBool<TestCustomMap>);
+    static_assert(!JsonBool<TestUnorderedMap>);
     static_assert(!JsonBool<TestMap>);
     static_assert(!JsonBool<TestOptional>);
+    static_assert(!JsonBool<TestUniquePtr>);
     static_assert(!JsonBool<TestPointer>);
 }
 
@@ -120,8 +125,11 @@ namespace test_number_concept {
     static_assert(!JsonNumber<TestString>);
     static_assert(!JsonNumber<TestObject>);
     static_assert(!JsonNumber<TestArray>);
+    static_assert(!JsonNumber<TestCustomMap>);
+    static_assert(!JsonNumber<TestUnorderedMap>);
     static_assert(!JsonNumber<TestMap>);
     static_assert(!JsonNumber<TestOptional>);
+    static_assert(!JsonNumber<TestUniquePtr>);
     static_assert(!JsonNumber<TestPointer>);
 }
 
@@ -150,8 +158,11 @@ namespace test_string_concept {
     static_assert(!JsonString<double>);
     static_assert(!JsonString<TestObject>);
     static_assert(!JsonString<std::array<int, 10>>);  // array of int, not char
+    static_assert(!JsonString<TestCustomMap>);
+    static_assert(!JsonString<TestUnorderedMap>);
     static_assert(!JsonString<TestMap>);
     static_assert(!JsonString<TestOptional>);
+    static_assert(!JsonString<TestUniquePtr>);
     static_assert(!JsonString<TestPointer>);
 }
 
@@ -186,6 +197,8 @@ namespace test_object_concept {
     static_assert(!JsonSerializableMap<TestObject>);
     
     // CRITICAL: Objects are NOT maps (even if they look similar)
+    static_assert(!JsonObject<TestCustomMap>);
+    static_assert(!JsonObject<TestUnorderedMap>);
     static_assert(!JsonObject<TestMap>);
     
     // Negative: Other types are NOT JsonObject
@@ -194,8 +207,11 @@ namespace test_object_concept {
     static_assert(!JsonObject<double>);
     static_assert(!JsonObject<TestString>);
     static_assert(!JsonObject<TestArray>);
+    static_assert(!JsonObject<TestCustomMap>);
+    static_assert(!JsonObject<TestUnorderedMap>);
     static_assert(!JsonObject<TestMap>);
     static_assert(!JsonObject<TestOptional>);
+    static_assert(!JsonObject<TestUniquePtr>);
     static_assert(!JsonObject<TestPointer>);
 }
 
@@ -230,8 +246,11 @@ namespace test_array_concept {
     static_assert(!JsonParsableArray<double>);
     static_assert(!JsonParsableArray<TestString>);  // char array is string, not array
     static_assert(!JsonParsableArray<TestObject>);
+    static_assert(!JsonParsableArray<TestCustomMap>);
+    static_assert(!JsonParsableArray<TestUnorderedMap>);
     static_assert(!JsonParsableArray<TestMap>);
     static_assert(!JsonParsableArray<TestOptional>);
+    static_assert(!JsonParsableArray<TestUniquePtr>);
     static_assert(!JsonParsableArray<TestPointer>);
 }
 
@@ -241,6 +260,8 @@ namespace test_array_concept {
 
 namespace test_map_concept {
     // Positive: maps ARE JsonParsableMap
+    static_assert(JsonParsableMap<TestCustomMap>);
+    static_assert(JsonParsableMap<TestUnorderedMap>);
     static_assert(JsonParsableMap<TestMap>);
     
     struct AnotherMap {
@@ -267,21 +288,30 @@ namespace test_map_concept {
     static_assert(JsonParsableMap<MapWithStructValue>);
     
     // Negative: maps are NOT other concepts
+    static_assert(!JsonBool<TestCustomMap>);
+    static_assert(!JsonBool<TestUnorderedMap>);
     static_assert(!JsonBool<TestMap>);
-    static_assert(!JsonNumber<TestMap>);
-    static_assert(!JsonString<TestMap>);
-    static_assert(!JsonObject<TestMap>);  // CRITICAL: Maps are NOT objects!
+    static_assert(!JsonNumber<TestCustomMap>);
+    static_assert(!JsonString<TestCustomMap>);
+    static_assert(!JsonObject<TestCustomMap>);  // CRITICAL: Maps are NOT objects!
+    static_assert(!JsonParsableArray<TestCustomMap>);
+    static_assert(!JsonParsableArray<TestUnorderedMap>);
     static_assert(!JsonParsableArray<TestMap>);
+    static_assert(!JsonSerializableArray<TestCustomMap>);
+    static_assert(!JsonSerializableArray<TestUnorderedMap>);
     static_assert(!JsonSerializableArray<TestMap>);
     
     // CRITICAL: Maps are NOT objects (this was the bug!)
+    static_assert(!JsonObject<TestCustomMap>);
+    static_assert(!JsonObject<TestUnorderedMap>);
     static_assert(!JsonObject<TestMap>);
     static_assert(!JsonObject<AnotherMap>);
     static_assert(!JsonObject<MapWithStructValue>);
     
     // CRITICAL: Maps are NOT arrays
+    static_assert(!JsonParsableArray<TestCustomMap>);
+    static_assert(!JsonParsableArray<TestUnorderedMap>);
     static_assert(!JsonParsableArray<TestMap>);
-    
     // Negative: Other types are NOT JsonParsableMap
     static_assert(!JsonParsableMap<bool>);
     static_assert(!JsonParsableMap<int>);
@@ -290,7 +320,9 @@ namespace test_map_concept {
     static_assert(!JsonParsableMap<TestObject>);  // Objects are not maps
     static_assert(!JsonParsableMap<TestArray>);
     static_assert(!JsonParsableMap<TestOptional>);
+    static_assert(!JsonParsableMap<TestUniquePtr>);
     static_assert(!JsonParsableMap<TestPointer>);
+    static_assert(!JsonParsableMap<TestUniquePtr>);
     
     // Map with invalid key type (not string)
     struct InvalidKeyMap {
@@ -562,8 +594,9 @@ namespace test_optional_concept {
     static_assert(JsonNonNullableParsableValue<TestString>);
     static_assert(JsonNonNullableParsableValue<TestObject>);
     static_assert(JsonNonNullableParsableValue<TestArray>);
+    static_assert(JsonNonNullableParsableValue<TestCustomMap>);
+    static_assert(JsonNonNullableParsableValue<TestUnorderedMap>);
     static_assert(JsonNonNullableParsableValue<TestMap>);
-    
     static_assert(!JsonNullableParsableValue<int>);
     static_assert(!JsonNullableParsableValue<bool>);
     static_assert(!JsonNullableParsableValue<TestString>);
@@ -595,8 +628,9 @@ namespace test_classification_matrix {
     static_assert(count_matching_concepts<TestString>() == 1, "string should match exactly 1 concept");
     static_assert(count_matching_concepts<TestObject>() == 1, "object should match exactly 1 concept");
     static_assert(count_matching_concepts<TestArray>() == 1, "array should match exactly 1 concept");
+    static_assert(count_matching_concepts<TestCustomMap>() == 1, "map should match exactly 1 concept");
+    static_assert(count_matching_concepts<TestUnorderedMap>() == 1, "unordered map should match exactly 1 concept");
     static_assert(count_matching_concepts<TestMap>() == 1, "map should match exactly 1 concept");
-    
     // Invalid types should match ZERO concepts
     static_assert(count_matching_concepts<TestPointer>() == 0, "pointer should match no concepts");
     // Note: void is excluded by is_directly_forbidden check and causes compilation errors

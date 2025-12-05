@@ -145,11 +145,12 @@ tests/constexpr/
 ├── errors/                   # Error handling tests
 │   └── test_error_demo.cpp
 │
-├── composite/                # Nested structs, arrays, optionals
+├── composite/                # Nested structs, arrays, optionals, unique_ptr
 ├── validation/               # Validation constraints (range, length, items)
 ├── annotations/              # Annotated<> options (key, as_array, not_json)
 ├── streaming/                # Streaming producers & consumers
 ├── json_spec/                # JSON RFC 8259 compliance
+├── limits/                   # Performance & limits (nesting depth, large arrays, many fields)
 └── integration/              # Real-world scenarios
 ```
 
@@ -157,16 +158,19 @@ tests/constexpr/
 
 See `CHECKLIST.md` for detailed progress tracking.
 
-**Current:** 6 test files, 21 tests passing
+**Current:** 53+ test files, comprehensive coverage
 
-**Planned:** 150+ tests covering:
-- All primitive types (integers, bool, strings)
-- Composite types (nested structs, arrays, optionals)
-- JSON spec compliance (RFC 8259)
-- Validation constraints (range, length, items)
-- Annotated<> options (key, as_array, not_json, etc.)
-- Error handling (all error codes)
-- Edge cases (zero-sized, alignment, limits)
+**Planned:** 90+ tests covering:
+- ✅ All primitive types (integers, bool, strings)
+- ✅ Composite types (nested structs, arrays, optionals, unique_ptr)
+- ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode
+- ✅ Validation constraints (range, length, items, not_required, allow_excess_fields, map validators)
+- ✅ Annotated<> options (key, as_array, skip_json, json_sink)
+- ✅ Error handling (JSON path tracking, depth calculation)
+- ✅ Streaming (producers & consumers for arrays and maps)
+- ✅ Limits (nesting depth, large arrays, many fields, many map keys)
+- 🔲 Additional error handling tests
+- 🔲 Additional serialization tests
 
 
 ## Examples

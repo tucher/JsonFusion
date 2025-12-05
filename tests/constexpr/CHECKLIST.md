@@ -36,12 +36,14 @@ Quick reference for tracking test implementation progress.
 - [x] test_parse_strings_escaping.cpp
 - [x] test_parse_strings_edge_cases.cpp
 
-## composite/ (8 files) ✅ COMPLETE
+## composite/ (10 files) ✅ COMPLETE
 - [x] test_parse_nested_flat.cpp
 - [x] test_parse_array_primitives.cpp
 - [x] test_parse_array_nested.cpp
 - [x] test_parse_optional_primitives.cpp
 - [x] test_parse_optional_nested.cpp
+- [x] test_parse_unique_ptr_primitives.cpp - `std::unique_ptr<T>` with primitives (null vs present)
+- [x] test_parse_unique_ptr_nested.cpp - `std::unique_ptr<T>` with nested structs and arrays
 - [x] test_parse_string.cpp
 - [x] test_parse_vector_primitives.cpp
 - [x] test_parse_vector_nested.cpp
@@ -157,21 +159,17 @@ Quick reference for tracking test implementation progress.
 - [ ] test_error_result_object.cpp
 - [ ] test_error_position_tracking.cpp
 
-## limits/ (5 files) - NOT STARTED
-- [ ] test_limits_nesting_depth.cpp
-- [ ] test_limits_large_arrays.cpp
-- [ ] test_limits_many_fields.cpp
-- [ ] test_limits_many_validators.cpp
-- [ ] test_limits_constexpr_steps.cpp
-
-## integration/ (3 files) - NOT STARTED
-- [ ] test_integration_server_config.cpp
-- [ ] test_integration_sensor_data.cpp
-- [ ] test_integration_full_stack.cpp
+## limits/ (4 files) ✅ COMPLETE
+- [x] test_limits_nesting_depth.cpp - Deep nesting (10 levels, arrays, optionals, mixed)
+- [x] test_limits_large_arrays.cpp - Large arrays (100 ints, 50 bools, 20 strings, 10x10 matrix, 50 in struct)
+- [x] test_limits_many_fields.cpp - Many fields (50 fields, 30 mixed, nested, array fields)
+- [x] test_limits_many_map_keys.cpp - Many map keys (30 allowed, 20 required, 30 forbidden, combined, binary search threshold)
 
 ---
 
-**Progress: 49 / ~90 tests implemented (~54.4%)**
+**Progress: 53 / ~90 tests implemented (~58.9%)**
+
+
 
 **Complete Coverage Checklist:**
 
@@ -203,12 +201,13 @@ Quick reference for tracking test implementation progress.
 - ✅ io/ (1/1)
 - ✅ concepts/ (6/6)
 - ✅ primitives/ (12/12)
-- ✅ composite/ (8/8)
+- ✅ composite/ (10/10) - Includes unique_ptr tests
 - ✅ roundtrip/ (3/3)
 - ✅ errors/ JSON path tracking (7/7)
 - ✅ json_spec/ (5/6) - RFC 8259 compliance (Unicode complete, numbers pending)
 - ✅ validation/ (13/13) - All validators covered (constant, range, length, items, not_required, allow_excess_fields, map validators, combined)
 - ✅ annotations/ (4/9) - key, as_array (roundtrip), skip_json, json_sink
+- ✅ limits/ (4/4) - Nesting depth, large arrays, many fields, many map keys
 
 **In Progress:**
 - serialization/ (2/2 basic, more needed)
