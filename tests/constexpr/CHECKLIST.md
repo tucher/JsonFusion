@@ -74,18 +74,17 @@ Quick reference for tracking test implementation progress.
 - [x] test_validation_combined_array.cpp - Multiple array validators
 - [x] test_validation_combined_map.cpp - Multiple map validators
 
-## annotations/ (10 files) - NOT STARTED
-- [ ] test_annotated_key.cpp - `key<"json_name">` remapping
-- [ ] test_annotated_as_array.cpp - `as_array` (struct as array)
-- [ ] test_annotated_not_json.cpp - `not_json` (skip field)
-- [ ] test_annotated_allow_excess.cpp - `allow_excess_fields<>`
-- [ ] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
-- [ ] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
-- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization)
-- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional)
-- [ ] test_annotated_combinations.cpp - Multiple options together
+## annotations/ (9 files) - 4/9 COMPLETE
+- [x] test_annotated_key.cpp - `key<"json_name">` remapping (covered in roundtrip tests)
+- [x] test_annotated_as_array.cpp - `as_array` (struct as array) (covered in roundtrip tests)
+- [ ] test_annotated_not_json.cpp - `not_json` (skip field) - NOT NEEDED NOW (covered in roundtrip tests)
+- [x] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
+- [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
+- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
+- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
+- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization) - NOT NEEDED NOW
+- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
+- [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
 
 ## serialization/ (2 files)
 - [x] test_serialize_int.cpp
@@ -126,17 +125,17 @@ Quick reference for tracking test implementation progress.
 - [ ] test_validation_multiple_constraints.cpp
 - [ ] test_validation_nested_objects.cpp
 
-## annotations/ (9 files) - NOT STARTED
-- [ ] test_annotated_key.cpp - `key<"json_name">` remapping
-- [ ] test_annotated_as_array.cpp - `as_array` (struct as array)
-- [ ] test_annotated_not_json.cpp - `not_json` (skip field)
-- [ ] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
-- [ ] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
-- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization)
-- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional)
-- [ ] test_annotated_combinations.cpp - Multiple options together
+## annotations/ (9 files) - 2/9 COMPLETE
+- [x] test_annotated_key.cpp - `key<"json_name">` remapping (covered in roundtrip tests)
+- [x] test_annotated_as_array.cpp - `as_array` (struct as array) (covered in roundtrip tests)
+- [ ] test_annotated_not_json.cpp - `not_json` (skip field) - NOT NEEDED NOW
+- [x] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
+- [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
+- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
+- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
+- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization) - NOT NEEDED NOW
+- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
+- [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
 
 ## serialization/ (additional - 2 files) - NOT STARTED
 - [ ] test_serialize_integers_all_types.cpp
@@ -172,7 +171,7 @@ Quick reference for tracking test implementation progress.
 
 ---
 
-**Progress: 47 / ~90 tests implemented (~52.2%)**
+**Progress: 49 / ~90 tests implemented (~54.4%)**
 
 **Complete Coverage Checklist:**
 
@@ -193,12 +192,12 @@ Quick reference for tracking test implementation progress.
 - ✅ `key<>` - JSON key remapping (covered in roundtrip tests)
 - ✅ `as_array` - Struct as array (covered in roundtrip tests)
 - ✅ `not_json` - Skip field (covered in roundtrip tests)
-- [ ] `skip_json<>` - Fast-skip JSON value
-- [ ] `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array
-- [ ] `skip_materializing` - Skip C++-side work **NO NEED TO TEST NOW**
-- [ ] `float_decimals<>` - Serialization precision ⚠️ **RUNTIME ONLY (floating-point)**
-- [ ] `binary_fields_search` - Binary search optimization **NO NEED TO TEST NOW**
-- [ ] `description<>` - Metadata (optional tests) **NOTE USED FOR ANYTHING NOW**
+- ✅ `skip_json<>` - Fast-skip JSON value (test_annotated_skip_json.cpp)
+- ✅ `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
+- [ ] `skip_materializing` - Skip C++-side work **NOT NEEDED NOW**
+- [ ] `float_decimals<>` - Serialization precision ⚠️ **RUNTIME ONLY (floating-point)** - **NOT NEEDED NOW**
+- [ ] `binary_fields_search` - Binary search optimization **NOT NEEDED NOW**
+- [ ] `description<>` - Metadata (optional tests) **NOT NEEDED NOW**
 
 **Completed Categories:**
 - ✅ io/ (1/1)
@@ -209,6 +208,7 @@ Quick reference for tracking test implementation progress.
 - ✅ errors/ JSON path tracking (7/7)
 - ✅ json_spec/ (5/6) - RFC 8259 compliance (Unicode complete, numbers pending)
 - ✅ validation/ (13/13) - All validators covered (constant, range, length, items, not_required, allow_excess_fields, map validators, combined)
+- ✅ annotations/ (4/9) - key, as_array (roundtrip), skip_json, json_sink
 
 **In Progress:**
 - serialization/ (2/2 basic, more needed)
