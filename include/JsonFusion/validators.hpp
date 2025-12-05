@@ -391,7 +391,7 @@ struct max_items {
 
 template <ConstString ... NotRequiredNames>
 struct not_required {
-    using tag = options::detail::not_required_tag;
+
     template<class Tag, std::size_t Index, class Storage, class FH>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
@@ -417,6 +417,37 @@ struct not_required {
     }
     static constexpr std::string_view to_string() {
         return "not_required";
+    }
+};
+
+template <ConstString ... RequiredNames>
+struct required {
+
+    template<class Tag, std::size_t Index, class Storage, class FH>
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
+    static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, const std::bitset<FH::fieldsCount> & seen, const FH&) {
+        static_assert(
+            ((FH::indexInSortedByName(RequiredNames.toStringView()) != -1) &&...),
+            "Fields in 'required' are not presented in json model of object, check c++ fields names or 'key' annotations");
+
+        // Builds the required fields mask at compile time: requiredMask[i] = true if field i  in required list
+        // This is computed  per template instantiation, not at runtime
+        constexpr auto requiredMask = []() consteval {
+            std::bitset<FH::fieldsCount> mask{};
+            mask.reset(); // all not required by default
+            // Mark these as required
+            ((mask.set(FH::indexInSortedByName(RequiredNames.toStringView()))), ...);
+            return mask;
+        }();
+
+        if ((seen & requiredMask) != requiredMask) {
+            ctx.setError(SchemaError::missing_required_fields, Index);
+            return false;
+        }
+        return true;
+    }
+    static constexpr std::string_view to_string() {
+        return "required";
     }
 };
 

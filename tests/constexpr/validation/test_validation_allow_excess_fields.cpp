@@ -77,7 +77,7 @@ constexpr bool test_allow_excess_fields_only_unknown_allowed() {
         int required;
     };
     
-    Annotated<Test, allow_excess_fields<>> obj{};
+    Annotated<Test, allow_excess_fields<>, required<"required">> obj{};
     std::string json = R"({"unknown1": 1, "unknown2": 2})";  // only unknown fields, required missing
     auto result = Parse(obj, json);
     
@@ -194,7 +194,7 @@ constexpr bool test_allow_excess_fields_empty_object() {
         int required;
     };
     
-    Annotated<Test, allow_excess_fields<>> obj{};
+    Annotated<Test, allow_excess_fields<>, required<"required">> obj{};
     std::string json = R"({})";  // empty object, required field missing
     auto result = Parse(obj, json);
     

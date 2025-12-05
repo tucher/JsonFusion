@@ -128,6 +128,7 @@ if (!result && result.error() == ParseError::SCHEMA_VALIDATION_ERROR) {
     // - map_missing_required_key     (required_keys<>)
     // - wrong_constant_value         (constant<>, string_constant<>)
     // - wrong_enum_value             (enum_values<>)
+    // - missing_required_fields      (required/not_required)
 }
 ```
 

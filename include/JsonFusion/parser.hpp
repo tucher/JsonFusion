@@ -752,12 +752,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
-            if constexpr (!Opts::template has_option<options::detail::not_required_tag>) {
-                if(!parsedFieldsByIndex.all()) {
-                    ctx.setError(ParseError::DEFAULT_ALL_REQUIRED_CHECK_FAILURE, reader.current());
-                    return false;
-                }
-            }
+         
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
@@ -866,7 +861,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     std::size_t parsed_items_count = 0;
     bool has_trailing_comma = false;
 
-    static constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
+    constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {

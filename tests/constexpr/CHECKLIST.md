@@ -70,7 +70,7 @@ Quick reference for tracking test implementation progress.
 - [x] test_validation_range_unsigned.cpp - `range<>` for all unsigned int types ⚠️ **NO FLOATING-POINT**
 - [x] test_validation_string_length.cpp - `min_length<>`, `max_length<>`
 - [x] test_validation_array_items.cpp - `min_items<>`, `max_items<>`
-- [x] test_validation_not_required.cpp - `not_required<>` (object-level)
+- [x] test_validation_struct_fields_presence.cpp - `not_required<>`/`required<>` (object-level)
 - [x] test_validation_allow_excess_fields.cpp - `allow_excess_fields<>` (struct-level)
 - [x] test_validation_combined_string.cpp - Multiple string validators
 - [x] test_validation_combined_array.cpp - Multiple array validators
@@ -183,7 +183,7 @@ Quick reference for tracking test implementation progress.
 - ✅ `range<>` - Number range validation ⚠️ **INTEGER ONLY (no float/double)** (test_validation_range_int.cpp, test_validation_range_signed.cpp, test_validation_range_unsigned.cpp)
 - ✅ `min_length<>`, `max_length<>` - String length (test_validation_string_length.cpp)
 - ✅ `min_items<>`, `max_items<>` - Array item count (test_validation_array_items.cpp)
-- ✅ `not_required<>` - Object-level optional fields (test_validation_not_required.cpp)
+- ✅ `not_required<>`, `required<>` - Object-level field presence validation (test_validation_struct_fields_presence.cpp)
 - ✅ `allow_excess_fields<>` - Allow unknown JSON fields (test_validation_allow_excess_fields.cpp)
 
 **Options (9 total):**

@@ -301,6 +301,31 @@ for (const auto & track: tracks) {
 }
 ```
 
+**External Annotations**: If you need to keep your types pure and clean, there are external annotations too, which work on 3 levels:
+
+```cpp
+// 1. For generic types - type-level annotations
+template<> struct JsonFusion::Annotated<T> {
+    using Options = OptionsPack< /*Same as for inline ones*/>;
+};
+
+// 2. For PFR-introspectible structs - field-level annotations, attached to N-th field
+template<> struct JsonFusion::AnnotatedField<T, Index> {
+    using Options = OptionsPack< /*Same as for inline annotated structs*/ ...>;
+};
+
+// 3. Generic manual annotation, which should work even for C arrays in C structs. Overrides the PFR automatic introspection completely
+template<>
+struct JsonFusion::StructMeta<T> {
+    using Fields = Fields<
+        Field<&T::member, "/*name goes here*/", /*annotations go here*/ ... >,        
+        ...
+    >;
+};
+```
+
+This is particularly useful for third-party types, C interop, legacy code, or when you want to keep JSON metadata separate from your business logic types. See [`examples/external_meta.cpp`](examples/external_meta.cpp) for a complete example.
+
 ### Supported Options Include
 
 JsonFusion provides validators (runtime constraints) and options (metadata/behavior control):

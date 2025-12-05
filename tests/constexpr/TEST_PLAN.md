@@ -323,8 +323,10 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ### 4.5 Object Validators (not_required, allow_excess_fields)
 
-- ✅ `test_validation_not_required.cpp`
-  - `not_required<"field1", "field2">` at object level
+- ✅ `test_validation_struct_fields_presence.cpp`
+  - Default behavior: all fields optional
+  - `required<"field1", "field2">` - specific fields required, others optional
+  - `not_required<"field1", "field2">` - specific fields optional, others required
   - Field can be absent from JSON
   - All fields absent
   - Some required, some not
@@ -1005,7 +1007,7 @@ Tests should use user-defined parsing/serializing contexts
 - ✅ `test_validation_range_unsigned.cpp` - `range<>` for all unsigned integer types
 - ✅ `test_validation_string_length.cpp` - `min_length<>` and `max_length<>` validators
 - ✅ `test_validation_array_items.cpp` - `min_items<>` and `max_items<>` validators
-- ✅ `test_validation_not_required.cpp` - `not_required<>` object-level validator
+- ✅ `test_validation_struct_fields_presence.cpp` - `required<>` and `not_required<>` object-level field presence validators
 - ✅ `test_validation_combined_string.cpp` - Multiple string validators together
 - ✅ `test_validation_combined_array.cpp` - Multiple array validators together
 - ✅ `test_validation_combined_map.cpp` - Multiple map validators together

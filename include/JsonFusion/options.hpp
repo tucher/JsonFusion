@@ -47,7 +47,6 @@ namespace detail {
 struct not_json_tag{};
 struct key_tag{};
 struct allow_excess_fields_tag{};
-struct not_required_tag{};
 
 struct binary_fields_search_tag{};
 struct description_tag{};

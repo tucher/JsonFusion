@@ -164,7 +164,7 @@ See `CHECKLIST.md` for detailed progress tracking.
 - ✅ All primitive types (integers, bool, strings)
 - ✅ Composite types (nested structs, arrays, optionals, unique_ptr)
 - ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode
-- ✅ Validation constraints (range, length, items, not_required, allow_excess_fields, map validators)
+- ✅ Validation constraints (range, length, items, not_required, required, allow_excess_fields, map validators)
 - ✅ Annotated<> options (key, as_array, skip_json, json_sink)
 - ✅ Error handling (JSON path tracking, depth calculation)
 - ✅ Streaming (producers & consumers for arrays and maps)
