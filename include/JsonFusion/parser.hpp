@@ -330,8 +330,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
     std::size_t parsedSize = 0;
     if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-        char * b = obj.data();
-        if(!read_json_string_into(reader, b, std::min(obj.size()-1, MAX_SIZE), ctx, parsedSize)) {
+        char * b = static_schema::static_string_traits<ObjT>::data(obj);
+        if(!read_json_string_into(reader, b, std::min(
+                                                  static_schema::static_string_traits<ObjT>:: max_size(obj),
+                                MAX_SIZE), ctx, parsedSize)) {
             return false;
         }
         b[parsedSize] = 0;
@@ -342,10 +344,19 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         }
     }
 
-
-    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(), std::string_view(obj.data(), obj.data() + parsedSize))) {
-        ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
-        return false;
+    if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+                    std::string_view(obj.data(), obj.data() + parsedSize))) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+            return false;
+        }
+    } else {
+        char * b = static_schema::static_string_traits<ObjT>::data(obj);
+        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+                    std::string_view(b, b + parsedSize))) {
+            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+            return false;
+        }
     }
 
     return true;
@@ -532,8 +543,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
 
         if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-            char * b = key.data();
-            if(!read_json_string_into(reader, b, std::min(key.size()-1, MAX_SIZE), ctx, parsedSize)) {
+            char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
+            if(!read_json_string_into(reader, b, std::min(
+                                                      static_schema::static_string_traits<typename FH::key_type>::max_size(key),
+
+                MAX_SIZE), ctx, parsedSize)) {
                 return false;
             }
             b[parsedSize] = 0;

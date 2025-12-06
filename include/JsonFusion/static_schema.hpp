@@ -434,6 +434,39 @@ concept JsonString =
      std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>);
 
 
+
+template<class T>
+struct static_string_traits {
+    static constexpr bool is_static = false;
+};
+
+template<std::size_t N>
+struct static_string_traits<std::array<char, N>> {
+    static constexpr bool is_static = true;
+    static constexpr std::size_t capacity = N;
+
+    static constexpr char* data(std::array<char, N>& s)  { return s.data(); }
+    static constexpr const char* data(const std::array<char, N>& s)  { return s.data(); }
+
+    static constexpr std::size_t max_size(const std::array<char, N>&) {
+        // reserve 1 byte for null-terminator if you follow that convention
+        return N ? N - 1 : 0;
+    }
+};
+
+template<std::size_t N>
+struct static_string_traits<char[N]> {
+    static constexpr bool is_static = true;
+    static constexpr std::size_t capacity = N;
+
+    static constexpr char* data(char (&s)[N])  { return s; }
+    static constexpr const char* data(const char (&s)[N]) { return s; }
+
+    static constexpr std::size_t max_size(const char (&)[N]) noexcept { return N ? N - 1 : 0; }
+};
+
+
+
 /* ######## Object type detection ######## */
 
 template<typename T>

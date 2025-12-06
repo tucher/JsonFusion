@@ -271,11 +271,21 @@ template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> 
     requires static_schema::JsonString<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), !static_schema::DynamicContainerTypeConcept<ObjT>); err != SerializeError::NO_ERROR) {
-        ctx.setError(err, currentPos);
-        return false;
+    if constexpr(static_schema::DynamicContainerTypeConcept<ObjT>) {
+        if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), false); err != SerializeError::NO_ERROR) {
+            ctx.setError(err, currentPos);
+            return false;
+        }
+        return true;
+    } else {
+        if(auto err = outputEscapedString(currentPos, end, static_schema::static_string_traits<ObjT>::data(obj),
+                                           static_schema::static_string_traits<ObjT>::max_size(obj), true); err != SerializeError::NO_ERROR) {
+            ctx.setError(err, currentPos);
+            return false;
+        }
+        return true;
     }
-    return true;
+
 }
 
 template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
