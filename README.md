@@ -184,47 +184,64 @@ Plays well with -fno-exceptions / -fno-rtti style builds.
 
 ### C Interoperability
 
-Add JSON parsing to legacy C codebases **with very small or without modifying your C headers**. JsonFusion parsing can live in a separate C++ translation unit and will work with plain C structs just fine:
+Add JSON parsing to legacy C codebases **without modifying your C headers**. JsonFusion works with plain C structs using external annotations in a separate C++ translation unit:
 
 ```c
 // structures.h - Pure C header, unchanged
 typedef struct {
-    int device_id;
-    float temperature;
-    SensorConfig sensor; // SensorConfig is another C struct
-} DeviceConfig;
+    int64_t position[3];  // C arrays fully supported
+    int active;
+    char name[20];        // Auto null-terminated
+} Motor;
+
+typedef struct {
+    Motor primary_motor;
+    Motor motors[5];      // Nested C arrays supported
+    int motor_count;
+    char system_name[32];
+} MotorSystem;
 ```
 
 ```cpp
-// parser.cpp - C++ wrapper with C API
-extern "C" int ParseDeviceConfig(DeviceConfig* config, 
-                                 const char* json_data, 
-                                 size_t json_size) {
-    auto result = JsonFusion::Parse(*config, json_data, json_data + json_size);
+// parser.cpp - C++ wrapper with StructMeta annotations
+template<>
+struct JsonFusion::StructMeta<Motor> {
+    using Fields = StructFields<
+        Field<&Motor::position, "position", min_items<3>>,
+        Field<&Motor::active, "active">,
+        Field<&Motor::name, "name", min_length<1>>
+    >;
+};
+
+extern "C" int ParseMotorSystem(MotorSystem* system, 
+                                const char* json_data, 
+                                size_t json_size) {
+    auto result = JsonFusion::Parse(*system, json_data, json_data + json_size);
     return result ? 0 : static_cast<int>(result.error());
 }
 ```
 
 ```c
 // main.c - Pure C usage
-DeviceConfig config;
-int error = ParseDeviceConfig(&config, json, strlen(json));
+MotorSystem system;
+int error = ParseMotorSystem(&system, json, strlen(json), &error_pos);
 ```
-If you define custom input/output iterators, you can integrate JSON parsing into virtually any C code base.
-A good fit for:
-- **Legacy firmware** - Add JSON without touching existing C code too much
-- **Embedded C projects** - Modern JSON parsing with zero C code changes
 
-**String handling**: When parsing into fixed-size char arrays (common in C structs), JsonFusion automatically null-terminates strings, making them immediately usable with standard C string functions (`strlen`, `strcmp`, `printf`, etc.).
+**3-Layered External Annotation System:**
+1. **`Annotated<T>`** - Type-level options for generic types
+2. **`AnnotatedField<T, Index>`** - Field-level options for PFR-introspectable structs
+3. **`StructMeta<T>`** - Full manual control (required for C arrays, optional otherwise)
 
-**Note:** C arrays (`int arr[10]`) aren't supported due to PFR limitations, but primitives and nested structs work 
-perfectly. See `examples/c_interop/` for a complete working example.
+**String handling**: Fixed-size char arrays are automatically null-terminated, making them immediately usable with standard C string functions (`strlen`, `strcmp`, `printf`).
 
-All PFR usage is isolated in [`struct_introspection.hpp`](include/JsonFusion/struct_introspection.hpp), which defines 
-"how to iterate struct fields" as an abstraction layer. The rest of JsonFusion only talks to that abstraction. When 
-C++26 reflection becomes mainstream, this layer can be replaced with a standards-based implementation without changing 
-JsonFusion's public API or core design. Better reflection support will only improve capabilities (including more 
-seamless C interop) without forcing users to rewrite code. See the [philosophy](docs/WHY_REFLECTION.md) for details.
+**C arrays**: Supported via `StructMeta` annotations. Single-dimensional arrays (`int arr[10]`) support full validation. Nested arrays (`double matrix[3][3]`) work for serialization and round-trip parsing, but annotations apply only to the outermost level.
+
+Perfect for:
+- **Legacy firmware** - Add JSON without touching existing C headers
+- **Embedded C projects** - Modern JSON parsing with type safety and validation
+- **Mixed C/C++ codebases** - Keep C structs pure, JSON metadata in C++
+
+📁 **Complete example with round-trip tests**: [`examples/c_interop/`](examples/c_interop/)
 
 ### Related Work / Comparison
 

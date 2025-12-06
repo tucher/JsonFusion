@@ -83,12 +83,14 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
 
 
         std::string valDetail = "";
-        if(!jp.template visit_options<C> ([&]<class Opts>(Opts){
+        using Opts    = options::detail::annotation_meta_getter<C>::options;
+
+        if(!jp.template visit_options<JsonFusion::static_schema::AnnotatedValue<C>> ([&]<class Opts>(Opts){
                 if constexpr (!std::is_same_v<Opts, options::detail::no_options>) {
                     std::string_view s = error_formatting_detail::get_opt_string_helper<Opts>::get(index);
                     valDetail = " (" + std::string(s) + ")";
                 }
-        })) {
+            }, Opts{})) {
 
         }
         std::string valInfo = std::format("validator #{}{} error: '{}'", index, valDetail, validator_error_to_string(err));

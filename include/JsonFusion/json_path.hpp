@@ -225,26 +225,26 @@ struct JsonPath {
         }
     }
 
-    template<class T, class Visitor>
-    constexpr bool visit_options(Visitor && v, std::size_t offs = 0) const {
+    template<class T, class Visitor, class Opts>
+    constexpr bool visit_options(Visitor && v, Opts o, std::size_t offs = 0) const {
         if(offs == currentLength) {
-            using Opts    = options::detail::annotation_meta_getter<T>::options;
-            Opts o;
             v(o);
             return true;
         } else {
             if(storage[offs].array_index == std::numeric_limits<std::size_t>::max()) {// struct or map
                 if constexpr (static_schema::JsonParsableMap<T>) {
+                    using MappedItemOpts    = options::detail::annotation_meta_getter<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>::options;
+
                     return visit_options<
                         AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>
-                        >(std::forward<Visitor>(v), offs + 1);
+                        >(std::forward<Visitor>(v), MappedItemOpts{}, offs + 1);
                 } else if constexpr (static_schema::JsonObject<T>) {
 
                     auto try_one = [&](auto ic) {
                         constexpr std::size_t StructIndex = decltype(ic)::value;
 
                         using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
-                        using Opts    = options::detail::annotation_meta_getter<Field>::options;
+                        using FieldOpts    = options::detail::annotation_meta_getter<Field>::options;
 
                         std::string_view sv = "";
                         if constexpr (Opts::template has_option<options::detail::key_tag>) {
@@ -255,7 +255,7 @@ struct JsonPath {
                         }
 
                         if(storage[offs].field_name == sv) {
-                            return visit_options<Field>(std::forward<Visitor>(v), offs + 1);
+                            return visit_options<AnnotatedValue<Field>>(std::forward<Visitor>(v), FieldOpts{}, offs + 1);
                         } else {
                             return false;
                         }
@@ -277,9 +277,10 @@ struct JsonPath {
 
                     return false;
                 } else {
+                    using ElemOpts    = options::detail::annotation_meta_getter<typename array_write_cursor<AnnotatedValue<T>>::element_type>::options;
                     return visit_options<
                         AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>
-                        >(std::forward<Visitor>(v), offs + 1);
+                        >(std::forward<Visitor>(v), ElemOpts{}, offs + 1);
                 }
             }
         }
