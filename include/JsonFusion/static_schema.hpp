@@ -146,7 +146,32 @@ struct array_read_cursor<std::array<T, N>> {
     }
 };
 
+// fixed-size plain array
+template<class T, std::size_t N>
+struct array_read_cursor<T[N]> {
+    using element_type = T;
+    const T(&c)[N];
+    mutable std::size_t index = 0;
+    mutable bool first = true;
 
+
+    constexpr const element_type& get() {
+        return c[index];
+    }
+    constexpr stream_read_result read_more() {
+        if(first) {
+            first = false;
+        } else  {
+            index ++;
+        }
+        if(index < N) return stream_read_result::value;
+        else return stream_read_result::end;
+    }
+    constexpr void reset() const {
+        index = 0;
+        first = true;
+    }
+};
 
 template<class C>
 struct array_write_cursor;
@@ -257,6 +282,40 @@ struct array_write_cursor<std::array<T, N>> {
     }
 };
 
+// fixed-size plain array
+template<class T, std::size_t N>
+struct array_write_cursor<T[N]> {
+    using element_type = T;
+    T (&c)[N];
+    std::size_t index = 0;
+    bool first = true;
+    constexpr stream_write_result allocate_slot() {
+        if(first) {
+            index = 0;
+            first = false;
+        } else {
+            index ++;
+        }
+        if(index < N)
+            return stream_write_result::slot_allocated;
+        else {
+            return stream_write_result::overflow;
+        }
+    }
+    constexpr element_type & get_slot() {
+        return c[index];
+    }
+    constexpr stream_write_result finalize(bool) {
+        return  stream_write_result::value_processed;
+    }
+    constexpr stream_write_result finalize_item(bool ok) {
+        return  stream_write_result::value_processed;
+    }
+    constexpr void reset(){
+        index = 0;
+        first = true;
+    }
+};
 
 // Generic map write cursor for map-like containers with try_emplace
 template<class M>
