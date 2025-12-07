@@ -956,10 +956,6 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
             return true;
         }
     } else {
-        if(!reader.skip_whitespaces_till_any())  {
-            ctx.setError(reader.getError(), reader.current());
-            return false;
-        }
         if(tokenizer::TryParseStatus r = reader.read_null(); r == tokenizer::TryParseStatus::ok) {
             if constexpr(static_schema::JsonNullableParsableValue<Field>) {
                 static_schema::setNull(field);

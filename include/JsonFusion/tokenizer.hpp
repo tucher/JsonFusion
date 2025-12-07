@@ -54,6 +54,9 @@ public:
 
 
     constexpr  TryParseStatus read_null() {
+        while (current_ != end_ && isSpace(*current_)) {
+            ++current_;
+        }
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return TryParseStatus::error;
@@ -112,16 +115,7 @@ public:
         }
         return true;
     }
-    constexpr  bool skip_whitespaces_till_any() {
-        while (current_ != end_ && isSpace(*current_)) {
-            ++current_;
-        }
-        if (atEnd())   {
-            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return false;
-        }
-        return true;
-    }
+
 
     // Array/object structural events
     constexpr  bool read_array_begin() {
@@ -199,121 +193,7 @@ public:
     constexpr  Sent end()  const { return end_; }
 
 
-    constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
-                                     std::size_t& index,
-                                     bool& seenDot,
-                                     bool& seenExp)
-    {
-        index   = 0;
-        seenDot = false;
-        seenExp = false;
 
-        bool inExp            = false;
-        bool seenDigitBeforeExp = false;
-        bool seenDigitAfterExp  = false;
-        bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
-
-        if (atEnd())   {
-            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return false;
-        }
-
-        // Optional leading '-'
-        {
-            char c = *current_;
-            if (c == '-') {
-                if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                    setError(ParseError::ILLFORMED_NUMBER, current_);
-                    return false;
-                }
-                buf[index++] = c;
-                ++current_;
-            }
-        }
-
-        if (atEnd())   {
-            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return false;
-        }
-
-        auto push_char = [&](char c) -> bool {
-            if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                setError(ParseError::ILLFORMED_NUMBER, current_);
-                return false;
-            }
-            buf[index++] = c;
-            return true;
-        };
-
-        while (true) {
-            if(atEnd()) {
-                break;
-            }
-            if(isPlainEnd(*current_)){
-                break;
-            }
-            char c = *current_;
-
-            if (c >= '0' && c <= '9') {
-                // RFC 8259: Leading zeros not allowed (except "0" itself)
-                if (firstDigit && c == '0') {
-                    auto peek = current_;
-                    ++peek;
-                    if (peek != end_ && *peek >= '0' && *peek <= '9') {
-                        setError(ParseError::ILLFORMED_NUMBER, current_);
-                        return false;
-                    }
-                }
-                firstDigit = false;  // Mark that we've seen the first digit
-
-                if (!inExp) {
-                    seenDigitBeforeExp = true;
-                } else {
-                    seenDigitAfterExp = true;
-                }
-                if (!push_char(c)) return false;
-                ++current_;
-                continue;
-            }
-
-            if (c == '.' && !seenDot && !inExp) {
-                seenDot = true;
-                if (!push_char(c)) return false;
-                ++current_;
-                continue;
-            }
-
-            if ((c == 'e' || c == 'E') && !inExp) {
-                inExp  = true;
-                seenExp = true;
-                if (!push_char(c)) return false;
-                ++current_;
-
-                // Optional sign immediately after exponent
-                if (current_ != end_ && (*current_ == '+' || *current_ == '-')) {
-                    if (!push_char(*current_)) return false;
-                    ++current_;
-                }
-                continue;
-            }
-
-            // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
-            // Anything else is invalid inside a JSON number
-            setError(ParseError::ILLFORMED_NUMBER, current_);
-            return false;
-        }
-
-        buf[index] = '\0';
-
-        // Basic sanity: must have at least one digit before exponent,
-        // and if exponent present, at least one digit after it.
-        if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
-            setError(ParseError::ILLFORMED_NUMBER, current_);
-            return false;
-        }
-
-        return true;
-    }
 
     template<class NumberT, bool skipMaterializing>
     constexpr  TryParseStatus read_number(NumberT & storage) {
@@ -584,7 +464,125 @@ public:
             return r;
         }
     }
+    constexpr ParseError getError() {
+        return m_error;
+    }
+private:
+    constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
+                                     std::size_t& index,
+                                     bool& seenDot,
+                                     bool& seenExp)
+    {
+        index   = 0;
+        seenDot = false;
+        seenExp = false;
 
+        bool inExp            = false;
+        bool seenDigitBeforeExp = false;
+        bool seenDigitAfterExp  = false;
+        bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
+
+        if (atEnd())   {
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            return false;
+        }
+
+        // Optional leading '-'
+        {
+            char c = *current_;
+            if (c == '-') {
+                if (index >= fp_to_str_detail::NumberBufSize - 1) {
+                    setError(ParseError::ILLFORMED_NUMBER, current_);
+                    return false;
+                }
+                buf[index++] = c;
+                ++current_;
+            }
+        }
+
+        if (atEnd())   {
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            return false;
+        }
+
+        auto push_char = [&](char c) -> bool {
+            if (index >= fp_to_str_detail::NumberBufSize - 1) {
+                setError(ParseError::ILLFORMED_NUMBER, current_);
+                return false;
+            }
+            buf[index++] = c;
+            return true;
+        };
+
+        while (true) {
+            if(atEnd()) {
+                break;
+            }
+            if(isPlainEnd(*current_)){
+                break;
+            }
+            char c = *current_;
+
+            if (c >= '0' && c <= '9') {
+                // RFC 8259: Leading zeros not allowed (except "0" itself)
+                if (firstDigit && c == '0') {
+                    auto peek = current_;
+                    ++peek;
+                    if (peek != end_ && *peek >= '0' && *peek <= '9') {
+                        setError(ParseError::ILLFORMED_NUMBER, current_);
+                        return false;
+                    }
+                }
+                firstDigit = false;  // Mark that we've seen the first digit
+
+                if (!inExp) {
+                    seenDigitBeforeExp = true;
+                } else {
+                    seenDigitAfterExp = true;
+                }
+                if (!push_char(c)) return false;
+                ++current_;
+                continue;
+            }
+
+            if (c == '.' && !seenDot && !inExp) {
+                seenDot = true;
+                if (!push_char(c)) return false;
+                ++current_;
+                continue;
+            }
+
+            if ((c == 'e' || c == 'E') && !inExp) {
+                inExp  = true;
+                seenExp = true;
+                if (!push_char(c)) return false;
+                ++current_;
+
+                // Optional sign immediately after exponent
+                if (current_ != end_ && (*current_ == '+' || *current_ == '-')) {
+                    if (!push_char(*current_)) return false;
+                    ++current_;
+                }
+                continue;
+            }
+
+            // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
+            // Anything else is invalid inside a JSON number
+            setError(ParseError::ILLFORMED_NUMBER, current_);
+            return false;
+        }
+
+        buf[index] = '\0';
+
+        // Basic sanity: must have at least one digit before exponent,
+        // and if exponent present, at least one digit after it.
+        if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
+            setError(ParseError::ILLFORMED_NUMBER, current_);
+            return false;
+        }
+
+        return true;
+    }
     template <std::size_t MAX_SKIP_NESTING, class Filler>
     constexpr bool skip_json_value_internal(Filler &filler, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
         if (!skip_whitespace())  {
@@ -786,10 +784,7 @@ public:
 
         return true;
     }
-    constexpr ParseError getError() {
-        return m_error;
-    }
-private:
+
     ParseError m_error;
     It & current_;
     It m_errorPos;

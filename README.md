@@ -251,9 +251,11 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 
 **Glaze**
 - Typically significantly faster than JsonFusion on flat, in-memory JSON: its tokenizer is tuned for contiguous buffers and low-level tricks.
+- Glaze builds on a very tight, hand-rolled JSON scanner that works directly on `char*` with aggressive inlining and minimal abstraction. It assumes contiguous buffers and doesn't try to be iterator-generic or streaming-friendly in the same way JsonFusion does.
+- It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
+- Glaze has only lightweight validation (mostly structural + type correctness); it doesn't attempt rich, schema-style declarative validation like JsonFusion's option packs, per-field validators, or detailed error contexts.
+- Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion trades some of that peak speed to support generic iterators, streaming, and stricter validation while staying fully header-only and constexpr-friendly.
 - Uses its own metadata/registration style rather than "the struct is the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
-- Oriented around parsing/serializing whole buffers; JsonFusion treats streaming over generic forward iterators and fine-grained skipping (`skip_json`, `json_sink`, streamers) as first-class features.
-- JsonFusion leans harder on constexpr, validators and typed options baked into the model; Glaze leans harder on pure throughput.
 
 **reflect-cpp**
 - Performance is slightly better or broadly comparable to JsonFusion on typical object graphs.
