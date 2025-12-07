@@ -62,7 +62,7 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
         }
     }
 
-    int pos = res.offset();
+    int pos = inp - res.pos();
     std::string before(
         inp + (pos+1 >= window ? pos+1-window:0),
         inp + (pos+1 >= window ? pos+1-window:0) + (pos+1 >= window ? window:0)

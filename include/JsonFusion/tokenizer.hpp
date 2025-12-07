@@ -4,32 +4,11 @@
 
 #include "parse_errors.hpp"
 #include "fp_to_str.hpp"
+#include "reader_concept.hpp"
 
 namespace JsonFusion {
 
 namespace tokenizer {
-
-enum class TryParseStatus {
-    no_match,   // not our case, iterator unchanged
-    ok,         // parsed and consumed
-    error       // malformed, ctx already has error
-};
-
-
-enum class StringChunkStatus {
-    ok,       // wrote some bytes (maybe zero), no error
-    no_match, // not at a string (no '"' at start, and not already in_string_)
-    error     // parse error set in ctx
-};
-
-struct StringChunkResult {
-    StringChunkStatus status;
-    std::size_t       bytes_written; // how many bytes we put into `out`
-    bool              done;          // true if closing '"' was consumed
-};
-
-template<class C>
-concept TokenizerLike = true;
 
 
 
@@ -53,7 +32,7 @@ public:
 
 
 
-    constexpr  TryParseStatus read_null() {
+    constexpr  TryParseStatus skip_ws_and_read_null() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
@@ -1087,6 +1066,8 @@ private:
 
 
 };
-}
+
+
+} // namespace tokenizer
 
 } // namespace JsonFusion
