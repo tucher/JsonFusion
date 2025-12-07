@@ -15,455 +15,197 @@
 #include "JsonFusion/error_formatting.hpp"
 #include "JsonFusion/string_search.hpp"
 
+
 using JsonFusion::A;
 
 using namespace JsonFusion::validators;
 using namespace JsonFusion::options;
 
+using C = char[100];
+static_assert(std::ranges::contiguous_range<C> &&
+              std::same_as<std::ranges::range_value_t<C>, char>);
+
+
+using namespace JsonFusion;
+
+
+
+struct Motor {
+    double position[3];
+    bool active;
+    char name[20];
+    float transform[2][4][4];
+};
+
+template<>
+struct JsonFusion::StructMeta<Motor> {
+    using Fields = StructFields<
+        Field<&Motor::position, "position", min_items<3>>,         // double position[3];
+        Field<&Motor::active, "active">,                      //without annotations!  // bool active;
+        Field<&Motor::name, "name",  min_length<3>>,   // char name[20];
+        Field<&Motor::transform, "transform">
+    >;
+};
+
+
+struct Motor2 {
+    int64_t position[3];
+    bool active;
+    char name[20];
+};
+
+template<>
+struct JsonFusion::StructMeta<Motor2> {
+    using Fields = StructFields<
+        Field<&Motor2::position, "position", min_items<3>>,  // int64_t position[3];
+        Field<&Motor2::active, "active">,                     // bool active;
+        Field<&Motor2::name, "name", min_length<1>>           // char name[20];
+        >;
+};
+
+struct MotorSystem {
+    Motor2 primary_motor;           // Nested Motor
+    Motor2 motors[5];                // C array of Motors
+    int motor_count;
+    char system_name[32];
+};
+
+// External annotation for MotorSystem
+template<>
+struct JsonFusion::StructMeta<MotorSystem> {
+    using Fields = StructFields<
+        Field<&MotorSystem::primary_motor, "primary_motor">,      // Nested Motor
+        Field<&MotorSystem::motors, "motors", max_items<5>>,       // C array of Motors
+        Field<&MotorSystem::motor_count, "motor_count">,          // int
+        Field<&MotorSystem::system_name, "system_name", min_length<1>, max_length<31>>  // char[32]
+        >;
+};
+
+
+template<std::size_t N>
+constexpr bool cstr_equal(const char (&a)[N], const char* b) {
+    std::size_t i = 0;
+    while (i < N && a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i]) return false;
+        ++i;
+    }
+    return a[i] == '\0' && b[i] == '\0';
+}
+
+// Constexpr string copy for C arrays
+template<std::size_t N>
+constexpr void cstr_copy(char (&dest)[N], const char* src) {
+    std::size_t i = 0;
+    while (i < N - 1 && src[i] != '\0') {
+        dest[i] = src[i];
+        ++i;
+    }
+    dest[i] = '\0';  // Always null-terminate
+}
+
+// Constexpr string length
+template<std::size_t N>
+constexpr std::size_t cstr_len(const char (&str)[N]) {
+    std::size_t i = 0;
+    while (i < N && str[i] != '\0') {
+        ++i;
+    }
+    return i;
+}
+
 int main() {
 
-    JsonFusion::string_search::test();
+    {
 
-    struct Nested {
-        int nested_f;
-        std::array<char, 10> nested_string;
-        std::array<char, 10> skip1;
-        bool skip2;
-    };
+        Motor test;
+        memset(&test, 0, sizeof(Motor));
 
-    struct Model {
-        int a = 10;
-        bool b;
-        std::array<int, 2> c;
-        std::optional<float> empty_opt;
-        std::optional<int> filled_opt;
+        std::string_view json (R"({
+            "active": true,
+            "position": [0.1, 0.2, 0.3],
+            "transform": [
+                [
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,0,1,2],
+                    [3,4,5,6]
+                ],
+                [
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,0,1,2],
+                    [3,4,5,6]
+                ]
+            ],
+            "name": "Some stwefwefwefewf"
+        })");
+        auto r = JsonFusion::Parse(test, json);
+        if(!r) {
+            std::cerr << ParseResultToString<Motor>(r, json.begin(), json.end()) << std::endl;
 
-
-        A<Nested, not_required<"skip1", "skip2">> nested;
-        std::vector<int> dynamic_array;
-        std::string dynamic_string;
-        std::vector<std::vector<int>> vec_of_vec_of_int;
-        std::vector<std::optional<std::vector<std::string>>> vec_of_opt_vecs;
-
-    };
-    static_assert([]() constexpr {
-        Model a;
-        return JsonFusion::Parse(a, std::string_view(R"JSON(
-                {
-                    "a": 10,
-                    "empty_opt": null,
-                    "b": true,
-                    "c": [5, 6],
-                    "nested": {"nested_f": 18, "nested_string": "st"},
-                    "filled_opt": 14,
-                    "dynamic_string": "variable string",
-                    "dynamic_array": [1],
-                    "vec_of_vec_of_int":[[2]],
-                    "vec_of_opt_vecs": [null, ["a","b","c"], null]
         }
-        )JSON"))
-            && a.a == 10
-            && a.b
-            && a.c[0] == 5 && a.c[1] == 6
-            && !a.empty_opt
-            && *a.filled_opt == 14
-            && a.nested->nested_f == 18
-            && a.nested->nested_string[0]=='s'&& a.nested->nested_string[1]=='t'
-            && a.dynamic_string == "variable string"
-            && a.dynamic_array[0] == 1
-            && a.vec_of_vec_of_int[0][0]==2
-            && !a.vec_of_opt_vecs[0] && !a.vec_of_opt_vecs[2]
-               && a.vec_of_opt_vecs[1] && *a.vec_of_opt_vecs[1] == std::vector<std::string>{"a", "b", "c"}
-            ;
-    }());
+        assert(r);
 
-    static_assert([]() constexpr {
-        Model a{};
-        a.b = true;
-        a.filled_opt=18;
-        a.nested->nested_f=-9;
-        a.c[1]=118;
-        a.nested->nested_string[0]='f';
-        a.nested->nested_string[1]='u';
-        a.dynamic_array = {12,34};
-        a.dynamic_string = "str";
-        a.vec_of_vec_of_int = {{3}};
-        a.vec_of_opt_vecs = {std::nullopt, std::vector<std::string>{"a","b","c"} , std::nullopt};
         std::string out;
-        bool r = JsonFusion::Serialize(a, out);
+        assert(JsonFusion::Serialize(test, out));
 
-        return r &&
-               out == R"JSON({"a":10,"b":true,"c":[0,118],"empty_opt":null,"filled_opt":18,"nested":{"nested_f":-9,"nested_string":"fu","skip1":"","skip2":false},"dynamic_array":[12,34],"dynamic_string":"str","vec_of_vec_of_int":[[3]],"vec_of_opt_vecs":[null,["a","b","c"],null]})JSON";
-    }());
-    static_assert([]() constexpr {
-        struct Consumer {
-            struct Tag {
-                std::string id;
-                std::string text;
-            };
-            using value_type = Tag;
+        std::cout << out << std::endl;
 
-            // Called at the start of the JSON array
-            constexpr void reset()  {
-
-            }
-
-            // Called for each element, with a fully-parsed value_type
-            constexpr bool consume(const Tag & tag)  {
-
-                return true;
-            }
-
-            // called once at the end (with json success flag, if true, all data was consumed successfully)
-            constexpr bool finalize(bool success)  {
-                if (!success) {
-
-                    return false;
-                }
-                return true;
-            }
-
-        };
-        Consumer t{};
-        return JsonFusion::Parse(t, std::string_view(R"JSON([
-            {"id": "1", "text": "first tag"},
-            {"id": "2", "text": "second tag"}
-        ]
-        )JSON"));
-
-    }());
-    static_assert([]() constexpr {
-        struct Producer {
-            using value_type = int64_t;
-
-            int count = 5;
-            mutable int counter = 0;
-
-            constexpr JsonFusion::stream_read_result read(double & v) const {
-                if (counter >= count) {
-                    return JsonFusion::stream_read_result::end;
-                }
-                counter ++;
-                v = counter;
-                return JsonFusion::stream_read_result::value;
-            }
-
-            void reset() const {
-                counter = 0;
-            }
-
-        };
-        Producer t{};
-        std::array<char, 1000> buf;
-
-        char * out_pos =buf.data();
-        char * en = out_pos + buf.size();
-        bool r = JsonFusion::Serialize(t, out_pos, en);
-        return r;
-    }());
-    static_assert([]() constexpr {
-        struct Tst21{
-            A<bool, constant<true>> bool_const_t;
-            A<bool, constant<false>> bool_const_f;
-            A<std::array<char, 5>, string_constant<"fu">> string_c;
-            A<int, constant<42>> number_const;
-        } a;
-        return JsonFusion::Parse(a, std::string_view(R"JSON(
-                    {
-                        "bool_const_t": true,
-                        "bool_const_f": false,
-                        "string_c": "fu",
-                        "number_const": 42
-            }
-            )JSON"))
-            ;
-    }());
-
-    static_assert([]() constexpr {
-        struct Root {
-            int field;
-
-            struct Inner1 {
-                int field;
-
-                struct Inner2 {
-                    int field;
-                };
-                std::array<Inner2, 3> inners;
-            };
-
-            std::vector<Inner1> inners;
-        };
-        /*
-         Inner1 [0]
-        Inner1.field [1]
-        Inner1.inners [1]
-        Inner1.inners[0] [2]
-        Inner1.inners[1][0] [3]
-         */
-        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root::Inner1::Inner2>() == 2);
-        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root::Inner1>() == 4);
-        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root>() == 6);
-        return 1;
-    }());
-    static_assert([]() constexpr {
-        struct Root1 {
-            int field;
-            std::vector<Root1> inners;
-            std::unique_ptr<Root1> child;
-        };
-
-        struct Root2 {
-            int field;
-            std::vector<Root1> inners;
-            std::unique_ptr<Root1> child;
-        };
-        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root1>() == JsonFusion::schema_analyzis::SCHEMA_UNBOUNDED);
-        static_assert(JsonFusion::schema_analyzis::calc_type_depth<Root2>() == JsonFusion::schema_analyzis::SCHEMA_UNBOUNDED);
-        return 1;
-    }());
-
-    {
-        A<std::map<std::string, int>,
-                              required_keys<"1", "text">,
-                              min_properties<2>
-
-                              > t;
-        auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"1": 1, "text": 2, "fuu": 3}
-
-
-            )JSON"));
-        assert(res);
     }
     {
-        A<std::map<std::string, int>,
-                              required_keys<"1", "text">,
-                              min_properties<2>
+        MotorSystem system1{};
 
-                              > t;
-        auto res =  JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"1": 1,  "fuu": 3}
+        // Setup primary motor
+        system1.primary_motor.position[0] = 1;
+        system1.primary_motor.position[1] = 2;
+        system1.primary_motor.position[2] = 3;
+        system1.primary_motor.active = true;
+        cstr_copy(system1.primary_motor.name, "Primary");
 
+        // Setup motors array
+        system1.motors[0].position[0] = 10;
+        system1.motors[0].position[1] = 20;
+        system1.motors[0].position[2] = 30;
+        system1.motors[0].active = true;
+        cstr_copy(system1.motors[0].name, "Motor1");
 
-            )JSON"));
-        assert(!res);
-    }
-    {
-        A<std::map<std::string, int>,
-                              allowed_keys<"1", "text">
+        system1.motor_count = 1;
+        cstr_copy(system1.system_name, "RoundTrip");
 
-                              > t;
-        assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"1": 1, "text": 2, "fuu": 3}
+        std::string serialized;
+        if (!Serialize(system1, serialized)) return false;
 
-
-            )JSON")));
-    }
-    {
-        A<std::map<std::string, int>,
-                              allowed_keys<"1", "text", "fuu">
-
-                              > t;
-        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"1": 1, "text": 2}
-
-
-            )JSON")));
-    }
-    {
-        A<std::map<std::string, int>,
-                              forbidden_keys<"1", "text", "fuu">
-
-                              > t;
-        assert(!JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"1": 1, "text": 2}
-
-
-            )JSON")));
-    }
-    {
-        A<std::map<std::string, int>,
-                              forbidden_keys<"1", "text", "fuu">
-
-                              > t;
-        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
-                {"11": 1, "text1": 2}
-
-
-            )JSON")));
-    }
-    {
-        A<bool,
-                              constant<true>
-
-                              > t;
-        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
-                true
-
-
-            )JSON")));
-    }
-    {
-        A<bool,
-                              constant<false>
-
-                              > t;
-        assert(JsonFusion::Parse(t, std::string_view(R"JSON(
-                false
-
-
-            )JSON")));
-    }
-    {
-        struct TS{
-            A<bool, constant<true>> bool_const_t;
-            A<bool, constant<false>> bool_const_f;
-            A<std::array<char, 10>, string_constant<"I am str">> string_c;
-            A<int, constant<42>> number_const;
-            struct Inner{
-                double f;
-            };
-            std::vector<Inner> inner;
-        } a;
-        std::string_view sv{R"JSON(
-                {
-                    "bool_const_t": true,
-                    "bool_const_f": false,
-                    "string_c": "I am str",
-                    "number_const": 42,
-                    "inner": [{"f": 4.3},{"f": true}]
-        }
-        )JSON"
-        };
-        auto r = JsonFusion::Parse(a, sv);
-        if(!r) {
-            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-            auto jp = JsonFusion::json_path::JsonPath<4, false>("inner", 0, "f");
-            assert(jp.currentLength == 3);
-
-
-            JsonFusion::json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 123.456;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
-
-
-            JsonFusion::json_path::visit_by_path(a, []<class T>(T &v, auto Opts) {
-                if constexpr(std::is_same_v<T, double>) {
-                    v = 1.4;
-                }
-            }, jp);
-
-            if(a.inner.size() > 0)
-                std::cout << a.inner[0].f << std::endl;
+        MotorSystem system2{};
+        if (auto r = Parse(system2, serialized.data(), serialized.data() + serialized.size()); !r) {
+            std::cerr << ParseResultToString<MotorSystem>(r, serialized.data(), serialized.data() + serialized.size()) << std::endl;
+            return false;
         }
 
+        // Compare primary_motor
+        if (system1.primary_motor.position[0] != system2.primary_motor.position[0] ||
+            system1.primary_motor.position[1] != system2.primary_motor.position[1] ||
+            system1.primary_motor.position[2] != system2.primary_motor.position[2]) {
+            return false;
+        }
+        if (system1.primary_motor.active != system2.primary_motor.active) return false;
+        if (!cstr_equal(system1.primary_motor.name, system2.primary_motor.name)) return false;
+
+        // Compare first motor in array
+        if (system1.motors[0].position[0] != system2.motors[0].position[0] ||
+            system1.motors[0].position[1] != system2.motors[0].position[1] ||
+            system1.motors[0].position[2] != system2.motors[0].position[2]) {
+            return false;
+        }
+        if (system1.motors[0].active != system2.motors[0].active) return false;
+        if (!cstr_equal(system1.motors[0].name, system2.motors[0].name)) return false;
+
+        // Compare motor_count
+        if (system1.motor_count != system2.motor_count) return false;
+
+        // Compare system_name
+        if (!cstr_equal(system1.system_name, system2.system_name)) return false;
+
+        return true;
     }
-
-    {
-
-        struct TS{
-            struct Inner{
-                double f;
-                std::map<std::string, bool> bools;
-            };
-            std::vector<Inner> inner;
-        } a;
-
-        static_assert (JsonFusion::schema_analyzis::has_maps<TS>());
-        std::string_view sv{R"JSON(
-        {
-
-            "inner": [
-                {
-                    "f": 4.3,
-                    "bools": {"укп": false, "укпук": false, "укпукп": 34}
-                },
-                {
-                    "bools": {"счмчсм": false, "чсм": false, "кеи": true}
-                }
-            ]
-        }
-        )JSON"
-        };
-        auto r = JsonFusion::Parse(a, sv);
-        if(!r) {
-            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-           
-        }
-
-    }
-    {
-
-        struct TS{
-            struct Inner{
-                double f;
-                std::map<std::string, TS> children;
-            };
-            std::vector<Inner> inner;
-        } a;
-
-        static_assert (JsonFusion::schema_analyzis::has_maps<TS>());
-        std::string_view sv{R"JSON(
-        {
-
-            "inner": [
-                {
-                    "f": 4.3,
-                    "children": {"first1": {"inner": []}, "first2": {"inner": []}}
-                },
-                {
-                    "f": 4.8,
-                    "children": {"second1": {"inner": [{"f": 5.4, "children": null}]}, "second2": {"inner": []}}
-                }
-            ]
-        }
-        )JSON"
-        };
-        auto r = JsonFusion::Parse(a, sv);
-        if(!r) {
-            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-          
-        }
-
-    }
-
-    {
-
-        struct TS{
-            bool val_b;
-            A<std::array<char, 512>, JsonFusion::options::json_sink<64, 5>> sink;
-            A<int, constant<42>> number_const;
-            struct Inner{
-                double f;
-            };
-            std::vector<Inner> inner;
-        } a;
-        std::string_view sv{R"JSON(
-                {
-                    "val_b": true,
-                    "sink": [[[[1, 2, 3]]]],
-                    "number_const": 42,
-                    "inner": [{"f": 4.3},{"f": 2.3}]
-        }
-        )JSON"
-        };
-        auto r = JsonFusion::Parse(a, sv);
-        if(!r) {
-            std::cerr << ParseResultToString<TS>(r, sv.begin(), sv.end()) << std::endl;
-
-        } else {
-            std::cout << "In sink: " << std::string(a.sink.data()) << std::endl;
-            // OUTPUT: In sink: [[[[1,2,3]]]]
-        }
-
-    }
-
-
 
 }

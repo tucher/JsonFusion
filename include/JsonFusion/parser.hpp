@@ -135,12 +135,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 constexpr std::size_t STRING_CHUNK_SIZE = 64;
 
-template<class Reader, class Cont, class Ctx>
+template<class Reader, class Cont>
 constexpr bool read_json_string_into(
     Reader&      reader,
     Cont&        out,
     std::size_t  max_len,   // validator limit or SIZE_MAX
-    Ctx&         ctx,
+    ParseError&         err,
     std::size_t& outSize,
     bool         read_rest_on_overflow = false
     )
@@ -172,12 +172,11 @@ constexpr bool read_json_string_into(
                     switch (rest.status) {
                     case JsonFusion::tokenizer::StringChunkStatus::no_match:
                         // Shouldn't happen mid-string, but treat as ill-formed.
-                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                                     reader.current());
+                        err = JsonFusion::ParseError::ILLFORMED_STRING;
                         return false;
 
                     case JsonFusion::tokenizer::StringChunkStatus::error:
-                        ctx.setError(reader.getError(), reader.current());
+                        err = reader.getError();
                         return false;
 
                     case JsonFusion::tokenizer::StringChunkStatus::ok:
@@ -185,15 +184,13 @@ constexpr bool read_json_string_into(
                     }
 
                     if (rest.bytes_written > STRING_CHUNK_SIZE) {
-                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                                     reader.current());
+                        err = JsonFusion::ParseError::ILLFORMED_STRING;
                         return false;
                     }
 
                     if (rest.done) {
                         // We’ve reached the end of the JSON string.
-                        ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
-                                     reader.current());
+                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
                         // outSize stays at the number of bytes we actually stored.
                         outSize = total;
                         return false;
@@ -201,16 +198,15 @@ constexpr bool read_json_string_into(
 
                     if (rest.bytes_written == 0) {
                         // Reader made no progress but not done → malformed.
-                        ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                                     reader.current());
+                        err = JsonFusion::ParseError::ILLFORMED_STRING;
+
                         return false;
                     }
                 }
             } else {
                 // Old behavior: fail immediately at overflow, leaving reader
                 // mid-string.
-                ctx.setError(JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW,
-                             reader.current());
+                err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
                 return false;
             }
         }
@@ -232,17 +228,15 @@ constexpr bool read_json_string_into(
             case JsonFusion::tokenizer::StringChunkStatus::ok:
                 break;
             case JsonFusion::tokenizer::StringChunkStatus::no_match:
-                ctx.setError(JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE,
-                             reader.current());
+                err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
                 return false;
             case JsonFusion::tokenizer::StringChunkStatus::error:
-                ctx.setError(reader.getError(), reader.current());
+                err = reader.getError();
                 return false;
             }
 
             if (res.bytes_written > ask) {
-                ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                             reader.current());
+                err = JsonFusion::ParseError::ILLFORMED_STRING;
                 return false;
             }
 
@@ -257,8 +251,7 @@ constexpr bool read_json_string_into(
             }
 
             if (res.bytes_written == 0) {
-                ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                             reader.current());
+                err = JsonFusion::ParseError::ILLFORMED_STRING;
                 return false;
             }
 
@@ -272,13 +265,12 @@ constexpr bool read_json_string_into(
         switch (res.status) {
         case JsonFusion::tokenizer::StringChunkStatus::no_match:
             // We expected a string here and didn't get one.
-            ctx.setError(JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE,
-                         reader.current());
+            err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
             return false;
 
         case JsonFusion::tokenizer::StringChunkStatus::error:
             // Reader already set a specific error.
-            ctx.setError(reader.getError(), reader.current());
+            err = reader.getError();
             return false;
 
         case JsonFusion::tokenizer::StringChunkStatus::ok:
@@ -287,8 +279,8 @@ constexpr bool read_json_string_into(
 
         // Defensive check: reader must not overrun the supplied chunk.
         if (res.bytes_written > ask) {
-            ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                         reader.current());
+            err = JsonFusion::ParseError::ILLFORMED_STRING;
+
             return false;
         }
 
@@ -306,8 +298,7 @@ constexpr bool read_json_string_into(
         // Safety net: if reader made no progress and says not done, bail
         // to avoid accidental infinite loops if the implementation ever regresses.
         if (res.bytes_written == 0) {
-            ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING,
-                         reader.current());
+            err = JsonFusion::ParseError::ILLFORMED_STRING;
             return false;
         }
 
@@ -316,7 +307,7 @@ constexpr bool read_json_string_into(
 
     // Unreachable, but keeps compilers happy.
     // If we ever fall through, treat it as a malformed string.
-    ctx.setError(JsonFusion::ParseError::ILLFORMED_STRING, reader.current());
+    err = JsonFusion::ParseError::ILLFORMED_STRING;
     return false;
 }
 
@@ -329,17 +320,20 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     //TODO extract MAX_SIZE from validators here
     constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
     std::size_t parsedSize = 0;
+    ParseError err{ParseError::NO_ERROR};
     if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
         char * b = static_schema::static_string_traits<ObjT>::data(obj);
         if(!read_json_string_into(reader, b, std::min(
                                                   static_schema::static_string_traits<ObjT>:: max_size(obj),
-                                MAX_SIZE), ctx, parsedSize)) {
+                                MAX_SIZE), err, parsedSize)) {
+            ctx.setError(err, reader.current());
             return false;
         }
         b[parsedSize] = 0;
     } else {
         obj.clear();
-        if(!read_json_string_into(reader, obj, MAX_SIZE, ctx, parsedSize)) {
+        if(!read_json_string_into(reader, obj, MAX_SIZE, err, parsedSize)) {
+            ctx.setError(err, reader.current());
             return false;
         }
     }
@@ -542,17 +536,20 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         //TODO extract MAX_SIZE from validators here
         constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
 
+        ParseError err{ParseError::NO_ERROR};
         if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
             char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
             if(!read_json_string_into(reader, b, std::min(
                                                       static_schema::static_string_traits<typename FH::key_type>::max_size(key),
 
-                MAX_SIZE), ctx, parsedSize)) {
+                MAX_SIZE), err, parsedSize)) {
+                ctx.setError(err, reader.current());
                 return false;
             }
             b[parsedSize] = 0;
         } else {
-            if(!read_json_string_into(reader, key, MAX_SIZE, ctx, parsedSize)) {
+            if(!read_json_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
+                ctx.setError(err, reader.current());
                 return false;
             }
         }
@@ -780,13 +777,15 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         };
 
         char * b = searcher.buffer();
-        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, ctx, searcher.current_length(), true)) {
-            if(ctx.currentError() == ParseError::NON_STRING_IN_STRING_STORAGE) {
+        ParseError err{ParseError::NO_ERROR};
+        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, err, searcher.current_length(), true)) {
+            if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-            } else if (ctx.currentError() == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+            } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
                 ctx.setError(ParseError::NO_ERROR, reader.current());
                 searcher.set_overflow();
             } else {
+                ctx.setError(err, reader.current());
                 return false;
             }
         }
