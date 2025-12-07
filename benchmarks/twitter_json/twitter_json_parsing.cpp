@@ -16,14 +16,12 @@
 
 #include "benchmark.hpp"
 
-#include "twitter_model.hpp"
+#include "twitter_model_generic.hpp"
 #include "rapidjson_populate.hpp"
+#include "reflectcpp_parsing.hpp"
 
 
 
-using namespace JsonFusion;
-using namespace JsonFusion::options;
-using namespace JsonFusion::validators;
 
 
 std::string read_file(const fs::path& filepath) {
@@ -67,7 +65,12 @@ int main(int argc, char* argv[]) {
 
         rj_parse_only(iterations, json_data);
         rj_parse_populate(iterations, json_data);
+        reflectcpp_parse_populate(iterations, json_data);
         {
+            using namespace JsonFusion;
+            using namespace JsonFusion::options;
+            using TwitterData = TwitterData_T<JsonFusion::A<std::optional<bool>, JsonFusion::options::key<"protected">>>;
+
             TwitterData model;
             benchmark("JsonFusion parsing + populating", iterations, [&]() {
                 std::string copy = json_data;

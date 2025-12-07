@@ -5,16 +5,12 @@
 #include <optional>
 #include <memory>
 
-// JsonFusion includes
-#include "JsonFusion/options.hpp"
-#include "JsonFusion/validators.hpp"
-
 using std::optional, std::vector, std::string, std::unique_ptr;
-using namespace JsonFusion::validators;
-using namespace JsonFusion::options;
-using JsonFusion::A;
 
-// Generated from JSON Schema
+// Generic Twitter model that works with both JsonFusion and reflect-cpp
+// Template parameter ProtectedFieldType allows using different wrapper types:
+// - For JsonFusion: A<optional<bool>, key<"protected">>
+// - For reflect-cpp: rfl::Rename<"protected", std::optional<bool>>
 
 struct Urls_item {
     string url;
@@ -99,7 +95,8 @@ struct UserEntities {
     optional<Url> url;
 };
 
-struct User {
+template<typename ProtectedFieldType>
+struct User_T {
     optional<double> id;
     optional<string> id_str;
     optional<string> name;
@@ -108,7 +105,10 @@ struct User {
     optional<string> description;
     optional<string> url;
     unique_ptr<UserEntities> entities;
-    A<optional<bool>, key<"protected">> protected_;
+    
+    // Parameterized field wrapper for "protected" -> "protected_"
+    ProtectedFieldType protected_;
+    
     optional<double> followers_count;
     optional<double> friends_count;
     optional<double> listed_count;
@@ -147,7 +147,8 @@ struct Metadata {
     optional<string> iso_language_code;
 };
 
-struct TwitterData {
+template<typename ProtectedFieldType>
+struct TwitterData_T {
     struct Statuses_item { 
         struct Retweeted_status {
             unique_ptr<Metadata> metadata;
@@ -162,7 +163,7 @@ struct TwitterData {
             optional<double> in_reply_to_user_id;
             optional<string> in_reply_to_user_id_str;
             optional<string> in_reply_to_screen_name;
-            unique_ptr<User> user;
+            unique_ptr<User_T<ProtectedFieldType>> user;
             optional<bool> geo;
             optional<bool> coordinates;
             optional<bool> place;
@@ -188,7 +189,7 @@ struct TwitterData {
         optional<double> in_reply_to_user_id;
         optional<string> in_reply_to_user_id_str;
         optional<string> in_reply_to_screen_name;
-        User user;
+        User_T<ProtectedFieldType> user;
         optional<bool> geo;
         optional<bool> coordinates;
         optional<bool> place;
@@ -219,3 +220,4 @@ struct TwitterData {
     optional<vector<Statuses_item>> statuses;
     optional<Search_metadata> search_metadata;
 };
+

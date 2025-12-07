@@ -456,7 +456,7 @@ struct RPCCommand {
     };
 
     // Simple tagged union via "cmd" + payload object
-    struct Cmd {
+    struct Command {
         A<string, enum_values<"set_param", "start_job", "stop_job"> > cmd;
 
         A<std::string, key<"id">> correlation_id;
@@ -467,7 +467,6 @@ struct RPCCommand {
         // purely internal, not in JSON
         A<std::string, not_json> debug_source;
     };
-    using Command = A<Cmd, not_required<"id", "set_param", "start_job">>;
 
     struct TopLevel {
         std::vector<Command> commands;

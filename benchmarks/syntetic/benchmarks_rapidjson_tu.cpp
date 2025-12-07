@@ -518,7 +518,7 @@ bool RapidJSON::parse_validate_and_populate(RPCCommand::TopLevel& out, std::stri
             const auto& cmd_obj = cmds_arr[i];
             if (!cmd_obj.IsObject()) continue;
 
-            RPCCommand::Cmd cmd;
+            RPCCommand::Command cmd;
 
             // Parse cmd field (REQUIRED, with enum_values validation)
             if (auto cmd_it = cmd_obj.FindMember("cmd"); cmd_it != cmd_obj.MemberEnd() && cmd_it->value.IsString()) {
@@ -598,9 +598,8 @@ bool RapidJSON::parse_validate_and_populate(RPCCommand::TopLevel& out, std::stri
             }
 
             // Wrap Cmd in Command (which is Annotated<Cmd, ...>)
-            RPCCommand::Command command;
-            command.value = std::move(cmd);
-            out.commands.push_back(std::move(command));
+
+            out.commands.push_back(std::move(cmd));
         }
     } else {
         remark = "Missing or invalid required field: commands";

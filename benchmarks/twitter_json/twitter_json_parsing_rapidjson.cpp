@@ -8,13 +8,16 @@
 #include <format>
 #include <filesystem>
 
-#include <JsonFusion/parser.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
-#include "twitter_model.hpp"
+#include "twitter_model_generic.hpp"
 #include "rapidjson_populate.hpp"
 #include "benchmark.hpp"
+
+// For RapidJSON, we use the JsonFusion instantiation
+using User = User_T<std::optional<bool>>;
+using TwitterData = TwitterData_T<std::optional<bool>>;
 
 
 
