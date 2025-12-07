@@ -256,12 +256,14 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 - JsonFusion leans harder on constexpr, validators and typed options baked into the model; Glaze leans harder on pure throughput.
 
 **reflect-cpp**
-- Performance is broadly comparable to JsonFusion on typical object graphs.
-- Focuses on being a general reflection + multi-format serialization layer (JSON via yyjson, etc.), with a more DOM-centric backend.
+- Performance is slightly better or broadly comparable to JsonFusion on typical object graphs.
+- Focuses on being a general reflection + multi-format serialization layer (JSON via yyjson, etc.).
+- **Architectural difference**: reflect-cpp uses a [two-pass approach](https://github.com/getml/reflect-cpp/blob/main/include/rfl/json/read.hpp)—first parsing JSON into a DOM tree (yyjson), then mapping the DOM to C++ types. JsonFusion parses directly from input iterators into your structs in a single pass. This means reflect-cpp requires the full JSON in memory and allocates an intermediate DOM tree, while JsonFusion works with forward-only iterators and has no hidden allocations beyond your own containers.
 - JsonFusion is narrower but deeper: JSON-only, header-only, no hidden allocations, with schema-attached validation, skipping, streaming, and rich error contexts.
 - JsonFusion offers first-class streaming / forward-iterator parsing and compile-time constraints; reflect-cpp focuses more on "reflect types, then hand them to fast runtime backends."
+- **Metadata syntax**: JsonFusion uses a uniform flat list of type parameters (`A<string, key<"userName">, min_length<1>, max_length<100>>`), while reflect-cpp uses nested composition (`rfl::Rename<"userName", rfl::Validator<string, rfl::Size<rfl::Minimum<1>, rfl::Maximum<100>>>>`). JsonFusion's approach keeps all metadata co-located in a single, composable type list—simpler to read and extending naturally to validators, options, and custom constraints without changing syntax patterns.
 
-In short: JsonFusion trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
+In short: JsonFusion trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
 
 ## Declarative Schema and Runtime Validation
 
