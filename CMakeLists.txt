@@ -41,6 +41,21 @@ set(REFLECTCPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(reflectcpp)
 message(STATUS "reflect-cpp fetched successfully")
+
+# Fetch Glaze
+message(STATUS "Fetching Glaze...")
+FetchContent_Declare(
+  glaze
+  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
+  GIT_TAG        main  # Use main branch for latest
+  GIT_SHALLOW    TRUE
+)
+
+# Configure Glaze (header-only, minimal config)
+set(glaze_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glaze)
+message(STATUS "Glaze fetched successfully")
 # Single include directory containing both JsonFusion/ and pfr/
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
@@ -168,6 +183,8 @@ add_executable(twitter_json_parsing
     benchmarks/twitter_json/twitter_json_parsing_rapidjson.cpp
     benchmarks/twitter_json/reflectcpp_parsing.hpp
     benchmarks/twitter_json/twitter_json_parsing_reflectcpp.cpp
+    benchmarks/twitter_json/glaze_parsing.hpp
+    benchmarks/twitter_json/twitter_json_parsing_glaze.cpp
     benchmarks/twitter_json/benchmark.hpp
     benchmarks/twitter_json/twiiter_json_parsing_yyjson.cpp
     include/yyjson/yyjson.c
@@ -178,8 +195,8 @@ target_include_directories(twitter_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
-# Link reflect-cpp for benchmarking
-target_link_libraries(twitter_json_parsing PRIVATE reflectcpp)
+# Link reflect-cpp and Glaze for benchmarking
+target_link_libraries(twitter_json_parsing PRIVATE reflectcpp glaze::glaze)
 
 target_compile_options(twitter_json_parsing PRIVATE
   $<$<CONFIG:Release>:

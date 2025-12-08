@@ -21,6 +21,7 @@
 #include "twitter_model_generic.hpp"
 #include "rapidjson_populate.hpp"
 #include "reflectcpp_parsing.hpp"
+#include "glaze_parsing.hpp"
 #include "yyjson_parsing.hpp"
 
 void print_diff_region(const std::string& a,
@@ -119,6 +120,7 @@ int main(int argc, char* argv[]) {
         rj_parse_only(iterations, json_data);
         rj_parse_populate(iterations, json_data);
         reflectcpp_parse_populate(iterations, json_data);
+        glaze_parse_populate(iterations, json_data);
         yyjson_parse(iterations, json_data);
         {
             using namespace JsonFusion;
