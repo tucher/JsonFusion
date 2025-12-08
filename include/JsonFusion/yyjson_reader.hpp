@@ -197,23 +197,25 @@ public:
         }
 
         yyjson_val* arr = current_;
-        const std::size_t size = yyjson_arr_size(arr);
 
-        frames_.push_back(Frame{
-            FrameKind::Array,
-            arr,
-            0,          // next element index
-            size
-        });
-        if(size > 0) {
-            current_ = yyjson_arr_get(arr, 0);
+        Frame f{};
+        f.kind  = FrameKind::Array;
+        f.node  = arr;
+        f.size  = yyjson_arr_size(arr);
+        f.index = 0;
+
+        yyjson_arr_iter_init(arr, &f.arr_iter);
+
+        if (f.size > 0) {
+            f.current_elem = yyjson_arr_iter_next(&f.arr_iter); // O(1)
+            current_ = f.current_elem;
+        } else {
+            f.current_elem = nullptr;
+            current_ = arr;
         }
 
-        // At "array begin", Parser is going to:
-        //   - Detect end-of-array via read_array_end() / consume_value_separator()
-        //   - Then for each element call ParseValue(...)
-        // We keep current_ as the array node; the element selection is driven
-        // by consume_value_separator() and read_array_end().
+        frames_.push_back(f);
+
         reset_value_string_state();
         return true;
     }
@@ -308,15 +310,10 @@ public:
         case FrameKind::Array: {
             ++f.index;
             if (f.index < f.size) {
-                // There are still elements left; "comma" logically present.
                 had_comma = true;
-                // Select next element for the next ParseValue() call.
-                yyjson_val* arr = f.node;
-                yyjson_val* elem = yyjson_arr_get(arr, f.index);
-
-                current_ = elem;
+                f.current_elem = yyjson_arr_iter_next(&f.arr_iter); // O(1)
+                current_ = f.current_elem;
             } else {
-                // No more elements → had_comma = false; current_ stays as array.
                 current_ = f.node;
             }
             return true;
@@ -367,8 +364,10 @@ private:
     struct Frame {
         FrameKind   kind;
         yyjson_val* node;          // array or object node (or root)
-        std::size_t index;         // next element / member index
-        std::size_t size;          // total elements / members
+        std::size_t index = 0;
+        std::size_t size  = 0;
+        yyjson_arr_iter arr_iter{};
+        yyjson_val* current_elem = nullptr;
         bool obj_finished = false;
         // For objects only:
         // we cache current key + value for member at (index-1) or index.

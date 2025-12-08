@@ -83,6 +83,8 @@ add_executable(canada_json_parsing
     benchmarks/canada_json/canada_json_parsing.cpp
     benchmarks/canada_json/canada_json_parsing.hpp
     benchmarks/canada_json/canada_json_parsing_rapidjson.cpp
+    include/yyjson/yyjson.c
+
     ${JSON_FUSION}
 
 )
