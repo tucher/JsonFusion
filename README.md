@@ -76,6 +76,7 @@ JsonFusion::Serialize(conf, output);
   - [Supported Options](#supported-options-include)
 - [Limitations](#limitations)
 - [Benchmarks](#benchmarks)
+- [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
 - [Advanced Features](#advanced-features)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
@@ -274,8 +275,6 @@ JsonFusion’s parser is built around a small “reader” concept, so the low-l
 ```cpp
 #include <JsonFusion/yyjson_reader.hpp>
 
-TwitterData model;
-
 yyjson_read_err err{};
 yyjson_doc* doc = yyjson_read_opts(
     const_cast<char*>(copy.data()),
@@ -284,22 +283,33 @@ yyjson_doc* doc = yyjson_read_opts(
     nullptr,
     &err
 );
-if (!doc) {
-    throw std::runtime_error(err.msg);
-}
-
 yyjson_val* root = yyjson_doc_get_root(doc);
+
 JsonFusion::YyjsonReader reader(root);
+
+TwitterData model;
 
 auto res = JsonFusion::ParseWithReader(model, reader);
 yyjson_doc_free(doc);
-if (!res) {
-    throw std::runtime_error("JsonFusion parse error");
-}
 ```
 
-On the twitter.json benchmark (≈0.6 MB), baseline yyjson DOM parsing serves as 100% reference. JsonFusion on top of yyjson, doing full type-safe mapping into a deeply nested C++ model with validation, adds approximately **+280% overhead** for all the structural mapping, optionals, containers, and error tracking. **The same model with reflect-cpp (which also uses yyjson under the hood) adds +440% overhead—making JsonFusion's yyjson backend 40% faster than reflect-cpp despite both using identical underlying JSON parser.** For comparison, parse-only RapidJSON runs at +260% over yyjson baseline. JsonFusion with streaming API on yyjson backend achieves the best performance at only **+215% overhead**, demonstrating that generic, type-driven design can match or exceed hand-tuned alternatives. In other words, you can choose between:
-- the built-in streaming/iterator reader (no external deps, forward-only),
+**Performance on twitter.json (≈0.6 MB, deeply nested objects):**
+
+JsonFusion with yyjson backend delivers full type-safe mapping into a deeply nested C++ model with validation and is:
+- **35% faster than reflect-cpp** (both use yyjson, but JsonFusion's compile-time design is more efficient for this setup)
+- **45% faster than RapidJSON + manual populate** (eliminates hundreds of lines of hand-written mapping)
+- **With streaming API: 45% faster than reflect-cpp, 55% faster than RapidJSON**
+
+*Remarkable: JsonFusion's full parse + populate takes nearly the same time than RapidJSON's DOM-only parse, all thanks to really great performance of yyjson*
+
+**Performance on canada.json (≈2.2 MB, numeric-heavy GeoJSON):**
+
+JsonFusion with yyjson backend for parse-and-populate workloads is:
+- **50% faster than both RapidJSON and JsonFusion's iterator mode** 
+- **With streaming API: 35% faster than hand-written RapidJSON SAX**
+
+The yyjson backend proves that pluggable readers work in practice: same models, same annotations, same validation logic—just swap the low-level engine to match your use case. In other words, you can choose between:
+- the built-in streaming/iterator reader (no external deps, forward-only byte-by-byte),
 - or a yyjson-powered reader for “all JSON in memory” workloads,
 
 without changing your models or annotations—the high-level JsonFusion code stays completely generic in both cases.
@@ -431,90 +441,79 @@ Both libraries perform the same work:
 2. Validate all constraints (type compatibility, ranges, array sizes, string lengths, enum values)
 3. Populate C++ structures with the data
 
-For RapidJSON, this requires hand-written mapping code. For JsonFusion, it's automatic via reflection.
+For RapidJSON, this requires hand-written mapping code and hand-written checks. For JsonFusion, it's automatic via reflection.
 
 📁 **Test models**: [`benchmarks/main.cpp`](benchmarks/main.cpp) – 6 realistic scenarios with nested structs, arrays, maps, optionals, validation constraints  
 
 #### Results
 
-| Benchmark Scenario | JsonFusion | RapidJSON | Speedup |
-|-------------------|------------|-----------|---------|
-| **Embedded Config (Static)** | 1 µs | 1.3 µs | **~30% faster** |
-| **Embedded Config (Dynamic)** | 1.2 µs | 2 µs | **~70% faster** |
-| **Telemetry Samples** | 4.9 µs | 7.8 µs | **~60% faster** |
-| **RPC Commands** | 2.3 µs | 3.9 µs | **~60% faster** |
-| **Log Events** | 3.5 µs | 5 µs | **~50% faster** |
-| **Bus Events / Message Payloads** | 4.9 µs | 7.7 µs | **~60% faster** |
-| **Metrics / Time-Series** | 4.3 µs | 6 µs | **~40% faster** |
+| Benchmark Scenario | JsonFusion vs RapidJSON |
+|-------------------|-------------------------|
+| **Embedded Config (Static)** | **10% slower** |
+| **Embedded Config (Dynamic)** | **22% faster** |
+| **Telemetry Samples** | **13% faster** |
+| **RPC Commands** | **27% faster** |
+| **Log Events** | **9% faster** |
+| **Bus Events / Message Payloads** | **18% faster** |
+| **Metrics / Time-Series** | **10% faster** |
 
-*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario*
+*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static embedded config (optimal).*
 
 #### Key Takeaways
 
-**1. Generic template metaprogramming beats hand-written low-level code**
+**1. Trade-offs with hand-optimized code**
 
-The **Embedded Config (Static)** benchmark is particularly interesting: it uses RapidJSON's SAX parser (the lowest-level, most performance-oriented API) with hand-written state machine and direct struct population—zero DOM allocations, maximum control. Yet JsonFusion's generic reflection-based approach is **~30% faster** while requiring zero mapping code.
+The **Embedded Config (Static)** benchmark uses RapidJSON's SAX parser with a hand-written state machine—the most performance-oriented approach possible. Here, manual optimization wins by **10%**. However, JsonFusion's generic reflection-based approach requires **zero mapping code**, eliminating hundreds of lines of error-prone boilerplate.
 
-This demonstrates that compile-time reflection isn't just convenient—it enables optimizations that are difficult to achieve with manual code.
+For a 10% performance difference on trivial static cases, you get compile-time type safety, declarative validation, and zero maintenance burden. On dynamic containers, JsonFusion is **22% faster** while still requiring zero code.
 
-**2. Consistent performance advantage across all scenarios**
+**2. Wins where it matters**
 
-JsonFusion wins every benchmark by 30-70%, with larger gains on:
-- Complex nested structures (70% on dynamic embedded config)
-- Maps and validation-heavy workloads (60% on telemetry, RPC, bus events)
-- Smaller but still significant gains on simpler structures (40% on metrics)
+JsonFusion is faster than RapidJSON + manual code on realistic workloads:
+- **Dynamic containers**: 22% faster (memory allocation patterns favor single-pass)
+- **Complex nested structures**: 27% faster (RPC commands)
+- **Validation-heavy workloads**: 9-18% faster (telemetry, logs, events)
 
-**3. Static vs dynamic containers**
+**3. Productivity vs peak performance**
 
-Both libraries show performance differences between static (`std::array`) and dynamic (`std::vector`, `std::string`) containers, but JsonFusion maintains its lead in both cases:
-- Static: 1 µs vs 1.4 µs (30% faster)
-- Dynamic: 1.2 µs vs 2 µs (70% faster)
-
-The larger dynamic advantage suggests JsonFusion's single-pass design particularly benefits scenarios with memory allocation.
+JsonFusion trades a small loss on trivial static cases for massive productivity gains:
+- **Zero boilerplate**: No manual DOM traversal, type conversion, or validation code
+- **Single source of truth**: Your C++ types are the schema
+- **Compile-time safety**: Catch errors at compile time, not runtime
+- **Maintainability**: Changes to models automatically update parsing logic
 
 **4. Fair comparison**
 
-The RapidJSON benchmark represents typical usage: parse JSON into DOM, then walk the tree to populate and validate the target C++ structures. For the static embedded case, we use SAX-style parsing with a hand-written state machine to eliminate DOM overhead entirely. Both approaches do the same work as JsonFusion—this is an apples-to-apples comparison of complete parse-validate-populate workflows, not raw parsing speed.
+RapidJSON benchmarks use DOM + manual populate (typical usage) or hand-written SAX state machines (embedded static case). Both do the same work as JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of complete workflows, not raw parsing speed.
 
 **5. Large file performance: canada.json (2.2 MB, 117K+ coordinates)**
 
-The canada.json benchmark tests two distinct workflows on a numeric-heavy GeoJSON file—a pure array/number stress test rather than typical structured configs.
+The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stress test.
 
-**Classic parse-validate-populate** (production use case):
-- **JsonFusion Parse + Populate**: 5350 µs  
-- **RapidJSON DOM Parse + Populate**: 5650 µs (~5% slower)
+**Parse-and-populate** (production use case):
+- JsonFusion and RapidJSON (with manual populate) perform **essentially identically** on this workload
 
-**JsonFusion wins** where it matters—getting validated C++ structs ready to use.
+**Streaming for object counting**:
+- Hand-written RapidJSON SAX serves as baseline
+- JsonFusion typed streaming is ~47% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no manual state machines
+- **JsonFusion with selective skipping**: **34% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip_json<>` in the model
 
-**Streaming API for counting objects** :
-- **RapidJSON SAX** (hand-written state machine): 3400 µs  
-- **JsonFusion Streaming** : 5150 µs (~50% slower)
-
-Here RapidJSON SAX wins—it's essentially the fastest possible approach for this simple, regular data. But consider: JsonFusion's typed streaming handles canada.json's trivial structure **the exact same way** it would handle complex schemas like twitter.json—where writing equivalent SAX code becomes prohibitively complex. JsonFusion trades ~2ms on this worst-case scenario for a **fully generic, type-safe, composable API** with zero manual state machines. No CPU hacks, just portable forward-only iterator code.
-But next
-- **JsonFusion Streaming without materializing floats** : 3400 µs (same speed as handwritten SAX RapidJSON) Tokenize and validate JSON correctness, but don't parse. Not needed for counting objects, still basic correctness is validated
-- **JsonFusion Streaming with skipping each of 2 float numbers inside points** : 1800 µs (**190% faster than handwritten SAX RapidJSON**) Just don't parse, if don't need the value.
-
-
+The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema, JsonFusion's declarative skipping works uniformly across any model.
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
 **6. Structured data performance: twitter.json (0.6 MB, 100 status objects)**
 
-The twitter.json benchmark tests realistic structured data with deeply nested objects, optional fields, and mixed types—representative of real-world REST API responses and configurations.
+The twitter.json benchmark tests realistic deeply nested objects with optionals and mixed types—representative of real-world REST API responses.
 
-**Results (same hardware):**
-- **RapidJSON DOM Parse only**: 780 µs (baseline, but unusable—no typed data)
-- **JsonFusion Parse + Populate**: 1060 µs (**35% overhead over DOM-only**, fully typed)
-- **RapidJSON Parse + Manual Populate**: 1470 µs (40% slower than JsonFusion)
+**Results:**
+- JsonFusion parse + populate has **96% overhead over RapidJSON DOM-only parse** (DOM-only gives you an unusable tree; JsonFusion gives validated, typed C++ structs)
+- JsonFusion is **essentially identical in speed** to RapidJSON + manual populate (within 1%), while requiring **zero boilerplate**
 
-**Key insight**: JsonFusion is **~38% faster** than the "traditional" approach (RapidJSON DOM + manual mapping), while requiring **zero boilerplate**.
-
-The manual RapidJSON populate code ([`rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp)) is **450+ lines** of hand-written DOM traversal and type mapping—exactly the kind of tedious, error-prone code JsonFusion eliminates. 
+The manual RapidJSON populate code ([`rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp)) is **450+ lines** of hand-written DOM traversal—exactly the tedious, error-prone code JsonFusion eliminates.
 
 📁 **Twitter.json benchmark**: [`benchmarks/twitter_json_parsing.cpp`](benchmarks/twitter_json_parsing.cpp)  
-📁 **Data model**: [`benchmarks/twitter_model.hpp`](benchmarks/twitter_model.hpp)
-📁 **Manual populate code**: [`benchmarks/rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp) 
+📁 **Data model**: [`benchmarks/twitter_model_generic.hpp`](benchmarks/twitter_model_generic.hpp) 
 
 ## Advanced Features
 
