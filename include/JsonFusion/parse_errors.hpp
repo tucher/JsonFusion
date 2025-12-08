@@ -87,7 +87,8 @@ enum class SchemaError  {
     wrong_constant_value             ,
     map_key_not_allowed              ,
     map_key_forbidden                ,
-    map_missing_required_key
+    map_missing_required_key         ,
+    user_defined_fn_validator_error
 };
 
 constexpr std::string_view validator_error_to_string(SchemaError e) {
@@ -103,6 +104,8 @@ constexpr std::string_view validator_error_to_string(SchemaError e) {
     case SchemaError::map_key_not_allowed              : return "map_key_not_allowed"; break;
     case SchemaError::map_key_forbidden                : return "map_key_forbidden"; break;
     case SchemaError::map_missing_required_key         : return "map_missing_required_key"; break;
+    case SchemaError::user_defined_fn_validator_error  : return "user_defined_fn_validator_error"; break;
+
     }
     return "N/A";
 }

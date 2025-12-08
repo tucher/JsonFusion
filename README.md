@@ -363,6 +363,30 @@ JsonFusion provides validators (runtime constraints) and options (metadata/behav
 
 See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md)
 
+### Custom Validators
+
+JsonFusion's validator system is **event-driven**. Built-in validators like `range<>`, `min_length<>` are attached to specific parsing events (e.g., `number_parsing_finished`, `string_parsing_finished`). You can extend this system by binding **stateless lambdas or free functions** to validation events using `fn_validator<Event, Callable>`.
+
+Different events have different argument signatures matching the parsed data and parsing context at that stage.
+
+**Example: Divisibility validator**
+
+```cpp
+using JsonFusion::validators_detail::parsing_events_tags::number_parsing_finished;
+
+struct Config {
+    // Only accept numbers divisible by 10
+    A<int, fn_validator<number_parsing_finished, [](const int& v) { 
+        return v % 10 == 0; 
+    }>> port;
+};
+
+Parse(config, R"({"port": 8080})");  // ✅ Passes: 8080 % 10 == 0
+Parse(config, R"({"port": 8081})");  // ❌ Fails: validation error
+```
+
+📁 **See also:** [Annotations Reference - Custom Validators](docs/ANNOTATIONS_REFERENCE.md#generic-custom-validators) for complete event list and signatures.
+
 
 ## Optional high-performance yyjson backend
 

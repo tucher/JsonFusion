@@ -50,8 +50,8 @@ std::string& trim(std::string& s, const char* t = ws)
 
 }
 
-template <class C, class InpIter, class DataIter, std::size_t MaxSchemaDepth, bool HasMaps>
-std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMaps> & res, DataIter inp, const DataIter end, std::size_t window = 40) {
+template <class C, class InpIter, std::size_t MaxSchemaDepth, bool HasMaps, class DataIter = char*>
+std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMaps> & res, DataIter inp = {}, const DataIter end = {}, std::size_t window = 40) {
     std::string jsonPath = "$";
     const auto & jp = res.errorJsonPath();
     for(int i = 0; i < jp.currentLength; i ++) {
@@ -63,19 +63,21 @@ std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMa
     }
     std::string fragment;
     if constexpr(std::is_convertible_v<InpIter, const char*>) {
-        int pos = res.pos() - inp;
-        std::string before(
-            inp + (pos+1 >= window ? pos+1-window:0),
-            inp + (pos+1 >= window ? pos+1-window:0) + (pos+1 >= window ? window:0)
-        );
-        std::size_t tot = end - inp;
-        std::string after(
-            inp + (pos+1 < tot ? pos + 1: tot),
-            inp + (pos+1 + window < tot ? pos+1 + window: tot)
-        );
-        error_formatting_detail::trim(before);
-        error_formatting_detail::trim(after);
-        fragment = std::format(": '...{}😖{}...'", before, after);
+        if(inp != DataIter{} && end != DataIter{}) {
+            int pos = res.pos() - inp;
+            std::string before(
+                inp + (pos+1 >= window ? pos+1-window:0),
+                inp + (pos+1 >= window ? pos+1-window:0) + (pos+1 >= window ? window:0)
+            );
+            std::size_t tot = end - inp;
+            std::string after(
+                inp + (pos+1 < tot ? pos + 1: tot),
+                inp + (pos+1 + window < tot ? pos+1 + window: tot)
+            );
+            error_formatting_detail::trim(before);
+            error_formatting_detail::trim(after);
+            fragment = std::format(": '...{}😖{}...'", before, after);
+        }
     }
     if(res.error() != ParseError::SCHEMA_VALIDATION_ERROR) {
         return std::format("When parsing {}, parsing error '{}'{}", jsonPath, error_to_string(res.error()), fragment);

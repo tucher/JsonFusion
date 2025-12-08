@@ -682,6 +682,72 @@ struct forbidden_keys {
 
 };
 
+namespace detail {
+template<class T>
+struct always_false : std::false_type {};
+}
+
+template<class PhaseTag, auto Fn>
+struct fn_validator {
+    template<class Tag, std::size_t Index, class Storage, class... PhaseArgs>
+    static constexpr bool validate(
+        const Storage& val,
+        validators_detail::ValidationCtx& ctx,
+        const PhaseArgs&... args
+        )
+    {
+        // Only run on the phase we care about.
+        if constexpr (!std::is_same_v<Tag, PhaseTag>) {
+            (void)val; (void)ctx; (void)sizeof...(PhaseArgs);
+            return true;
+        } else {
+            // 1) Full signature: (val, ctx, phase args...)
+            if constexpr (std::is_invocable_r_v<bool,
+                                                decltype(Fn),
+                                                const Storage&,
+                                                validators_detail::ValidationCtx&,
+                                                const PhaseArgs&...>) {
+                return std::invoke(Fn, val, ctx, args...);
+
+                // 2) Without ValidationCtx (user doesn’t care about it)
+            } else if constexpr (std::is_invocable_r_v<bool,
+                                                       decltype(Fn),
+                                                       const Storage&,
+                                                       const PhaseArgs&...>) {
+                const bool ok = std::invoke(Fn, val, args...);
+                // If they didn’t set an error but returned false,
+                // you can optionally set a generic error here:
+                if (!ok && ctx.m_error == SchemaError::none) {
+                    ctx.setError(SchemaError::user_defined_fn_validator_error, Index);
+                }
+                return ok;
+
+                // 3) With Index as a constexpr value wrapper if needed:
+            } else if constexpr (std::is_invocable_r_v<bool,
+                                                       decltype(Fn),
+                                                       std::integral_constant<std::size_t, Index>,
+                                                       const Storage&,
+                                                       validators_detail::ValidationCtx&,
+                                                       const PhaseArgs&...>) {
+                return std::invoke(Fn,
+                                   std::integral_constant<std::size_t, Index>{},
+                                   val,
+                                   ctx,
+                                   args...);
+            } else {
+                static_assert(
+                    detail::always_false<decltype(Fn)>::value,
+                    "[[ JsonFusion ]] fn_validator: callable has unsupported signature"
+                    );
+            }
+        }
+    }
+
+    static constexpr std::string_view to_string() {
+        return "fn_validator";
+    }
+};
+
 } //namespace validators
 
 
