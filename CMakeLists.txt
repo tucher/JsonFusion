@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.11+, using 3.14 for better support
 
-project(JsonFusion VERSION 0.1.0 LANGUAGES CXX)
+project(JsonFusion VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -68,6 +68,8 @@ file(GLOB JSON_FUSION
 
 add_executable(consteval_tests
     tests/consteval_tests.cpp
+    include/yyjson/yyjson.c
+
     ${JSON_FUSION}
 
 )
@@ -165,6 +167,8 @@ add_executable(twitter_json_parsing
     benchmarks/twitter_json/reflectcpp_parsing.hpp
     benchmarks/twitter_json/twitter_json_parsing_reflectcpp.cpp
     benchmarks/twitter_json/benchmark.hpp
+    benchmarks/twitter_json/twiiter_json_parsing_yyjson.cpp
+    include/yyjson/yyjson.c
     ${JSON_FUSION}
 
 )

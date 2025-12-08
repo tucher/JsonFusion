@@ -5,24 +5,27 @@
 #include <optional>
 #include <memory>
 
-using std::optional, std::vector, std::string, std::unique_ptr;
+using std::optional, std::string, std::unique_ptr;
 
 // Generic Twitter model that works with both JsonFusion and reflect-cpp
 // Template parameter ProtectedFieldType allows using different wrapper types:
 // - For JsonFusion: A<optional<bool>, key<"protected">>
 // - For reflect-cpp: rfl::Rename<"protected", std::optional<bool>>
 
+template< template<typename>class Vector = std::vector>
 struct Urls_item {
     string url;
     string expanded_url;
     string display_url;
-    vector<double> indices;
+    Vector<double> indices;
 };
+
+template< template<typename>class Vector = std::vector>
 
 struct Entities {
     struct Hashtags_item {
         string text;
-        vector<double> indices;
+        Vector<double> indices;
     };
 
     struct User_mentions_item {
@@ -30,7 +33,7 @@ struct Entities {
         string name;
         double id;
         string id_str;
-        vector<double> indices;
+        Vector<double> indices;
     };
     
     struct Media_item {
@@ -64,7 +67,7 @@ struct Entities {
 
         double id;
         string id_str;
-        vector<double> indices;
+        Vector<double> indices;
         string media_url;
         string media_url_https;
         string url;
@@ -76,26 +79,27 @@ struct Entities {
         string source_status_id_str;
     };
 
-    optional<vector<Hashtags_item>> hashtags;
-    optional<vector<string>> symbols;
-    optional<vector<Urls_item>> urls;
-    optional<vector<User_mentions_item>> user_mentions;
-    optional<vector<Media_item>> media;
+    optional<Vector<Hashtags_item>> hashtags;
+    optional<Vector<string>> symbols;
+    optional<Vector<Urls_item<Vector>>> urls;
+    optional<Vector<User_mentions_item>> user_mentions;
+    optional<Vector<Media_item>> media;
 };
 
+template< template<typename>class Vector = std::vector>
 struct UserEntities {
     struct Description {
-        optional<vector<Urls_item>> urls;
+        optional<Vector<Urls_item<Vector>>> urls;
     };
     struct Url {
-        optional<vector<Urls_item>> urls;
+        optional<Vector<Urls_item<Vector>>> urls;
     };
 
     optional<Description> description;
     optional<Url> url;
 };
 
-template<typename ProtectedFieldType>
+template<typename ProtectedFieldType, template<typename>class Vector = std::vector>
 struct User_T {
     optional<double> id;
     optional<string> id_str;
@@ -104,7 +108,7 @@ struct User_T {
     optional<string> location;
     optional<string> description;
     optional<string> url;
-    unique_ptr<UserEntities> entities;
+    unique_ptr<UserEntities<Vector>> entities;
     
     // Parameterized field wrapper for "protected" -> "protected_"
     ProtectedFieldType protected_;
@@ -147,7 +151,7 @@ struct Metadata {
     optional<string> iso_language_code;
 };
 
-template<typename ProtectedFieldType>
+template<typename ProtectedFieldType, template<typename>class Vector = std::vector>
 struct TwitterData_T {
     struct Statuses_item { 
         struct Retweeted_status {
@@ -163,14 +167,14 @@ struct TwitterData_T {
             optional<double> in_reply_to_user_id;
             optional<string> in_reply_to_user_id_str;
             optional<string> in_reply_to_screen_name;
-            unique_ptr<User_T<ProtectedFieldType>> user;
+            unique_ptr<User_T<ProtectedFieldType, Vector>> user;
             optional<bool> geo;
             optional<bool> coordinates;
             optional<bool> place;
             optional<bool> contributors;
             optional<double> retweet_count;
             optional<double> favorite_count;
-            unique_ptr<Entities> entities;
+            unique_ptr<Entities<Vector>> entities;
             optional<bool> favorited;
             optional<bool> retweeted;
             optional<bool> possibly_sensitive;
@@ -189,7 +193,7 @@ struct TwitterData_T {
         optional<double> in_reply_to_user_id;
         optional<string> in_reply_to_user_id_str;
         optional<string> in_reply_to_screen_name;
-        User_T<ProtectedFieldType> user;
+        User_T<ProtectedFieldType, Vector> user;
         optional<bool> geo;
         optional<bool> coordinates;
         optional<bool> place;
@@ -197,7 +201,7 @@ struct TwitterData_T {
 
         double retweet_count;
         double favorite_count;
-        Entities entities;
+        Entities<Vector> entities;
         bool favorited;
         bool retweeted;
         string lang;
@@ -217,7 +221,7 @@ struct TwitterData_T {
         optional<string> since_id_str;
     };
 
-    optional<vector<Statuses_item>> statuses;
+    optional<Vector<Statuses_item>> statuses;
     optional<Search_metadata> search_metadata;
 };
 

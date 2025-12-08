@@ -9,7 +9,7 @@
 namespace JsonFusion {
 
 
-template <CharInputIterator InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
+template <class InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
 class ParseResult {
     ParseError m_error = ParseError::NO_ERROR;
     InpIter m_pos;
@@ -19,6 +19,7 @@ class ParseResult {
     json_path::JsonPath<SchemaDepth, SchemaHasMaps> currentPath;
 
 public:
+    using iterator_type = InpIter;
     constexpr ParseResult(ParseError err, ValidationResult schemaErrors, InpIter pos, json_path::JsonPath<SchemaDepth, SchemaHasMaps> jsonP):
         m_error(err), m_pos(pos), validationResult(schemaErrors), currentPath(jsonP)
     {}

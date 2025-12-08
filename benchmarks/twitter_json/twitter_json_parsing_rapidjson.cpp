@@ -20,7 +20,7 @@ using User = User_T<std::optional<bool>>;
 using TwitterData = TwitterData_T<std::optional<bool>>;
 
 
-
+using std::vector;
 
 namespace RapidJSONPopulate {
 
@@ -41,7 +41,7 @@ inline string get_string(const Value& v) { return string(v.GetString(), v.GetStr
 inline bool get_bool(const Value& v) { return v.GetBool(); }
 
 // Populate Urls_item
-inline void populate_urls_item(Urls_item& item, const Value& json) {
+inline void populate_urls_item(Urls_item<>& item, const Value& json) {
     if (json.HasMember("url") && json["url"].IsString()) {
         item.url = get_string(json["url"]);
     }
@@ -67,7 +67,7 @@ inline void populate_metadata(Metadata& metadata, const Value& json) {
 }
 
 // Populate Entities::Hashtags_item
-inline void populate_hashtag(Entities::Hashtags_item& hashtag, const Value& json) {
+inline void populate_hashtag(Entities<>::Hashtags_item& hashtag, const Value& json) {
     if (json.HasMember("text") && json["text"].IsString()) {
         hashtag.text = get_string(json["text"]);
     }
@@ -81,7 +81,7 @@ inline void populate_hashtag(Entities::Hashtags_item& hashtag, const Value& json
 }
 
 // Populate Entities::User_mentions_item
-inline void populate_user_mention(Entities::User_mentions_item& mention, const Value& json) {
+inline void populate_user_mention(Entities<>::User_mentions_item& mention, const Value& json) {
     if (json.HasMember("screen_name") && json["screen_name"].IsString()) {
         mention.screen_name = get_string(json["screen_name"]);
     }
@@ -110,31 +110,31 @@ inline void populate_media_size(optional<double>& w, optional<double>& h, option
     resize = get_optional<string>(json, "resize", get_string);
 }
 
-inline void populate_media_sizes(Entities::Media_item::Sizes& sizes, const Value& json) {
+inline void populate_media_sizes(Entities<>::Media_item::Sizes& sizes, const Value& json) {
     if (json.HasMember("medium") && json["medium"].IsObject()) {
-        Entities::Media_item::Sizes::Medium medium;
+        Entities<>::Media_item::Sizes::Medium medium;
         populate_media_size(medium.w, medium.h, medium.resize, json["medium"]);
         sizes.medium = std::move(medium);
     }
     if (json.HasMember("small") && json["small"].IsObject()) {
-        Entities::Media_item::Sizes::Small small;
+        Entities<>::Media_item::Sizes::Small small;
         populate_media_size(small.w, small.h, small.resize, json["small"]);
         sizes.small = std::move(small);
     }
     if (json.HasMember("thumb") && json["thumb"].IsObject()) {
-        Entities::Media_item::Sizes::Thumb thumb;
+        Entities<>::Media_item::Sizes::Thumb thumb;
         populate_media_size(thumb.w, thumb.h, thumb.resize, json["thumb"]);
         sizes.thumb = std::move(thumb);
     }
     if (json.HasMember("large") && json["large"].IsObject()) {
-        Entities::Media_item::Sizes::Large large;
+        Entities<>::Media_item::Sizes::Large large;
         populate_media_size(large.w, large.h, large.resize, json["large"]);
         sizes.large = std::move(large);
     }
 }
 
 // Populate Entities::Media_item
-inline void populate_media_item(Entities::Media_item& media, const Value& json) {
+inline void populate_media_item(Entities<>::Media_item& media, const Value& json) {
     if (json.HasMember("id") && json["id"].IsNumber()) {
         media.id = json["id"].GetDouble();
     }
@@ -178,11 +178,11 @@ inline void populate_media_item(Entities::Media_item& media, const Value& json) 
 }
 
 // Populate Entities
-inline void populate_entities(Entities& entities, const Value& json) {
+inline void populate_entities(Entities<>& entities, const Value& json) {
     if (json.HasMember("hashtags") && json["hashtags"].IsArray()) {
-        vector<Entities::Hashtags_item> hashtags;
+        vector<Entities<>::Hashtags_item> hashtags;
         for (auto& hashtag_json : json["hashtags"].GetArray()) {
-            Entities::Hashtags_item item;
+            Entities<>::Hashtags_item item;
             populate_hashtag(item, hashtag_json);
             hashtags.push_back(std::move(item));
         }
@@ -200,7 +200,7 @@ inline void populate_entities(Entities& entities, const Value& json) {
     }
 
     if (json.HasMember("urls") && json["urls"].IsArray()) {
-        vector<Urls_item> urls;
+        vector<Urls_item<>> urls;
         for (auto& url_json : json["urls"].GetArray()) {
             Urls_item item;
             populate_urls_item(item, url_json);
@@ -210,9 +210,9 @@ inline void populate_entities(Entities& entities, const Value& json) {
     }
 
     if (json.HasMember("user_mentions") && json["user_mentions"].IsArray()) {
-        vector<Entities::User_mentions_item> mentions;
+        vector<Entities<>::User_mentions_item> mentions;
         for (auto& mention_json : json["user_mentions"].GetArray()) {
-            Entities::User_mentions_item item;
+            Entities<>::User_mentions_item item;
             populate_user_mention(item, mention_json);
             mentions.push_back(std::move(item));
         }
@@ -220,9 +220,9 @@ inline void populate_entities(Entities& entities, const Value& json) {
     }
 
     if (json.HasMember("media") && json["media"].IsArray()) {
-        vector<Entities::Media_item> media;
+        vector<Entities<>::Media_item> media;
         for (auto& media_json : json["media"].GetArray()) {
-            Entities::Media_item item;
+            Entities<>::Media_item item;
             populate_media_item(item, media_json);
             media.push_back(std::move(item));
         }
@@ -231,13 +231,13 @@ inline void populate_entities(Entities& entities, const Value& json) {
 }
 
 // Populate UserEntities
-inline void populate_user_entities(UserEntities& entities, const Value& json) {
+inline void populate_user_entities(UserEntities<>& entities, const Value& json) {
     if (json.HasMember("description") && json["description"].IsObject()) {
-        UserEntities::Description desc;
+        UserEntities<>::Description desc;
         if (json["description"].HasMember("urls") && json["description"]["urls"].IsArray()) {
-            vector<Urls_item> urls;
+            vector<Urls_item<>> urls;
             for (auto& url_json : json["description"]["urls"].GetArray()) {
-                Urls_item item;
+                Urls_item<> item;
                 populate_urls_item(item, url_json);
                 urls.push_back(std::move(item));
             }
@@ -247,9 +247,9 @@ inline void populate_user_entities(UserEntities& entities, const Value& json) {
     }
 
     if (json.HasMember("url") && json["url"].IsObject()) {
-        UserEntities::Url url;
+        UserEntities<>::Url url;
         if (json["url"].HasMember("urls") && json["url"]["urls"].IsArray()) {
-            vector<Urls_item> urls;
+            vector<Urls_item<>> urls;
             for (auto& url_json : json["url"]["urls"].GetArray()) {
                 Urls_item item;
                 populate_urls_item(item, url_json);
@@ -273,7 +273,7 @@ inline void populate_user(User& user, const Value& json) {
     user.url = get_optional<string>(json, "url", get_string);
 
     if (json.HasMember("entities") && json["entities"].IsObject()) {
-        user.entities = std::make_unique<UserEntities>();
+        user.entities = std::make_unique<UserEntities<>>();
         populate_user_entities(*user.entities, json["entities"]);
     }
 
@@ -345,7 +345,7 @@ inline void populate_retweeted_status(TwitterData::Statuses_item::Retweeted_stat
     status.favorite_count = get_optional<double>(json, "favorite_count", get_double);
 
     if (json.HasMember("entities") && json["entities"].IsObject()) {
-        status.entities = std::make_unique<Entities>();
+        status.entities = std::make_unique<Entities<>>();
         populate_entities(*status.entities, json["entities"]);
     }
 

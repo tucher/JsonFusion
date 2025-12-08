@@ -267,6 +267,43 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 
 In short: JsonFusion trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
 
+
+## Optional high-performance yyjson backend
+JsonFusion’s parser is built around a small “reader” concept, so the low-level JSON engine is pluggable. In addition to the default iterator-based reader, you can drop in a YyjsonReader that adapts a yyjson_doc DOM to the same interface and reuse the exact same templates, annotations, and validation logic:
+
+```cpp
+#include <JsonFusion/yyjson_reader.hpp>
+
+TwitterData model;
+
+yyjson_read_err err{};
+yyjson_doc* doc = yyjson_read_opts(
+    const_cast<char*>(copy.data()),
+    copy.size(),
+    0,
+    nullptr,
+    &err
+);
+if (!doc) {
+    throw std::runtime_error(err.msg);
+}
+
+yyjson_val* root = yyjson_doc_get_root(doc);
+JsonFusion::YyjsonReader reader(root);
+
+auto res = JsonFusion::ParseWithReader(model, reader);
+yyjson_doc_free(doc);
+if (!res) {
+    throw std::runtime_error("JsonFusion parse error");
+}
+```
+
+On the twitter.json benchmark (≈0.6 MB), baseline yyjson DOM parsing serves as 100% reference. JsonFusion on top of yyjson, doing full type-safe mapping into a deeply nested C++ model with validation, adds approximately **+280% overhead** for all the structural mapping, optionals, containers, and error tracking. **The same model with reflect-cpp (which also uses yyjson under the hood) adds +440% overhead—making JsonFusion's yyjson backend 40% faster than reflect-cpp despite both using identical underlying JSON parser.** For comparison, parse-only RapidJSON runs at +260% over yyjson baseline. JsonFusion with streaming API on yyjson backend achieves the best performance at only **+215% overhead**, demonstrating that generic, type-driven design can match or exceed hand-tuned alternatives. In other words, you can choose between:
+- the built-in streaming/iterator reader (no external deps, forward-only),
+- or a yyjson-powered reader for “all JSON in memory” workloads,
+
+without changing your models or annotations—the high-level JsonFusion code stays completely generic in both cases.
+
 ## Declarative Schema and Runtime Validation
 
 Declarative compile-time schema and options, runtime validation in the same parsing single pass.

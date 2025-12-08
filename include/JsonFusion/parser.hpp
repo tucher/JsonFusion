@@ -34,7 +34,7 @@ constexpr bool allowed_dynamic_error_stack() {
 namespace  parser_details {
 
 
-template <CharInputIterator InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
+template <class InpIter, std::size_t SchemaDepth, bool SchemaHasMaps>
 class DeserializationContext {
 
     ParseError error = ParseError::NO_ERROR;
@@ -86,13 +86,13 @@ public:
 };
 
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
 constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if (tokenizer::TryParseStatus st = reader.read_bool(obj); st == tokenizer::TryParseStatus::error) {
+    if (json_reader::TryParseStatus st = reader.read_bool(obj); st == json_reader::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
         return false;
-    } else if (st == tokenizer::TryParseStatus::no_match) {
+    } else if (st == json_reader::TryParseStatus::no_match) {
         ctx.setError(ParseError::NON_BOOL_JSON_IN_BOOL_VALUE, reader.current());
         return false;
     }
@@ -109,14 +109,14 @@ constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserC
 
 // Strategy: custom integer parsing (no deps), delegated float parsing (configurable)
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if (tokenizer::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
-                st == tokenizer::TryParseStatus::error) {
+    if (json_reader::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
+                st == json_reader::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
         return false;
-    }else if (st == tokenizer::TryParseStatus::no_match) {
+    }else if (st == json_reader::TryParseStatus::no_match) {
         ctx.setError(ParseError::FLOAT_VALUE_IN_INTEGER_STORAGE, reader.current());
         return false;
     }
@@ -162,20 +162,20 @@ constexpr bool read_json_string_into(
                 char scratch[STRING_CHUNK_SIZE];
 
                 for (;;) {
-                    JsonFusion::tokenizer::StringChunkResult rest =
+                    JsonFusion::json_reader::StringChunkResult rest =
                         reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
 
                     switch (rest.status) {
-                    case JsonFusion::tokenizer::StringChunkStatus::no_match:
+                    case JsonFusion::json_reader::StringChunkStatus::no_match:
                         // Shouldn't happen mid-string, but treat as ill-formed.
                         err = JsonFusion::ParseError::ILLFORMED_STRING;
                         return false;
 
-                    case JsonFusion::tokenizer::StringChunkStatus::error:
+                    case JsonFusion::json_reader::StringChunkStatus::error:
                         err = reader.getError();
                         return false;
 
-                    case JsonFusion::tokenizer::StringChunkStatus::ok:
+                    case JsonFusion::json_reader::StringChunkStatus::ok:
                         break;
                     }
 
@@ -210,7 +210,7 @@ constexpr bool read_json_string_into(
         const std::size_t ask =
             remaining < STRING_CHUNK_SIZE ? remaining : STRING_CHUNK_SIZE;
 
-        JsonFusion::tokenizer::StringChunkResult res;
+        JsonFusion::json_reader::StringChunkResult res;
 
         if constexpr (!JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
             res = reader.read_string_chunk(out + total, ask);
@@ -221,12 +221,12 @@ constexpr bool read_json_string_into(
             res = reader.read_string_chunk(buf, ask);
 
             switch (res.status) {
-            case JsonFusion::tokenizer::StringChunkStatus::ok:
+            case JsonFusion::json_reader::StringChunkStatus::ok:
                 break;
-            case JsonFusion::tokenizer::StringChunkStatus::no_match:
+            case JsonFusion::json_reader::StringChunkStatus::no_match:
                 err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
                 return false;
-            case JsonFusion::tokenizer::StringChunkStatus::error:
+            case JsonFusion::json_reader::StringChunkStatus::error:
                 err = reader.getError();
                 return false;
             }
@@ -259,17 +259,17 @@ constexpr bool read_json_string_into(
         }
 
         switch (res.status) {
-        case JsonFusion::tokenizer::StringChunkStatus::no_match:
+        case JsonFusion::json_reader::StringChunkStatus::no_match:
             // We expected a string here and didn't get one.
             err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
             return false;
 
-        case JsonFusion::tokenizer::StringChunkStatus::error:
+        case JsonFusion::json_reader::StringChunkStatus::error:
             // Reader already set a specific error.
             err = reader.getError();
             return false;
 
-        case JsonFusion::tokenizer::StringChunkStatus::ok:
+        case JsonFusion::json_reader::StringChunkStatus::ok:
             break;
         }
 
@@ -307,7 +307,7 @@ constexpr bool read_json_string_into(
     return false;
 }
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
@@ -352,7 +352,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     return true;
 }
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableArray<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
@@ -382,11 +382,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {
-        if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_array_end(); st == json_reader::TryParseStatus::error) {
             cursor.finalize(false);
             ctx.setError(reader.getError(), reader.current());
             return false;
-        } else if(st == tokenizer::TryParseStatus::no_match) {
+        } else if(st == json_reader::TryParseStatus::no_match) {
             if(parsed_items_count > 0 && !has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
                 cursor.finalize(false);
@@ -457,7 +457,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     return false;
 }
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonParsableMap<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
@@ -487,11 +487,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
-        if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_object_end(); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
-        } else if(st == tokenizer::TryParseStatus::no_match) {
+        } else if(st == json_reader::TryParseStatus::no_match) {
             if(parsed_entries_count > 0 && !has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 cursor.finalize(false);
@@ -706,7 +706,7 @@ template<class StructT, std::size_t StructIndex>
 using StructFieldMeta = options::detail::annotation_meta_getter<
     introspection::structureElementTypeByIndex<StructIndex, StructT>
 >;
-template <class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
+template <class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
     bool ok = false;
@@ -729,7 +729,7 @@ constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, s
     return ok;
 }
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using FH = FieldsHelper<ObjT>;
@@ -746,10 +746,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
-        if(tokenizer::TryParseStatus st = reader.read_object_end(); st == tokenizer::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_object_end(); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             return false;
-        } else if(st == tokenizer::TryParseStatus::no_match) {
+        } else if(st == json_reader::TryParseStatus::no_match) {
             if(!isFirst && !has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
@@ -856,7 +856,7 @@ constexpr bool IsFieldSkipped(std::index_sequence<StructIndex...>, std::size_t i
 
 
 
-template <class Opts, class ObjT, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
@@ -874,10 +874,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {
-        if(tokenizer::TryParseStatus st = reader.read_array_end(); st == tokenizer::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_array_end(); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             return false;
-        } else if(st == tokenizer::TryParseStatus::no_match) {
+        } else if(st == json_reader::TryParseStatus::no_match) {
             if(parsed_items_count > 0 && !has_trailing_comma) {
                 ctx.setError(ParseError::ILLFORMED_ARRAY, reader.current());
                 return false;
@@ -929,7 +929,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     return false;
 }
 
-template <class FieldOptions, static_schema::JsonParsableValue Field, tokenizer::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::JsonParsableValue Field, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
 constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
@@ -952,7 +952,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
             return true;
         }
     } else {
-        if(tokenizer::TryParseStatus r = reader.skip_ws_and_read_null(); r == tokenizer::TryParseStatus::ok) {
+        if(json_reader::TryParseStatus r = reader.skip_ws_and_read_null(); r == json_reader::TryParseStatus::ok) {
             if constexpr(static_schema::JsonNullableParsableValue<Field>) {
                 static_schema::setNull(field);
                 return true;
@@ -960,7 +960,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
                 ctx.setError(ParseError::NULL_IN_NON_OPTIONAL, reader.current());
                 return false;
             }
-        } else if(r == tokenizer::TryParseStatus::error) {
+        } else if(r == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else {
@@ -972,7 +972,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
 } // namespace parser_details
 
 
-template <static_schema::JsonParsableValue InputObjectT, class UserCtx = void, class Reader>
+template <static_schema::JsonParsableValue InputObjectT, class UserCtx = void, json_reader::ReaderLike Reader>
 constexpr auto ParseWithReader(InputObjectT & obj, Reader & reader, UserCtx * userCtx = nullptr) {
     using Tr = ModelParsingTraits<InputObjectT>;
     using CtxT = parser_details::DeserializationContext<typename Reader::iterator_type, Tr::SchemaDepth, Tr::SchemaHasMaps>;

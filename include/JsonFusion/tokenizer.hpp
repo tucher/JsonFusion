@@ -25,37 +25,36 @@ template<class It, class Sent>
 class JsonIteratorReader {
 public:
     using iterator_type = It;
-    using sentinel_type = Sent;
 
     constexpr JsonIteratorReader(It & first, const Sent & last)
         : current_(first), end_(last), m_error(ParseError::NO_ERROR) {}
 
 
 
-    constexpr  TryParseStatus skip_ws_and_read_null() {
+    constexpr  json_reader::TryParseStatus skip_ws_and_read_null() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
 
         if (*current_ != 'n') {
-            return TryParseStatus::no_match;
+            return json_reader::TryParseStatus::no_match;
         }
         current_ ++;
         if (!match_literal("ull")) {
             setError(ParseError::ILLFORMED_NULL, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
-        return TryParseStatus::ok;
+        return json_reader::TryParseStatus::ok;
     }
 
-    constexpr  TryParseStatus read_bool(bool & b) {
+    constexpr  json_reader::TryParseStatus read_bool(bool & b) {
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         switch(*current_) {
         case 't': {
@@ -63,25 +62,25 @@ public:
             if (match_literal("rue"))  {
                 if(isPlainEnd(*current_) || atEnd()){
                     b = true;
-                    return TryParseStatus::ok;
+                    return json_reader::TryParseStatus::ok;
                 }
             }
             setError(ParseError::ILLFORMED_BOOL, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         case 'f': {
             current_ ++;
             if (match_literal("alse"))  {
                 if (isPlainEnd(*current_) || atEnd()){
                     b = false;
-                    return TryParseStatus::ok;
+                    return json_reader::TryParseStatus::ok;
                 }
             }
             setError(ParseError::ILLFORMED_BOOL, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         default:
-            return TryParseStatus::no_match;
+            return json_reader::TryParseStatus::no_match;
         }
     }
     constexpr  bool skip_whitespaces_till_the_end() {
@@ -115,25 +114,25 @@ public:
     }
 
     // Try-peek style helpers
-    constexpr  TryParseStatus read_array_end() {
+    constexpr  json_reader::TryParseStatus read_array_end() {
         if(!skip_whitespace()) {
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         if(*current_ == ']') {
             current_ ++;
-            return TryParseStatus::ok;
+            return json_reader::TryParseStatus::ok;
         }
-        return TryParseStatus::no_match;
+        return json_reader::TryParseStatus::no_match;
     }
-    constexpr  TryParseStatus read_object_end() {
+    constexpr  json_reader::TryParseStatus read_object_end() {
         if(!skip_whitespace()) {
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         if(*current_ == '}') {
             current_ ++;
-            return TryParseStatus::ok;
+            return json_reader::TryParseStatus::ok;
         }
-        return TryParseStatus::no_match;
+        return json_reader::TryParseStatus::no_match;
     }
 
     // Comma handling
@@ -175,7 +174,7 @@ public:
 
 
     template<class NumberT, bool skipMaterializing>
-    constexpr  TryParseStatus read_number(NumberT & storage) {
+    constexpr  json_reader::TryParseStatus read_number(NumberT & storage) {
         char buf[fp_to_str_detail::NumberBufSize];
         std::size_t index = 0;
         bool seenDot = false;
@@ -183,59 +182,59 @@ public:
 
         if (!read_number_token(buf, index, seenDot, seenExp)) {
             // setError(ParseError::WRONG_JSON_FOR_NUMBER_STORAGE, current_);
-            return TryParseStatus::error;
+            return json_reader::TryParseStatus::error;
         }
         if constexpr(skipMaterializing) {
-            return TryParseStatus::ok;
+            return json_reader::TryParseStatus::ok;
         } else {
             if constexpr (std::is_integral_v<NumberT>) {
                 // Reject decimals/exponents for integer fields
                 if (seenDot || seenExp) {
-                    return TryParseStatus::no_match;
+                    return json_reader::TryParseStatus::no_match;
                 }
 
                 NumberT value{};
                 if(!parse_decimal_integer<NumberT>(buf, value)) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
-                    return TryParseStatus::error;
+                    return json_reader::TryParseStatus::error;
                 }
 
                 storage = value;
-                return TryParseStatus::ok;
+                return json_reader::TryParseStatus::ok;
             } else if constexpr (std::is_floating_point_v<NumberT>) {
                 double x;
                 if(fp_to_str_detail::parse_number_to_double(buf, x)){
                     if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
                         || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
                         setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
-                        return TryParseStatus::error;
+                        return json_reader::TryParseStatus::error;
                     }
                     storage = static_cast<NumberT>(x);
-                    return TryParseStatus::ok;
+                    return json_reader::TryParseStatus::ok;
                 } else {
                     setError(ParseError::ILLFORMED_NUMBER, current_);
-                    return TryParseStatus::error;
+                    return json_reader::TryParseStatus::error;
                 }
             } else {
                 // Should never happen if JsonNumber is correct
                 static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
                               "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
-                return TryParseStatus::error;
+                return json_reader::TryParseStatus::error;
             }
         }
     }
 
-    constexpr StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+    constexpr json_reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
         std::size_t written = 0;
 
         // If we're not currently inside a string, expect an opening quote
         if (!in_string_) {
             if (atEnd()) {
                 setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
-                return {StringChunkStatus::error, 0, false};
+                return {json_reader::StringChunkStatus::error, 0, false};
             }
             if (*current_ != '"') {
-                return {StringChunkStatus::no_match, 0, false};
+                return {json_reader::StringChunkStatus::no_match, 0, false};
             }
             in_string_ = true;
             ++current_; // consume opening '"'
@@ -255,9 +254,9 @@ public:
                     in_string_      = false;
                     string_buf_len_ = 0;
                     string_buf_pos_ = 0;
-                    return {StringChunkStatus::ok, written, true};
+                    return {json_reader::StringChunkStatus::ok, written, true};
                 } else
-                    return {StringChunkStatus::ok, written, false};
+                    return {json_reader::StringChunkStatus::ok, written, false};
             }
 
             // No buffered bytes left, read next raw char
@@ -266,7 +265,7 @@ public:
                 in_string_      = false;
                 string_buf_len_ = 0;
                 string_buf_pos_ = 0;
-                return {StringChunkStatus::error, written, false};
+                return {json_reader::StringChunkStatus::error, written, false};
             }
 
             char c = *current_;
@@ -278,7 +277,7 @@ public:
                 in_string_      = false;
                 string_buf_len_ = 0;
                 string_buf_pos_ = 0;
-                return {StringChunkStatus::ok, written, true};
+                return {json_reader::StringChunkStatus::ok, written, true};
             }
 
             case '\\': {
@@ -287,7 +286,7 @@ public:
                 if (atEnd()) {
                     setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                     in_string_ = false;
-                    return {StringChunkStatus::error, written, false};
+                    return {json_reader::StringChunkStatus::error, written, false};
                 }
 
                 char esc = *current_;
@@ -308,7 +307,7 @@ public:
                 default:
                     setError(ParseError::ILLFORMED_STRING, current_);
                     in_string_ = false;
-                    return {StringChunkStatus::error, written, false};
+                    return {json_reader::StringChunkStatus::error, written, false};
                 }
 
                 if (esc != 'u') {
@@ -320,7 +319,7 @@ public:
                         string_buf_len_ = 1;
                         string_buf_pos_ = 0;
                         string_buf_[0]  = simple;
-                        return {StringChunkStatus::ok, written, false};
+                        return {json_reader::StringChunkStatus::ok, written, false};
                     }
                     break; // continue main loop
                 }
@@ -329,7 +328,7 @@ public:
                 std::uint16_t u1 = 0;
                 if (!readHex4(u1)) {
                     in_string_ = false;
-                    return {StringChunkStatus::error, written, false};
+                    return {json_reader::StringChunkStatus::error, written, false};
                 }
 
                 std::uint32_t codepoint = 0;
@@ -339,35 +338,35 @@ public:
                     if (atEnd()) {
                         setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
                     if (*current_ != '\\') {
                         setError(ParseError::ILLFORMED_STRING, current_);
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
                     ++current_;
                     if (atEnd()) {
                         setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
                     if (*current_ != 'u') {
                         setError(ParseError::ILLFORMED_STRING, current_);
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
                     ++current_;
 
                     std::uint16_t u2 = 0;
                     if (!readHex4(u2)) {
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
                     if (u2 < 0xDC00u || u2 > 0xDFFFu) {
                         setError(ParseError::ILLFORMED_STRING, current_);
                         in_string_ = false;
-                        return {StringChunkStatus::error, written, false};
+                        return {json_reader::StringChunkStatus::error, written, false};
                     }
 
                     codepoint = 0x10000u
@@ -377,7 +376,7 @@ public:
                     // Lone low surrogate → invalid
                     setError(ParseError::ILLFORMED_STRING, current_);
                     in_string_ = false;
-                    return {StringChunkStatus::error, written, false};
+                    return {json_reader::StringChunkStatus::error, written, false};
                 } else {
                     codepoint = u1;
                 }
@@ -411,13 +410,13 @@ public:
                 if (static_cast<unsigned char>(c) <= 0x1F) {
                     setError(ParseError::ILLFORMED_STRING, current_);
                     in_string_ = false;
-                    return {StringChunkStatus::error, written, false};
+                    return {json_reader::StringChunkStatus::error, written, false};
                 }
 
                 // Normal unescaped char
                 if (written == capacity) {
                     // no space; defer this char to next chunk
-                    return {StringChunkStatus::ok, written, false};
+                    return {json_reader::StringChunkStatus::ok, written, false};
                 }
                 out[written++] = c;
                 ++current_;
@@ -1027,7 +1026,7 @@ private:
 
             // Make sure string has space [total, total+ask) to write into.
             // This also keeps size() in a valid state.
-            StringChunkResult res;
+            json_reader::StringChunkResult res;
             if constexpr(!std::is_same_v<Cont, void> && !std::is_same_v<Cont, char>) {
                 out->resize(initS + total + ask);
                 res = read_string_chunk(out->data() + initS + total, ask);
@@ -1039,7 +1038,7 @@ private:
                 res = read_string_chunk(b, ask);
             }
 
-            if(res.status != tokenizer::StringChunkStatus::ok) {
+            if(res.status != json_reader::StringChunkStatus::ok) {
                 return false;
             }
 

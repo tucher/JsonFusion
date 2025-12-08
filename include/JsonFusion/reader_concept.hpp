@@ -6,7 +6,7 @@
 
 namespace JsonFusion {
 
-namespace tokenizer {
+namespace json_reader {
 enum class TryParseStatus {
     no_match,   // not our case, iterator unchanged
     ok,         // parsed and consumed
@@ -54,11 +54,11 @@ concept ReaderLike = requires(R reader,
     // ========== Structural Tokens ==========
     // Array parsing
     { mutable_reader.read_array_begin() } -> std::same_as<bool>;
-    { mutable_reader.read_array_end() } -> std::same_as<tokenizer::TryParseStatus>;
+    { mutable_reader.read_array_end() } -> std::same_as<TryParseStatus>;
     
     // Object parsing
     { mutable_reader.read_object_begin() } -> std::same_as<bool>;
-    { mutable_reader.read_object_end() } -> std::same_as<tokenizer::TryParseStatus>;
+    { mutable_reader.read_object_end() } -> std::same_as<TryParseStatus>;
     
     // Separators
     { mutable_reader.consume_value_separator(bool_ref) } -> std::same_as<bool>;
@@ -66,18 +66,18 @@ concept ReaderLike = requires(R reader,
     
     // ========== Primitive Value Parsing ==========
     // Null parsing (with whitespace skipping)
-    { mutable_reader.skip_ws_and_read_null() } -> std::same_as<tokenizer::TryParseStatus>;
+    { mutable_reader.skip_ws_and_read_null() } -> std::same_as<TryParseStatus>;
     
     // Boolean parsing
-    { mutable_reader.read_bool(bool_ref) } -> std::same_as<tokenizer::TryParseStatus>;
+    { mutable_reader.read_bool(bool_ref) } -> std::same_as<TryParseStatus>;
     
     // Number parsing (with optional materialization skip)
-    { mutable_reader.template read_number<int, false>(int_ref) } -> std::same_as<tokenizer::TryParseStatus>;
-    { mutable_reader.template read_number<double, false>(double_ref) } -> std::same_as<tokenizer::TryParseStatus>;
-    { mutable_reader.template read_number<int, true>(int_ref) } -> std::same_as<tokenizer::TryParseStatus>;
+    { mutable_reader.template read_number<int, false>(int_ref) } -> std::same_as<TryParseStatus>;
+    { mutable_reader.template read_number<double, false>(double_ref) } -> std::same_as<TryParseStatus>;
+    { mutable_reader.template read_number<int, true>(int_ref) } -> std::same_as<TryParseStatus>;
     
     // String parsing (chunked, for streaming)
-    { mutable_reader.read_string_chunk(char_ptr, size) } -> std::same_as<tokenizer::StringChunkResult>;
+    { mutable_reader.read_string_chunk(char_ptr, size) } -> std::same_as<StringChunkResult>;
     
     // ========== Utility Operations ==========
     // Skip to end, ensuring only whitespace remains
