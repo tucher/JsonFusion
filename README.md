@@ -366,10 +366,14 @@ See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.m
 
 ## Optional high-performance yyjson backend
 
-⚠️ **IMPORTANT:** This is a **purely optional, experimental feature** for benchmarking and specific high-performance scenarios. **It is NOT recommended for general use** and completely breaks JsonFusion's core guarantees:
-- ❌ No longer zero-allocation inside the library (yyjson allocates DOM tree)
+⚠️ **IMPORTANT:** This is a **purely optional, experimental feature** for benchmarking and specific high-performance scenarios.  
+**It is NOT recommended for general use** and does **not** preserve JsonFusion's core guarantees:
+- ❌ No longer zero-allocation inside the library (yyjson allocates a DOM tree)
 - ❌ No longer streaming/forward-only (requires entire JSON in memory)
-- ❌ Adds external runtime dependency
+- ❌ Adds external runtime dependency on yyjson
+
+The core JsonFusion library remains header-only and zero-allocation internally;  
+the yyjson backend is an opt-in integration layer on top of the yyjson C library.
 
 ---
 
@@ -669,6 +673,79 @@ No need to use any global variables/singletons
 
 📁 **Complete examples**: [`tests/sax_demo.cpp`](tests/sax_demo.cpp) including nested streamer composition, 
 [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp) for Context Propagation.
+
+#### High-Level Stateful Streaming API
+
+For complex streaming scenarios, you can combine **lambda streamers** with **compile-time context** to build elegant, composable pipelines. Example: counting objects in deeply nested GeoJSON without materializing containers:
+
+```cpp
+struct Stats {
+    std::size_t totalPoints = 0;
+    std::size_t totalRings = 0;
+    std::size_t totalFeatures = 0;
+};
+
+struct Point { double x, y; };
+using PointAsArray = A<Point, as_array>;
+
+// Lambda streamers with captured context (Stats*)
+using RingConsumer = streamers::LambdaStreamer<[](Stats* stats, const PointAsArray& point) {
+    stats->totalPoints++;
+    return true;
+}>;
+
+using RingsConsumer = streamers::LambdaStreamer<[](Stats* stats, const RingConsumer& ring) {
+    stats->totalRings++;
+    return true;
+}>;
+
+// Nested structure with streaming consumers
+struct Feature {
+    A<std::string, key<"type">, string_constant<"Feature">> _;
+    std::map<std::string, std::string> properties;
+    
+    struct PolygonGeometry {
+        A<std::string, key<"type">, string_constant<"Polygon">> _;
+        A<RingsConsumer, key<"coordinates">> rings;
+    };
+    PolygonGeometry geometry;
+};
+
+using FeatureConsumer = streamers::LambdaStreamer<[](Stats* stats, const Feature& feature) {
+    stats->totalFeatures++;
+    return true;
+}>;
+
+struct GeoJSONStatsCounter {
+    A<std::string, key<"type">, string_constant<"FeatureCollection">> _;
+    FeatureConsumer features;
+};
+
+// Usage: count 117K+ coordinates in canada.json without allocating containers
+Stats stats;
+GeoJSONStatsCounter counter;
+auto result = JsonFusion::Parse(counter, json, &stats);
+// stats now contains: totalPoints, totalRings, totalFeatures
+```
+
+**Key advantages:**
+- ✅ **Type-safe context**: `Stats*` captured at compile-time, no `void*` casting
+- ✅ **Declarative structure**: Code mirrors JSON schema
+- ✅ **Compile-time composition**: Entire pipeline validated before runtime
+- ✅ **Zero materialization**: Counts objects without allocating arrays
+- ✅ **Still validates**: Enforces `string_constant<"Feature">`, `string_constant<"Polygon">`
+
+This is fundamentally different from traditional SAX:
+
+| Traditional SAX | JsonFusion High-Level Streaming |
+|-----------------|--------------------------------|
+| Manual state machines | Declarative nested structure |
+| `void*` context casting | Type-safe compile-time context |
+| No validation | Schema validation while streaming |
+| Per-schema custom code | Generic, reusable, composable |
+
+📁 **Real-world example**: [`benchmarks/canada_json/canada_json_parsing.hpp`](benchmarks/canada_json/canada_json_parsing.hpp) (processes 2.2 MB GeoJSON, 117K+ coordinates)
+
 ### Compile-Time Testing
 
 JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using `static_assert`. No test framework, no runtime: the compiler is the test runner.
