@@ -51,14 +51,14 @@ JsonFusion::Serialize(conf, output);
 ```
 *No registration macros , no JSON DOM, no inheritance*
 
-| JSON Type | C++ Type                                              |
-|-----------|-------------------------------------------------------|
-| object    | `struct`,  `map<string, Any>`, *streamers*            |
-| array     | `list<...>`, `vector<...>`, `array<...>`, *streamers* |
-| null      | `optional<...>`, `unique_ptr<...>`                    |
-| string    | `string`, `vector<char>`, `array<char, N>`, ...       |
-| number    | `int`*(all kinds)*, `float`, `double`                 |
-| bool      | `bool`                                                |
+| JSON Type | C++ Type                                                       |
+|-----------|----------------------------------------------------------------|
+| object    | `struct`,  `std::map<string, Any>` *streamers*                 |
+| array     | `std::vector<...>`, `std::array<...>`, *streamers*             |
+| null      | `std::optional<...>`, `std::unique_ptr<...>`                   |
+| string    | `std::string`, `std::vector<char>`, `std::array<char, N>`, ... |
+| number    | `int`*(all kinds)*, `float`, `double`                          |
+| bool      | `bool`                                                         |
 
 
 ## Table of Contents
@@ -67,20 +67,21 @@ JsonFusion::Serialize(conf, output);
 - [Main Features](#main-features)
 - [Types as Performance Hints](#types-as-performance-hints)
 - [Positioning](#positioning)
-  - [No Extra "Mapping" Layer](#no-extra-mapping-and-validation-handwritten-layer-with-competitive-performance)
+  - [No Extra "Mapping" Layer](#no-extra-handwritten-mappingvalidation-layer-with-competitive-performance)
   - [You Own Your Containers](#you-own-your-containers)
   - [Embedded-Friendliness](#embedded-friendliness)
   - [C Interoperability](#c-interoperability)
   - [Related Work / Comparison](#related-work--comparison)
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
   - [Supported Options](#supported-options-include)
-- [Limitations](#limitations)
-- [Benchmarks](#benchmarks)
 - [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
+- [Benchmarks](#benchmarks)
 - [Advanced Features](#advanced-features)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
   - [Compile-Time Testing](#compile-time-testing)
+- [Limitations](#limitations)
+
 
 ## Installation
 
@@ -90,7 +91,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 ### Requirements
 
 - **C++23** or later
-- Compiler: GCC 12+, Clang 13+, MSVC 2019+
+- Compiler: GCC 12+, Clang 13+
 - **Boost.PFR** (bundled into `/include`, no separate installation needed)
 
 ## Main features
@@ -119,7 +120,7 @@ and constexpr contexts. Cyclic recursive types can opt into dynamic path trackin
 
 Your type definitions aren't just schema—they're compile-time instructions to the parser.
 
-Assume you want to count primitives in GeoJSON data, but don't need actual values. With JsonFusion you can model coordinates pair as
+Assume you want to count primitives in GeoJSON data, but don't need actual values. With JsonFusion you model coordinates pair as
 ```cpp
 struct Pt_ {
     A<float, skip_json<>> x;
@@ -133,7 +134,7 @@ features/rings/points serves as the baseline.
 but we don't need them." By annotating coordinate fields with `skip_json<>`, JsonFusion skips float parsing entirely while still 
 validating JSON structure.
 
-RapidJSON's-like APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it 
+RapidJSON-like APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it 
 with a single annotation. The same declarative type system that eliminates boilerplate also exposes 
 high-level control over low-level optimizations.
 
@@ -227,7 +228,9 @@ extern "C" int ParseMotorSystem(MotorSystem* system,
 ```c
 // main.c - Pure C usage
 MotorSystem system;
-int error = ParseMotorSystem(&system, json, strlen(json), &error_pos);
+const char *json = "{ ... }";
+size_t json_size = strlen(json);
+int error = ParseMotorSystem(&system, json, strlen(json));
 ```
 
 **3-Layered External Annotation System:**
@@ -261,65 +264,15 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 - Uses its own metadata/registration style rather than "the struct is the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
 
 **reflect-cpp**
-- Performance is slightly better or broadly comparable to JsonFusion on typical object graphs.
+- Performance is slightly better or broadly comparable to **JsonFusion with default generic forward-only iterator** on typical object graphs.
 - Focuses on being a general reflection + multi-format serialization layer (JSON via yyjson, etc.).
 - **Architectural difference**: reflect-cpp uses a [two-pass approach](https://github.com/getml/reflect-cpp/blob/main/include/rfl/json/read.hpp)—first parsing JSON into a DOM tree (yyjson), then mapping the DOM to C++ types. JsonFusion parses directly from input iterators into your structs in a single pass. This means reflect-cpp requires the full JSON in memory and allocates an intermediate DOM tree, while JsonFusion works with forward-only iterators and has no hidden allocations beyond your own containers.
 - JsonFusion is narrower but deeper: JSON-only, header-only, no hidden allocations, with schema-attached validation, skipping, streaming, and rich error contexts.
 - JsonFusion offers first-class streaming / forward-iterator parsing and compile-time constraints; reflect-cpp focuses more on "reflect types, then hand them to fast runtime backends."
 - **Metadata syntax**: JsonFusion uses a uniform flat list of type parameters (`A<string, key<"userName">, min_length<1>, max_length<100>>`), while reflect-cpp uses nested composition (`rfl::Rename<"userName", rfl::Validator<string, rfl::Size<rfl::Minimum<1>, rfl::Maximum<100>>>>`). JsonFusion's approach keeps all metadata co-located in a single, composable type list—simpler to read and extending naturally to validators, options, and custom constraints without changing syntax patterns.
 
-In short: JsonFusion trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
+In short: JsonFusion in its default mode trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
 
-
-## Optional high-performance yyjson backend
-JsonFusion’s parser is built around a small “reader” concept, so the low-level JSON engine is pluggable. In addition to the default iterator-based reader, you can drop in a YyjsonReader that adapts a yyjson_doc DOM to the same interface and reuse the exact same templates, annotations, and validation logic:
-
-```cpp
-#include <JsonFusion/yyjson_reader.hpp>
-
-yyjson_read_err err{};
-yyjson_doc* doc = yyjson_read_opts(
-    const_cast<char*>(copy.data()),
-    copy.size(),
-    0,
-    nullptr,
-    &err
-);
-yyjson_val* root = yyjson_doc_get_root(doc);
-
-JsonFusion::YyjsonReader reader(root);
-
-TwitterData model;
-
-auto res = JsonFusion::ParseWithReader(model, reader);
-yyjson_doc_free(doc);
-```
-
-**Performance on twitter.json (≈0.6 MB, deeply nested objects):**
-
-JsonFusion with yyjson backend delivers full type-safe mapping into a deeply nested C++ model with validation and is:
-- **35% faster than reflect-cpp** (both use yyjson, but JsonFusion's compile-time design is more efficient for this setup)
-- **45% faster than RapidJSON + manual populate** (eliminates hundreds of lines of hand-written mapping)
-- **With streaming API: 45% faster than reflect-cpp, 55% faster than RapidJSON**
-- **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
-
-*Remarkable: JsonFusion's full parse + populate takes nearly the same time than RapidJSON's DOM-only parse, all thanks to really great performance of yyjson*
-
-**Performance on canada.json (≈2.2 MB, numeric-heavy GeoJSON):**
-
-JsonFusion with yyjson backend for parse-and-populate workloads is:
-- **50% faster than both RapidJSON and JsonFusion's iterator mode** 
-- **With streaming API: 35% faster than hand-written RapidJSON SAX**
-
-**Bonus: Cross-language comparison**
-
-For perspective, C# System.Text.Json (Microsoft's modern, optimized JSON library with JIT compilation and garbage collection) on the same twitter.json benchmark runs at ~1533 µs—slightly slower than RapidJSON + manual C++ code, but in the same ballpark. This shows managed runtimes can be competitive, but optimized C++ provides substantial advantages: Glaze is 4.3× faster, JsonFusion + yyjson is 2× faster than C#. 📁 **C# benchmark**: [`benchmarks/twitter_json_c_sharp/`](benchmarks/twitter_json_c_sharp/)
-
-The yyjson backend proves that pluggable readers work in practice: same models, same annotations, same validation logic—just swap the low-level engine to match your use case. In other words, you can choose between:
-- the built-in streaming/iterator reader (no external deps, forward-only byte-by-byte),
-- or a yyjson-powered reader for "all JSON in memory" workloads,
-
-without changing your models or annotations—the high-level JsonFusion code stays completely generic in both cases.
 
 ## Declarative Schema and Runtime Validation
 
@@ -410,11 +363,53 @@ JsonFusion provides validators (runtime constraints) and options (metadata/behav
 
 See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md)
 
-## Limitations
 
-- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
-- Relies on PFR; a few exotic compilers/ABIs may not be supported.
-- **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
+## Optional high-performance yyjson backend
+
+⚠️ **IMPORTANT:** This is a **purely optional, experimental feature** for benchmarking and specific high-performance scenarios. **It is NOT recommended for general use** and completely breaks JsonFusion's core guarantees:
+- ❌ No longer zero-allocation inside the library (yyjson allocates DOM tree)
+- ❌ No longer streaming/forward-only (requires entire JSON in memory)
+- ❌ Adds external runtime dependency
+
+---
+
+JsonFusion's parser is built around a small "reader" concept, making the low-level JSON engine pluggable. For benchmarking purposes or when you specifically need maximum throughput on "all JSON already in memory" workloads, you can drop in a `YyjsonReader` that adapts a `yyjson_doc` DOM to the same interface:
+
+```cpp
+#include <JsonFusion/yyjson_reader.hpp>
+
+yyjson_read_err err{};
+yyjson_doc* doc = yyjson_read_opts(
+    const_cast<char*>(copy.data()),
+    copy.size(),
+    0,
+    nullptr,
+    &err
+);
+yyjson_val* root = yyjson_doc_get_root(doc);
+
+JsonFusion::YyjsonReader reader(root);
+
+TwitterData model;
+
+auto res = JsonFusion::ParseWithReader(model, reader);
+yyjson_doc_free(doc);  // yyjson allocates memory internally!
+```
+
+This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine. However, **you trade JsonFusion's design philosophy (streaming, zero-allocation, no dependencies) for raw speed**.
+
+**Trade-offs summary:**
+
+| Feature | Iterator Reader (Default) | yyjson Reader (Optional) |
+|---------|--------------------------|-------------------------|
+| **Allocations** | ✅ Zero inside library | ❌ yyjson allocates DOM |
+| **Streaming** | ✅ Forward-only, byte-by-byte | ❌ Requires all JSON in memory |
+| **Dependencies** | ✅ None | ❌ Requires yyjson library |
+| **Input sources** | ✅ Any (files, sockets, etc.) | ❌ Contiguous memory only |
+
+
+**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some architecture-specific optimizations.
+
 
 ## Benchmarks
 
@@ -426,7 +421,7 @@ JsonFusion targets two distinct scenarios with different priorities:
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
 *eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
-With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack external runtime dependency is portable C stdlib strod/snprintf. 
+With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack external runtime dependency is portable C stdlib strtod/snprintf. 
 
 Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.
@@ -498,14 +493,16 @@ RapidJSON benchmarks use DOM + manual populate (typical usage) or hand-written S
 The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stress test.
 
 **Parse-and-populate** (production use case):
-- JsonFusion and RapidJSON (with manual populate) perform **essentially identically** on this workload
+- JsonFusion (iterator) and RapidJSON (with manual populate) perform **essentially identically**
+- **JsonFusion + yyjson: 50% faster than both** - yyjson's optimized numeric parsing shines on this workload
 
 **Streaming for object counting**:
 - Hand-written RapidJSON SAX serves as baseline
 - JsonFusion typed streaming is ~47% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no manual state machines
 - **JsonFusion with selective skipping**: **34% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip_json<>` in the model
+- **JsonFusion + yyjson (streaming): 35% faster than RapidJSON SAX** with the same type-safe, generic API
 
-The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema, JsonFusion's declarative skipping works uniformly across any model.
+The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema, JsonFusion's declarative skipping works uniformly across any model. With the yyjson backend, you get both performance and composability.
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
@@ -513,14 +510,41 @@ The typed streaming approach trades some speed on trivial regular data for unive
 
 The twitter.json benchmark tests realistic deeply nested objects with optionals and mixed types—representative of real-world REST API responses.
 
-**Results:**
-- JsonFusion parse + populate has **96% overhead over RapidJSON DOM-only parse** (DOM-only gives you an unusable tree; JsonFusion gives validated, typed C++ structs)
-- JsonFusion is **essentially identical in speed** to RapidJSON + manual populate (within 1%), while requiring **zero boilerplate**
+**C++ Library Comparison:**
 
-The manual RapidJSON populate code ([`rapidjson_populate.hpp`](benchmarks/rapidjson_populate.hpp)) is **450+ lines** of hand-written DOM traversal—exactly the tedious, error-prone code JsonFusion eliminates.
+JsonFusion with yyjson backend delivers full type-safe mapping with validation and is:
+- **35% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for this setup and data)
+- **45% faster than RapidJSON + manual populate** (eliminates 450+ lines of hand-written mapping code)
+- **With streaming API: 45% faster than reflect-cpp, 55% faster than RapidJSON + manual**
+- **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
 
-📁 **Twitter.json benchmark**: [`benchmarks/twitter_json_parsing.cpp`](benchmarks/twitter_json_parsing.cpp)  
-📁 **Data model**: [`benchmarks/twitter_model_generic.hpp`](benchmarks/twitter_model_generic.hpp) 
+*Remarkable: JsonFusion's full parse + populate with yyjson takes nearly the same time as RapidJSON's DOM-only parse (which gives you an unusable tree), all thanks to yyjson's exceptional performance.*
+
+**Cross-Language Comparison:**
+
+For perspective, managed languages on the same benchmark (.NET 9.0.112, OpenJDK 21.0.9):
+- **Java DSL-JSON** (compile-time code generation): ~918 µs — **Faster than reflect-cpp and most C++ approaches!** Shows that compile-time generation delivers near-native performance even in managed languages.
+- **C# System.Text.Json** (source generation + JIT): ~1533 µs — Slightly slower than RapidJSON + manual C++, but in the same ballpark.
+
+This demonstrates that modern managed runtimes can be competitive, especially with compile-time code generation. However, optimized C++ still provides advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1× faster than Java.
+
+**Performance Summary (twitter.json, parse + populate + validate, same arm64 Ubuntu Linux 24.04 machine, GCC 13.3):**
+
+| Library | Language | Approach | Time (µs/iter) |
+|---------|----------|----------|----------------|
+| Glaze | C++ | Hand-optimized, contiguous | ~356 |
+| JsonFusion + yyjson (streaming) | C++ | Pluggable backend, streaming | ~598 |
+| JsonFusion + yyjson | C++ | Pluggable backend | ~821 |
+| **Java DSL-JSON** | **Java** | **Compile-time generation** | **~918** |
+| reflect-cpp + yyjson | C++ | DOM-based, two-pass | ~1306 |
+| JsonFusion (iterator) | C++ | Default, no external deps | ~1489 |
+| **C# System.Text.Json** | **C#** | **Source generation + JIT** | **~1533** |
+| RapidJSON + manual | C++ | DOM + hand-written mapping | ~1829 |
+
+📁 **C++ benchmark**: [`benchmarks/twitter_json/`](benchmarks/twitter_json/)  
+📁 **Java benchmark**: [`benchmarks/twitter_json_java/`](benchmarks/twitter_json_java/)  
+📁 **C# benchmark**: [`benchmarks/twitter_json_c_sharp/`](benchmarks/twitter_json_c_sharp/)  
+📁 **Data model**: [`benchmarks/twitter_json/twitter_model_generic.hpp`](benchmarks/twitter_json/twitter_model_generic.hpp) 
 
 ## Advanced Features
 
@@ -635,7 +659,7 @@ You manually maintain state and assemble typed objects yourself.
 - JsonFusion parses each element into a **fully-typed C++ object**
 - Your callbacks receive complete, validated structures—not raw tokens
 - The abstraction **composes naturally**—streamers can contain structs, which contain other streamers
-- API to pass local (both at types and runtime level) typed context pointer via ParseWithContext/SerializeWithContext
+- API to pass local (both at types and runtime level) typed context pointer
 No need to use any global variables/singletons
 
 **Unified mechanism:**
@@ -650,7 +674,7 @@ No need to use any global variables/singletons
 JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using `static_assert`. No test framework, no runtime: the compiler is the test runner.
 
 **Why constexpr tests:**
-- **Proves zero hidden allocations**: If it compiles in `constexpr`, no dynamic allocation happened
+- **Proves zero hidden allocations**: If it compiles in `constexpr`, no hidden unsafe dynamic allocation happened
 - **Validates correctness before any runtime**: Catches bugs at compile time
 - **Tests the actual user-facing API**: Same `Parse`/`Serialize` calls users make
 
@@ -683,3 +707,9 @@ static_assert([]() constexpr {
 This approach aligns with JsonFusion's philosophy: leverage compile-time introspection to prove correctness before the program even runs.
 
 📁 **Test suite details**: [`tests/constexpr/README.md`](tests/constexpr/README.md)
+
+## Limitations
+
+- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
+- Relies on PFR; a few exotic compilers/ABIs may not be supported.
+- **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
