@@ -10,3 +10,4 @@ benchmarks/json_fusion_benchmark
 benchmarks/canada_json_parsing
 benchmarks/glaze_like
 
+benchmarks/twitter_json_c_sharp/ubuntu-bld

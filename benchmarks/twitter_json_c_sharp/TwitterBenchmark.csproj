@@ -13,9 +13,9 @@
     
     <!-- Native AOT compilation (optional, comment out for standard JIT) -->
     <!-- Native AOT has linker issues on some macOS/Xcode versions, using JIT instead -->
-    <!-- <PublishAot>true</PublishAot>
+    <PublishAot>true</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <IlcOptimizationPreference>Speed</IlcOptimizationPreference> -->
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
   </PropertyGroup>
 
 </Project>

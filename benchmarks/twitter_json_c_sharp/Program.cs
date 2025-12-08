@@ -2,8 +2,16 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace TwitterBenchmark;
+
+// Enable source generation for Native AOT
+[JsonSerializable(typeof(TwitterData))]
+[JsonSourceGenerationOptions(WriteIndented = false)]
+internal partial class TwitterJsonContext : JsonSerializerContext
+{
+}
 
 class Program
 {
@@ -32,18 +40,14 @@ class Program
         
         Console.WriteLine("=== C# System.Text.Json Benchmark ===\n");
         
-        // Configure JsonSerializer options
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = false,
-            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-        };
+        // Use source-generated serializer for Native AOT compatibility
+        var options = TwitterJsonContext.Default.Options;
 
-        // Warmup phase - critical for JIT compilation
-        Console.WriteLine("Warming up JIT (1000 iterations)...");
+        // Warmup phase - critical for JIT compilation (less critical for AOT)
+        Console.WriteLine("Warming up (1000 iterations)...");
         for (int i = 0; i < 1000; i++)
         {
-            var warmup = JsonSerializer.Deserialize<TwitterData>(jsonData, options);
+            var warmup = JsonSerializer.Deserialize(jsonData, TwitterJsonContext.Default.TwitterData);
             if (warmup == null)
             {
                 Console.WriteLine("Warmup deserialization failed!");
@@ -58,7 +62,7 @@ class Program
         
         for (int i = 0; i < iterations; i++)
         {
-            model = JsonSerializer.Deserialize<TwitterData>(jsonData, options);
+            model = JsonSerializer.Deserialize(jsonData, TwitterJsonContext.Default.TwitterData);
             if (model == null)
             {
                 Console.WriteLine($"Deserialization failed at iteration {i}");
