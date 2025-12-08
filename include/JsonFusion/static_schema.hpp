@@ -921,15 +921,15 @@ namespace static_schema {
 
 template<class Streamer, class Ctx>
 constexpr void streamer_context_setter(const Streamer & s, Ctx * ctx) {
-    if constexpr( requires{s.set_json_fusion_context(ctx);} ) {
-        s.set_json_fusion_context(ctx);
+    if constexpr( requires{s.set_jsonfusion_context(ctx);} ) {
+        s.set_jsonfusion_context(ctx);
     }
 }
 
 template<class Streamer, class Ctx>
 constexpr void streamer_context_setter(Streamer & s, Ctx * ctx) {
-    if constexpr( requires{s.set_json_fusion_context(ctx);} ) {
-        s.set_json_fusion_context(ctx);
+    if constexpr( requires{s.set_jsonfusion_context(ctx);} ) {
+        s.set_jsonfusion_context(ctx);
     }
 }
 

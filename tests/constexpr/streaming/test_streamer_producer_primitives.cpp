@@ -42,7 +42,7 @@ struct IntProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             data_ptr = ctx->data;
             data_count = ctx->count;
@@ -194,7 +194,7 @@ struct BoolProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             data_ptr = ctx->data;
             data_count = ctx->count;
@@ -267,8 +267,8 @@ static_assert(
         // Set contexts individually before serialization
         IntProducer::DataContext int_ctx{int_data.data(), 2};
         BoolProducer::DataContext bool_ctx{bool_data.data(), 2};
-        obj.ints.set_json_fusion_context(&int_ctx);
-        obj.bools.set_json_fusion_context(&bool_ctx);
+        obj.ints.set_jsonfusion_context(&int_ctx);
+        obj.bools.set_jsonfusion_context(&bool_ctx);
         std::string output;
         JsonFusion::Serialize(obj, output);
         return output.find("1") != std::string::npos

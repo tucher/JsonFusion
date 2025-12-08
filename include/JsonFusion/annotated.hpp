@@ -20,9 +20,9 @@ struct Annotated {
 
 
     template<class Ctx>
-    constexpr void set_json_fusion_context(Ctx * ctx) {
-        if constexpr( requires{value.set_json_fusion_context(ctx);} ) {
-            value.set_json_fusion_context(ctx);
+    constexpr void set_jsonfusion_context(Ctx * ctx) {
+        if constexpr( requires{value.set_jsonfusion_context(ctx);} ) {
+            value.set_jsonfusion_context(ctx);
         }
     }
     // Conversions/forwarding so parser can treat Annotated<T> like T

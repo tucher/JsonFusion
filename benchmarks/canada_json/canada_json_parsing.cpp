@@ -96,7 +96,7 @@ int main(int argc, char* argv[]) {
 
             Stats stats;
 
-            canada.features.set_json_fusion_context(&stats);
+            canada.features.set_jsonfusion_context(&stats);
 
 
             auto res = Parse(canada, copy.data(), copy.data() + copy.size(), &stats);
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
 
             Stats stats;
 
-            canadaSkip.features.set_json_fusion_context(&stats);
+            canadaSkip.features.set_jsonfusion_context(&stats);
 
 
             auto res = Parse(canadaSkip, copy.data(), copy.data() + copy.size(), &stats);
@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
 
                 Stats stats;
 
-                canada.features.set_json_fusion_context(&stats);
+                canada.features.set_jsonfusion_context(&stats);
 
                 yyjson_read_err err;
                 yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),

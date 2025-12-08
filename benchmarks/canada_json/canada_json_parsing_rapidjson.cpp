@@ -27,7 +27,7 @@ void rj_parse_populate(int iterations, std::string json_data)
 
         // Parse type
         if (auto it = doc.FindMember("type"); it != doc.MemberEnd() && it->value.IsString()) {
-            canada.type.assign(it->value.GetString(), it->value.GetStringLength());
+            canada.type->assign(it->value.GetString(), it->value.GetStringLength());
         }
 
         // Parse features array
@@ -57,7 +57,7 @@ void rj_parse_populate(int iterations, std::string json_data)
 
                 // Parse type
                 if (auto type_it = feature_obj.FindMember("type"); type_it != feature_obj.MemberEnd() && type_it->value.IsString()) {
-                    feature.type.assign(type_it->value.GetString(), type_it->value.GetStringLength());
+                    feature.type->assign(type_it->value.GetString(), type_it->value.GetStringLength());
                 }
 
                 // Parse geometry
@@ -66,7 +66,7 @@ void rj_parse_populate(int iterations, std::string json_data)
 
                     // Parse geometry type
                     if (auto gtype_it = geom_obj.FindMember("type"); gtype_it != geom_obj.MemberEnd() && gtype_it->value.IsString()) {
-                        feature.geometry.type.assign(gtype_it->value.GetString(), gtype_it->value.GetStringLength());
+                        feature.geometry.type->assign(gtype_it->value.GetString(), gtype_it->value.GetStringLength());
                     }
 
                     // Parse coordinates

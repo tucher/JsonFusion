@@ -540,7 +540,7 @@ Tests should use user-defined parsing/serializing contexts
   - `reset()`, `consume()`, `finalize()` lifecycle
   - Counting elements
   - Element validation in `consume()`
-  - Context passing via `set_json_fusion_context`
+  - Context passing via `set_jsonfusion_context`
   - Works transparently in place of arrays (as struct fields)
   - First-class type behavior (direct parsing)
   - **Edge cases covered**: Empty arrays, single element, early termination
@@ -553,7 +553,7 @@ Tests should use user-defined parsing/serializing contexts
   - Producer generating `int`, `bool`, etc.
   - `reset()`, `read()` lifecycle
   - Returning `stream_read_result::end`
-  - Context passing via `set_json_fusion_context` (no constructors)
+  - Context passing via `set_jsonfusion_context` (no constructors)
   - Works transparently in place of arrays (as struct fields)
   - First-class type behavior (direct serialization)
   - **Edge cases covered**: Empty producer, single element, many elements
@@ -569,7 +569,7 @@ Tests should use user-defined parsing/serializing contexts
   - `consume()`, `finalize()`, `reset()` lifecycle
   - Duplicate key detection in consumer
   - Empty map, single entry, many entries
-  - Context passing via `set_json_fusion_context`
+  - Context passing via `set_jsonfusion_context`
   - Works transparently in place of maps (as struct fields)
   - **Both `std::array<char, N>` and `std::string` keys tested**
 
@@ -577,7 +577,7 @@ Tests should use user-defined parsing/serializing contexts
   - `ProducingMapStreamerLike` concept verification
   - Producer generating key-value pairs
   - Lifecycle with `reset()`, `read()` (no constructors, context-based)
-  - Context passing via `set_json_fusion_context`
+  - Context passing via `set_jsonfusion_context`
   - Works transparently in place of maps (as struct fields)
   - **Both `std::array<char, N>` and `std::string` keys tested**
 

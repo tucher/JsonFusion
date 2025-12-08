@@ -55,7 +55,7 @@ struct IntMapConsumer {
     }
     
     // Context passing - high-level interface
-    constexpr void set_json_fusion_context(int* ctx) const {
+    constexpr void set_jsonfusion_context(int* ctx) const {
         context = ctx;
     }
 };

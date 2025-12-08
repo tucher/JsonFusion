@@ -9,55 +9,155 @@
 #include <sstream>
 #include <map>
 
+
+struct MyStruct {
+
+};
+
+template<> struct JsonFusion::Annotated<MyStruct> {
+    using Options = OptionsPack<JsonFusion::options::not_json>;
+};
+
+using BadAnnotated = JsonFusion::Annotated<int>;
+BadAnnotated t_;
+auto a = t_.value;
+
+JsonFusion::Annotated<bool> bv;
+auto b = bv.value;
+
+
+struct T2 {
+    double f;
+};
+
+template<> struct JsonFusion::Annotated<T2> {
+    using Options = OptionsPack<
+        // JsonFusion::validators::range<0, M_PI>
+        >;
+};
+
+T2 tt;
+auto tv = tt.f;
+
+
+
+using MyAnnotatedStruct = JsonFusion::Annotated<MyStruct, JsonFusion::options::not_json>;
+
+static_assert(JsonFusion::options::detail::annotation_meta_getter<MyAnnotatedStruct>::options
+              ::template has_option<JsonFusion::options::detail::not_json_tag>);
+static_assert(JsonFusion::options::detail::annotation_meta_getter<MyStruct>::options
+              ::template has_option<JsonFusion::options::detail::not_json_tag>);
+
+
+struct Vec_WithExternalMeta{
+    float x, y, z;
+};
+
+
+static_assert(JsonFusion::introspection::detail
+              ::index_for_member_ptr<Vec_WithExternalMeta, &Vec_WithExternalMeta::y>() == 1);
+
+
+template<> struct JsonFusion::Annotated<Vec_WithExternalMeta> {
+    using Options = OptionsPack<
+        JsonFusion::options::as_array
+        >;
+};
+
+
+template<> struct JsonFusion::AnnotatedField<Vec_WithExternalMeta, 1> {
+    using Options = OptionsPack<
+        JsonFusion::options::not_json
+        >;
+};
+
+
+static_assert(JsonFusion::options::detail::has_field_annotation_specialization_impl<Vec_WithExternalMeta, 1>::value);
+using TstOpts = JsonFusion::options::detail::aggregate_field_opts_getter<Vec_WithExternalMeta, 1>;
+
+
+
+static_assert(TstOpts::template has_option<JsonFusion::options::detail::not_json_tag>);
+
+template <class ExternalVector = void>
+struct Streamer {
+    struct Vector{
+        float x;
+        // JsonFusion::Annotated<float, JsonFusion::options::not_json> y;
+        float y;
+        float z;
+    };
+
+    // Each element will be serialized as a JSON array [x,y,z]
+    using VT =  std::conditional_t<
+        std::is_same_v<ExternalVector, void>,
+        Vector,
+        Vec_WithExternalMeta
+        >;
+    using value_type = std::conditional_t<
+        std::is_same_v<ExternalVector, void>,
+        JsonFusion::Annotated<Vector, JsonFusion::options::as_array>,
+        Vec_WithExternalMeta
+        >;
+
+    mutable std::size_t * count;
+    mutable int counter = 0;
+
+    // Called by JsonFusion to pull the next element.
+    // Returns:
+    //   value  – v has been filled, keep going
+    //   end    – no more elements
+    //   error  – abort serialization
+
+    constexpr JsonFusion::stream_read_result read(VT & v) const {
+        if (counter >= *count) {
+            return JsonFusion::stream_read_result::end;
+        }
+        counter ++;
+        v.x = 42 + counter;
+        v.y = 43 + counter;
+        v.z = 44 + counter;
+        return JsonFusion::stream_read_result::value;
+    }
+
+    // Called at the start of the JSON array
+    void reset() const {
+        counter = 0;
+    }
+    void set_jsonfusion_context(std::size_t * c) const {
+        count = c;
+    }
+};
+static_assert(JsonFusion::ProducingStreamerLike<Streamer<>>, "Incompatible streamer");
 void streaming_demo () {
 
-    struct Streamer {
-        struct Vector{
-            float x, y, z;
+
+    {
+        struct TopLevel {
+            Streamer<> points_xyz;
         };
+        TopLevel a;
 
-        // Each element will be serialized as a JSON array [x,y,z]
-        using value_type = JsonFusion::Annotated<Vector, JsonFusion::options::as_array>;
+        std::size_t count =3;
 
-        int count;
-        mutable int counter = 0;
+        std::string out;
+        JsonFusion::Serialize(a, out, &count);
 
-        // Called by JsonFusion to pull the next element.
-        // Returns:
-        //   value  – v has been filled, keep going
-        //   end    – no more elements
-        //   error  – abort serialization
+        std::cout << out << std::endl;
+    }
+    {
+        struct TopLevel {
+            Streamer<Vec_WithExternalMeta> points_xyz;
+        };
+        TopLevel a;
 
-        constexpr JsonFusion::stream_read_result read(Vector & v) const {
-            if (counter >= count) {
-                return JsonFusion::stream_read_result::end;
-            }
-            counter ++;
-            v.x = 42 + counter;
-            v.y = 43 + counter;
-            v.z = 44 + counter;
-            return JsonFusion::stream_read_result::value;
-        }
+        std::size_t count =3;
 
-        // Called at the start of the JSON array
-        void reset() const {
-            counter = 0;
-        }
-    };
+        std::string out;
+        JsonFusion::Serialize(a, out, &count);
 
-    static_assert(JsonFusion::ProducingStreamerLike<Streamer>, "Incompatible streamer");
-
-    struct TopLevel {
-        Streamer points_xyz;
-    };
-    TopLevel a;
-
-    a.points_xyz.count=3;
-
-    std::string out;
-    JsonFusion::Serialize(a, out);
-
-    std::cout << out << std::endl;
+        std::cout << out << std::endl;
+    }
 
     /* Output:
 
@@ -76,7 +176,7 @@ void sax_demo() {
             float x, y, z;
         };
         Annotated<Vector, as_array> pos;
-        std::uint64_t timestamp;
+        Annotated<std::uint64_t> timestamp;
     };
 
     struct PointsConsumer {
@@ -84,7 +184,7 @@ void sax_demo() {
 
         void  printPoint (const VectorWithTimestamp & point) {
             std::cout << std::format("Point received: t={}, pos=({},{},{})",
-                                        point.timestamp,
+                                        point.timestamp.value,
                                         point.pos->x,
                                         point.pos->y,
                                         point.pos->z
@@ -202,7 +302,7 @@ void nested_producers () {
                 counter = 0;
             }
             mutable int * ctx_int;
-            void set_json_fusion_context(int * ctx) const {
+            void set_jsonfusion_context(int * ctx) const {
                 ctx_int = ctx;
             }
         };
@@ -227,7 +327,7 @@ void nested_producers () {
         }
 
         mutable int * ctx_int;
-        void set_json_fusion_context(int * ctx) const {
+        void set_jsonfusion_context(int * ctx) const {
             ctx_int = ctx;
         }
     };
@@ -266,133 +366,10 @@ std::string read_file(const fs::path& filepath) {
 }
 
 
-void geojson_reader(int argc, char ** argv) {
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " <path-to-canada.json>\n";
-        std::cerr << "Download from: https://github.com/miloyip/nativejson-benchmark/blob/master/data/canada.json\n";
-        return;
-    }
 
-    fs::path json_path = argv[1];
-    std::cout << "Reading file: " << json_path << "\n";
-    std::string json_data = read_file(json_path);
-    std::cout << std::format("File size: {:.2f} MB ({} bytes)\n\n",
-                             json_data.size() / (1024.0 * 1024.0),
-                             json_data.size());
-
-    using namespace JsonFusion;
-    using namespace JsonFusion::options;
-    using namespace JsonFusion::validators;
-
-
-
-
-
-    struct Stats {
-        std::size_t totalPoints = 0;
-        std::size_t totalRings = 0;
-        std::size_t totalFeatures = 0;
-    };
-
-
-
-
-
-
-    // static_assert(static_schema::is_json_object<Feature>::value);
-
-
-    struct CanadaStatsCounter {
-        A<std::string, key<"type">, string_constant<"FeatureCollection"> > _;
-
-        struct FeatureConsumer {
-            struct Feature {
-                A<std::string, key<"type">, string_constant<"Feature"> > _;
-
-                std::map<std::string, std::string> properties;
-
-
-                struct RingsConsumer {
-
-                    struct RingConsumer {
-
-                        struct Point {
-                            A<float, skip_json<>> x;
-                            A<float, skip_json<>> y;
-                        };
-
-                        using PointsAsArray = Annotated<Point, as_array>;
-
-                        using value_type = PointsAsArray;
-
-                        bool finalize(bool success)  { return true; }
-
-                        Stats * stats = nullptr;
-                        void reset()  {}
-                        bool consume(const Point & r)  {
-                            stats->totalPoints ++;
-                            return true;
-                        }
-                        void set_json_fusion_context(Stats * ctx) {
-                            stats = ctx;
-                        }
-                    };
-
-                    using value_type = RingConsumer;
-
-                    bool finalize(bool success)  { return true; }
-
-                    Stats * stats = nullptr;
-                    void reset()  {}
-
-                    bool consume(const RingConsumer & ringConsumer)  {
-                        stats->totalRings ++;
-                        return true;
-                    }
-
-                    void set_json_fusion_context(Stats * ctx) {
-                        stats = ctx;
-                    }
-                };
-
-                struct PolygonGeometry {
-                    A<std::string, key<"type">, string_constant<"Polygon"> > _;
-                    A<RingsConsumer, key<"coordinates">> rings;
-                } geometry;
-            };
-
-            using value_type = Feature;
-
-            bool finalize(bool success)  { return true; }
-
-            Stats * stats = nullptr;
-            void reset() { }
-            bool consume(const Feature & f)  {
-                stats->totalFeatures ++;
-                return true;
-            }
-            void set_json_fusion_context(Stats * ctx) {
-                stats = ctx;
-            }
-        } features;
-
-    };
-    Stats stats;
-    CanadaStatsCounter canada;
-    canada.features.set_json_fusion_context(&stats);
-
-    auto r = Parse(canada, json_data, &stats);
-    assert(r);
-
-    std::cout << std::format("Features: {}, rings: {}, points: {}", stats.totalFeatures, stats.totalRings, stats.totalPoints) << std::endl;
-
-
-    // static_assert(ConsumingStreamerLike<FeatureConsumer>, "Incompatible consumer");
-}
 
 int main(int argc, char ** argv) {
     streaming_demo();
     sax_demo();
     nested_producers();
-    geojson_reader(argc, argv);
 }

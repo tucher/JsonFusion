@@ -49,7 +49,7 @@ struct IntMapProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             entries_ptr = ctx->entries;
             entries_count = ctx->count;
@@ -210,7 +210,7 @@ struct StringMapProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             entries_ptr = ctx->entries;
             entries_count = ctx->count;
@@ -261,7 +261,7 @@ struct BoolMapProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             entries_ptr = ctx->entries;
             entries_count = ctx->count;
@@ -380,7 +380,7 @@ struct StringKeyMapProducer {
         std::size_t count;
     };
     
-    constexpr void set_json_fusion_context(DataContext* ctx) const {
+    constexpr void set_jsonfusion_context(DataContext* ctx) const {
         if (ctx) {
             entries_ptr = ctx->entries;
             entries_count = ctx->count;

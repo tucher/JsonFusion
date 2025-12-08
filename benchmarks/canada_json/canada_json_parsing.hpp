@@ -8,7 +8,7 @@
 #include <JsonFusion/annotated.hpp>
 #include <JsonFusion/options.hpp>
 #include <JsonFusion/validators.hpp>
-
+#include <JsonFusion/generic_streamer.hpp>
 
 
 
@@ -19,13 +19,13 @@ using namespace JsonFusion::validators;
 
 
 struct Canada {
-    std::string type;
+    A<std::string,  string_constant<"FeatureCollection"> > type;
 
     struct Feature {
+        A<std::string, string_constant<"Feature"> > type;
         std::map<std::string, std::string> properties;
-        std::string type;
         struct Geometry {
-            std::string type;
+            A<std::string, string_constant<"Polygon"> > type;
             struct Point {
                 float x;
                 float y;
@@ -67,39 +67,16 @@ using PointAsArray = Annotated<PT, as_array>;
 
 
 template<typename PT>
-struct RingConsumer {
-    using value_type = PointAsArray<PT>;
-
-    bool finalize(bool success)  { return true; }
-
-    Stats * stats = nullptr;
-    void reset()  { }
-    bool consume(const PT & r)  {
-        stats->totalPoints ++;
-        return true;
-    }
-    void set_json_fusion_context(Stats * ctx) {
-        stats = ctx;
-    }
-};
+using RingConsumer = streamers::LambdaStreamer<[](Stats * stats, const PointAsArray<PT>&) {
+    stats->totalPoints ++;
+    return true;
+}>;
 
 template<typename PT>
-struct RingsConsumer {
-    using value_type = RingConsumer<PT>;
-
-    bool finalize(bool success)  { return true; }
-
-    Stats * stats = nullptr;
-    void reset()  { }
-
-    bool consume(const RingConsumer<PT> & ringConsumer)  {
-        stats->totalRings ++;
-        return true;
-    }
-    void set_json_fusion_context(Stats * ctx) {
-        stats = ctx;
-    }
-};
+using RingsConsumer = streamers::LambdaStreamer<[](Stats * stats, const RingConsumer<PT>&) {
+    stats->totalRings ++;
+    return true;
+}>;
 
 template<typename PT>
 struct Feature {
@@ -114,20 +91,11 @@ struct Feature {
 };
 
 template<typename PT>
-struct FeatureConsumer {
-    using value_type = Feature<PT>;
-    bool finalize(bool success)  { return true; }
+using FeatureConsumer = streamers::LambdaStreamer<[](Stats * stats, const Feature<PT>&) {
+    stats->totalFeatures ++;
+    return true;
+}>;
 
-    Stats * stats = nullptr;
-    void reset()  {  }
-    bool consume(const Feature<PT> & f)  {
-        stats->totalFeatures ++;
-        return true;
-    }
-    void set_json_fusion_context(Stats * ctx) {
-        stats = ctx;
-    }
-};
 
 template<typename PT>
 struct CanadaStatsCounter {
