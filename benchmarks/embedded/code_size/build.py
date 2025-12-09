@@ -70,6 +70,14 @@ LIBRARIES = [
         description="JsonFusion with in-house float parser",
     ),
     Library(
+        name="Glaze",
+        source_file="parse_config_glaze.cpp",
+        description="Glaze - probably the fastest JSON parser in C++",
+        dependencies=[
+       
+        ],
+    ),
+    Library(
         name="ArduinoJson",
         source_file="parse_config_arduinojson.cpp",
         description="ArduinoJson v7.2.1",
@@ -474,7 +482,7 @@ Examples:
         
         # Normal build (with or without cleaning)
         benchmark.run(clean=not args.no_clean)
-        benchmark.clean()
+        # benchmark.clean()
     except KeyboardInterrupt:
         print()
         print(Colors.yellow("Interrupted by user"))

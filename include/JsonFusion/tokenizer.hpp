@@ -31,7 +31,7 @@ public:
 
 
 
-    constexpr  json_reader::TryParseStatus skip_ws_and_read_null() {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus skip_ws_and_read_null() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
@@ -51,7 +51,7 @@ public:
         return json_reader::TryParseStatus::ok;
     }
 
-    constexpr  json_reader::TryParseStatus read_bool(bool & b) {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_bool(bool & b) {
         if(atEnd())  {
             setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
             return json_reader::TryParseStatus::error;
@@ -83,7 +83,7 @@ public:
             return json_reader::TryParseStatus::no_match;
         }
     }
-    constexpr  bool skip_whitespaces_till_the_end() {
+    __attribute__((noinline)) constexpr  bool skip_whitespaces_till_the_end() {
         while (current_ != end_ && isSpace(*current_)) {
             ++current_;
         }
@@ -96,7 +96,7 @@ public:
 
 
     // Array/object structural events
-    constexpr  bool read_array_begin() {
+    __attribute__((noinline)) constexpr  bool read_array_begin() {
         if(*current_ != '[')  {
             return false;
 
@@ -104,7 +104,7 @@ public:
         current_++;
         return skip_whitespace();
     }
-    constexpr  bool read_object_begin() {
+    __attribute__((noinline)) constexpr  bool read_object_begin() {
         if(*current_ != '{')  {
             return false;
 
@@ -114,7 +114,7 @@ public:
     }
 
     // Try-peek style helpers
-    constexpr  json_reader::TryParseStatus read_array_end() {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_array_end() {
         if(!skip_whitespace()) {
             return json_reader::TryParseStatus::error;
         }
@@ -124,7 +124,7 @@ public:
         }
         return json_reader::TryParseStatus::no_match;
     }
-    constexpr  json_reader::TryParseStatus read_object_end() {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_object_end() {
         if(!skip_whitespace()) {
             return json_reader::TryParseStatus::error;
         }
@@ -136,7 +136,7 @@ public:
     }
 
     // Comma handling
-    constexpr  bool consume_value_separator(bool& had_comma) {
+    __attribute__((noinline)) constexpr  bool consume_value_separator(bool& had_comma) {
         had_comma = false;
         if(!skip_whitespace())  {
             return false;
@@ -150,7 +150,7 @@ public:
         }
         return true;
     }
-    constexpr  bool consume_kv_separator() {
+    __attribute__((noinline)) constexpr  bool consume_kv_separator() {
         if(!skip_whitespace()) {
             return false;
         }
@@ -167,14 +167,14 @@ public:
 
     // Value parsing is handled by higher-level ParseValue(T&, Reader&, Ctx&),
     // so reader doesn’t know types; it just supplies char-level ops.
-    constexpr  It current() const { return current_; }
-    constexpr  Sent end()  const { return end_; }
+    __attribute__((noinline)) constexpr  It current() const { return current_; }
+    __attribute__((noinline)) constexpr  Sent end()  const { return end_; }
 
 
 
 
     template<class NumberT, bool skipMaterializing>
-    constexpr  json_reader::TryParseStatus read_number(NumberT & storage) {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_number(NumberT & storage) {
         char buf[fp_to_str_detail::NumberBufSize];
         std::size_t index = 0;
         bool seenDot = false;
@@ -224,7 +224,7 @@ public:
         }
     }
 
-    constexpr json_reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+    __attribute__((noinline)) constexpr json_reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
         std::size_t written = 0;
 
         // If we're not currently inside a string, expect an opening quote
@@ -427,7 +427,7 @@ public:
 
 
     template <std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    constexpr bool skip_json_value(OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
+    __attribute__((noinline)) constexpr bool skip_json_value(OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
         if constexpr(std::is_same_v<OutputSinkContainer, void>) {
             NoOpFiller filler{};
             return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
@@ -442,7 +442,7 @@ public:
             return r;
         }
     }
-    constexpr ParseError getError() {
+    __attribute__((noinline)) constexpr ParseError getError() {
         return m_error;
     }
 private:

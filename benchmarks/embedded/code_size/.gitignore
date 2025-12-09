@@ -10,6 +10,7 @@
 *.elf
 *.bin
 *.hex
+*.map
 
 # Map files (keep for analysis)
 # *.map
