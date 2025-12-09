@@ -1,0 +1,20 @@
+# Compiled object files
+*.o
+*.obj
+
+# Disassembly files
+*.asm
+*.s
+
+# Build artifacts
+*.elf
+*.bin
+*.hex
+
+# Map files (keep for analysis)
+# *.map
+
+# Downloaded dependencies
+ArduinoJson.h
+ArduinoJson-*.h
+

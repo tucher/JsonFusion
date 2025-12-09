@@ -220,3 +220,10 @@ target_link_options(twitter_json_parsing PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
   >
 )
+
+
+add_executable(fp_test
+    tests/fp/main.cpp
+    ${JSON_FUSION}
+
+)

@@ -5,7 +5,8 @@ disclaimer: under heavy development
 Parse JSON directly into your structs with validation and no glue code.
 
 
-#### Strongly typed, macro-free, codegen-free, with no allocations inside the library, zero-recursion on fixed-size containers, single-pass, high-performance JSON parser/serializer with declarative models and validation
+#### Strongly typed, macro-free, codegen-free, with no allocations inside the library, zero-recursion on fixed-size containers, single-pass,
+high-performance JSON parser/serializer with declarative models and validation
 
 Your C++ types are the schema.
 JsonFusion generates a specialized parser for them at compile time.
@@ -85,7 +86,8 @@ JsonFusion::Serialize(conf, output);
 
 ## Installation
 
-JsonFusion is a **header-only library**. Simply copy the include/ directory into your project’s include path (e.g. so `#include <JsonFusion/parser.hpp>` works and `pfr.hpp` is visible).
+JsonFusion is a **header-only library**. Simply copy the include/ directory into your project’s include path 
+(e.g. so `#include <JsonFusion/parser.hpp>` works and `pfr.hpp` is visible).
 
 
 ### Requirements
@@ -114,7 +116,8 @@ how it is usually done in Python, Java, Go, etc..
 input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
 compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
 and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
-- **Escape hatches**: Use `json_sink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing). JsonFusion validates JSON correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.
+- **Escape hatches**: Use `json_sink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing).
+JsonFusion validates JSON correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.
 
 ## Types as Performance Hints
 
@@ -170,7 +173,9 @@ This has a few consequences:
 - There are no hidden allocation tricks inside the library.
 - There are very few global options/knobs-not needed.
 
-It also explains part of the performance story: libraries like RapidJSON use highly tuned internal DOM structures and custom allocators, which can squeeze out more speed for dynamic, DOM-heavy workloads. JsonFusion chooses instead to be a thin, strongly typed layer over *your* containers, while still staying competitive in raw parsing speed.
+It also explains part of the performance story: libraries like RapidJSON use highly tuned internal DOM structures and custom allocators, which can squeeze
+out more speed for dynamic, DOM-heavy workloads. JsonFusion chooses instead to be a thin, strongly typed layer over *your* containers, while still staying
+competitive in raw parsing speed.
 
 ### Embedded-friendliness
 
@@ -178,17 +183,22 @@ No data-driven recursion in the parser core — depth is bounded by your user-de
 
 No dynamic allocations inside the library. You choose your storage: `std::array`, fixed-size char buffers, or dynamic containers (`std`-compatible).
 
-Works with forward-only input/output iterators: you can parse from a stream or byte-by-byte without building a big buffer first, and serialize byte-by-byte with full control and no intermediate buffers.
+Works with forward-only input/output iterators: you can parse from a stream or byte-by-byte without building a big buffer first, and serialize
+byte-by-byte with full control and no intermediate buffers.
 
 Plays well with -fno-exceptions / -fno-rtti style builds.
 
-**Configurable dependencies**: By default uses external fast float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to depend only on PFR + C stdlib for floats handling, reducing binary size for embedded builds.
+**Configurable dependencies**: By default uses external fast float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to switch to in-house tiny
+implementations, reducing binary size for embedded builds.
 
-**Your structs define everything**: On tiny microcontrollers without floating-point support, just don’t use float/double in your struct definitions. In that case the float parsing code is never instantiated or compiled into the binary; there is no special global configuration needed. The same applies to dynamic lists/strings.
+**Your structs define everything**: On tiny microcontrollers without floating-point support, just don’t use float/double in your struct definitions. 
+In that case the float parsing code is never instantiated or compiled into the binary; there is no special global configuration needed. 
+The same applies to dynamic lists/strings.
 
 ### C Interoperability
 
-Add JSON parsing to legacy C codebases **without modifying your C headers**. JsonFusion works with plain C structs using external annotations in a separate C++ translation unit:
+Add JSON parsing to legacy C codebases **without modifying your C headers**. JsonFusion works with plain C structs using external annotations 
+in a separate C++ translation unit:
 
 ```c
 // structures.h - Pure C header, unchanged
@@ -238,9 +248,11 @@ int error = ParseMotorSystem(&system, json, strlen(json));
 2. **`AnnotatedField<T, Index>`** - Field-level options for PFR-introspectable structs
 3. **`StructMeta<T>`** - Full manual control (required for C arrays, optional otherwise)
 
-**String handling**: Fixed-size char arrays are automatically null-terminated, making them immediately usable with standard C string functions (`strlen`, `strcmp`, `printf`).
+**String handling**: Fixed-size char arrays are automatically null-terminated, making them immediately usable with standard C string functions 
+(`strlen`, `strcmp`, `printf`).
 
-**C arrays**: Supported via `StructMeta` annotations. Single-dimensional arrays (`int arr[10]`) support full validation. Nested arrays (`double matrix[3][3]`) work for serialization and round-trip parsing, but annotations apply only to the outermost level.
+**C arrays**: Supported via `StructMeta` annotations. Single-dimensional arrays (`int arr[10]`) support full validation. 
+Nested arrays (`double matrix[3][3]`) work for serialization and round-trip parsing, but annotations apply only to the outermost level.
 
 Perfect for:
 - **Legacy firmware** - Add JSON without touching existing C headers
@@ -257,21 +269,34 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 
 **Glaze**
 - Typically significantly faster than JsonFusion on flat, in-memory JSON: its tokenizer is tuned for contiguous buffers and low-level tricks.
-- Glaze builds on a very tight, hand-rolled JSON scanner that works directly on `char*` with aggressive inlining and minimal abstraction. It assumes contiguous buffers and doesn't try to be iterator-generic or streaming-friendly in the same way JsonFusion does.
-- It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
-- Glaze has only lightweight validation (mostly structural + type correctness); it doesn't attempt rich, schema-style declarative validation like JsonFusion's option packs, per-field validators, or detailed error contexts.
-- Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion trades some of that peak speed to support generic iterators, streaming, and stricter validation while staying fully header-only and constexpr-friendly.
+- Glaze builds on a very tight, hand-rolled JSON scanner that works directly on `char*` with aggressive inlining and minimal abstraction. It assumes
+contiguous buffers and doesn't try to be iterator-generic or streaming-friendly in the same way JsonFusion does.
+- It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight
+into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
+- Glaze has only lightweight validation (mostly structural + type correctness); it doesn't attempt rich, schema-style declarative validation like
+JsonFusion's option packs, per-field validators, or detailed error contexts.
+- Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion
+trades some of that peak speed to support generic iterators, streaming, and stricter validation while staying fully header-only and constexpr-friendly.
 - Uses its own metadata/registration style rather than "the struct is the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
 
 **reflect-cpp**
 - Performance is slightly better or broadly comparable to **JsonFusion with default generic forward-only iterator** on typical object graphs.
 - Focuses on being a general reflection + multi-format serialization layer (JSON via yyjson, etc.).
-- **Architectural difference**: reflect-cpp uses a [two-pass approach](https://github.com/getml/reflect-cpp/blob/main/include/rfl/json/read.hpp)—first parsing JSON into a DOM tree (yyjson), then mapping the DOM to C++ types. JsonFusion parses directly from input iterators into your structs in a single pass. This means reflect-cpp requires the full JSON in memory and allocates an intermediate DOM tree, while JsonFusion works with forward-only iterators and has no hidden allocations beyond your own containers.
-- JsonFusion is narrower but deeper: JSON-only, header-only, no hidden allocations, with schema-attached validation, skipping, streaming, and rich error contexts.
-- JsonFusion offers first-class streaming / forward-iterator parsing and compile-time constraints; reflect-cpp focuses more on "reflect types, then hand them to fast runtime backends."
-- **Metadata syntax**: JsonFusion uses a uniform flat list of type parameters (`A<string, key<"userName">, min_length<1>, max_length<100>>`), while reflect-cpp uses nested composition (`rfl::Rename<"userName", rfl::Validator<string, rfl::Size<rfl::Minimum<1>, rfl::Maximum<100>>>>`). JsonFusion's approach keeps all metadata co-located in a single, composable type list—simpler to read and extending naturally to validators, options, and custom constraints without changing syntax patterns.
+- **Architectural difference**: reflect-cpp uses a [two-pass approach](https://github.com/getml/reflect-cpp/blob/main/include/rfl/json/read.hpp)—first
+parsing JSON into a DOM tree (yyjson), then mapping the DOM to C++ types. JsonFusion parses directly from input iterators into your structs in a single
+pass. This means reflect-cpp requires the full JSON in memory and allocates an intermediate DOM tree, while JsonFusion works with forward-only iterators
+and has no hidden allocations beyond your own containers.
+- JsonFusion is narrower but deeper: JSON-only, header-only, no hidden allocations, with schema-attached validation, skipping, streaming,
+and rich error contexts.
+- JsonFusion offers first-class streaming / forward-iterator parsing and compile-time constraints; reflect-cpp focuses more on "reflect types,
+then hand them to fast runtime backends."
+- **Metadata syntax**: JsonFusion uses a uniform flat list of type parameters (`A<string, key<"userName">, min_length<1>, max_length<100>>`), while
+reflect-cpp uses nested composition (`rfl::Rename<"userName", rfl::Validator<string, rfl::Size<rfl::Minimum<1>, rfl::Maximum<100>>>>`). JsonFusion's
+approach keeps all metadata co-located in a single, composable type list—simpler to read and extending naturally to validators, options, and custom
+constraints without changing syntax patterns.
 
-In short: JsonFusion in its default mode trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
+In short: JsonFusion in its default mode trades some maximum GB/s for a strongly typed, constexpr-driven, streaming-friendly design with uniform metadata
+composition; Glaze chases peak raw speed; reflect-cpp emphasizes general reflection and multi-format serialization.
 
 
 ## Declarative Schema and Runtime Validation
@@ -352,7 +377,8 @@ struct JsonFusion::StructMeta<T> {
 };
 ```
 
-This is particularly useful for third-party types, C interop, legacy code, or when you want to keep JSON metadata separate from your business logic types. See [`examples/external_meta.cpp`](examples/external_meta.cpp) for a complete example.
+This is particularly useful for third-party types, C interop, legacy code, or when you want to keep JSON metadata separate from your business logic types.
+See [`examples/external_meta.cpp`](examples/external_meta.cpp) for a complete example.
 
 ### Supported Options Include
 
@@ -365,7 +391,9 @@ See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.m
 
 ### Custom Validators
 
-JsonFusion's validator system is **event-driven**. Built-in validators like `range<>`, `min_length<>` are attached to specific parsing events (e.g., `number_parsing_finished`, `string_parsing_finished`). You can extend this system by binding **stateless lambdas or free functions** to validation events using `fn_validator<Event, Callable>`.
+JsonFusion's validator system is **event-driven**. Built-in validators like `range<>`, `min_length<>` are attached to specific parsing events (e.g.,
+`number_parsing_finished`, `string_parsing_finished`). You can extend this system by binding **stateless lambdas or free functions** to validation events
+using `fn_validator<Event, Callable>`.
 
 Different events have different argument signatures matching the parsed data and parsing context at that stage.
 
@@ -384,8 +412,16 @@ struct Config {
 Parse(config, R"({"port": 8080})");  // ✅ Passes: 8080 % 10 == 0
 Parse(config, R"({"port": 8081})");  // ❌ Fails: validation error
 ```
+Also very simple to build reusable types like this:
+```cpp
+template <std::uint64_t D>
+using IntDivisibleBy =
+    A<int, fn_validator<number_parsing_finished, [](const int & v){ return v % D == 0; }>>;
 
-📁 **See also:** [Annotations Reference - Custom Validators](docs/ANNOTATIONS_REFERENCE.md#generic-custom-validators) for complete event list and signatures.
+```
+
+📁 **See also:** [Annotations Reference - Custom Validators](docs/ANNOTATIONS_REFERENCE.md#generic-custom-validators) for complete event list and
+signatures.
 
 
 ## Optional high-performance yyjson backend
@@ -401,7 +437,9 @@ the yyjson backend is an opt-in integration layer on top of the yyjson C library
 
 ---
 
-JsonFusion's parser is built around a small "reader" concept, making the low-level JSON engine pluggable. For benchmarking purposes or when you specifically need maximum throughput on "all JSON already in memory" workloads, you can drop in a `YyjsonReader` that adapts a `yyjson_doc` DOM to the same interface:
+JsonFusion's parser is built around a small "reader" concept, making the low-level JSON engine pluggable. For benchmarking purposes or when you
+specifically need maximum throughput on "all JSON already in memory" workloads, you can drop in a `YyjsonReader` that adapts a `yyjson_doc` DOM to the
+same interface:
 
 ```cpp
 #include <JsonFusion/yyjson_reader.hpp>
@@ -424,7 +462,8 @@ auto res = JsonFusion::ParseWithReader(model, reader);
 yyjson_doc_free(doc);  // yyjson allocates memory internally!
 ```
 
-This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine. However, **you trade JsonFusion's design philosophy (streaming, zero-allocation, no dependencies) for raw speed**.
+This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine.
+However, **you trade JsonFusion's design philosophy (streaming, zero-allocation, no dependencies) for raw speed**.
 
 **Trade-offs summary:**
 
@@ -436,7 +475,9 @@ This pluggable design proves that the abstraction works in practice: same models
 | **Input sources** | ✅ Any (files, sockets, etc.) | ❌ Contiguous memory only |
 
 
-**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some architecture-specific optimizations.
+**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the
+reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some
+architecture-specific optimizations.
 
 
 ## Benchmarks
@@ -449,22 +490,53 @@ JsonFusion targets two distinct scenarios with different priorities:
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
 *eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
-With `JSONFUSION_USE_FAST_FLOAT=0`, the entire stack external runtime dependency is portable C stdlib strtod/snprintf. 
+With `JSONFUSION_USE_FAST_FLOAT=0`, there are no external runtime dependencies of the library itself except of memcpy/memset. 
 
 Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.
 
-JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
+JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't
+a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
 
 ### Binary Size (Embedded Focus)
 
-*Benchmarks coming soon* – measuring stripped binary size on ARM Cortex-M platforms with minimal configs.
+Measured on **ARM Cortex-M7** (representative of modern embedded MCUs like STM32H7, SAMV7) using a realistic configuration model with nested structures,
+fixed-size arrays, validation constraints, and optional fields.
 
+📁 **Benchmark**: [`benchmarks/embedded/code_size/`](benchmarks/embedded/code_size/)
+
+**Test Setup:**
+- **Compiler**: `arm-none-eabi-gcc 13.3.1`
+- **Target**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16`)
+- **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto`
+- **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
+- **Float mode**: `JSONFUSION_USE_FAST_FLOAT=0` (in-house lightweight float parser, no libc dependencies)
+
+**Results (code size in flash):**
+
+| Configuration | JsonFusion | ArduinoJson | Difference |
+|---------------|------------|-------------|------------|
+| **-O3** (speed) | **30,512 bytes** (~30 KB) | 36,128 bytes | **15% smaller** ✅ |
+| **-Os** (size) | **11,340 bytes** (~11 KB) | 13,400 bytes | **16% smaller** ✅ |
+
+**Key Takeaways:**
+
+1. **For embedded setups, `JSONFUSION_USE_FAST_FLOAT=0` enables a lightweight in-house floating-point parser**, eliminating all libc floating-point
+machinery (no strtod, no printf). Code size: **11-30 KB** depending on optimization—comparable to hand-written parsers and **15-16% smaller than
+ArduinoJson**.
+
+2. **Generated code is comparable in size to what would be written by hand** for the specific scenario and data types, but without manual boilerplate,
+validation logic, or error-prone DOM traversal. 
+
+3. **Type-driven, single architecture**: Same high-level parsing code works everywhere. The only configuration needed is choosing the float backend
+(`JSONFUSION_USE_FAST_FLOAT=0` for embedded). Modern compilers then automatically optimize for the target—high-performance on servers (~1.5 ms for twitter.
+json), compact on MCUs (11 KB flash). The core type-driven design remains unchanged.
 
 
 ### Parsing Speed (High-Performance Focus)
 
-**What we're measuring:** The complete real-world workflow of parsing JSON and populating C++ structs with validation. This is what you actually do in production code—not abstract JSON DOM manipulation or raw string parsing in isolation.
+**What we're measuring:** The complete real-world workflow of parsing JSON and populating C++ structs with validation. This is what you actually do in 
+production code—not abstract JSON DOM manipulation or raw string parsing in isolation.
 
 Both libraries perform the same work:
 1. Parse JSON from string
@@ -473,7 +545,8 @@ Both libraries perform the same work:
 
 For RapidJSON, this requires hand-written mapping code and hand-written checks. For JsonFusion, it's automatic via reflection.
 
-📁 **Test models**: [`benchmarks/main.cpp`](benchmarks/main.cpp) – 6 realistic scenarios with nested structs, arrays, maps, optionals, validation constraints  
+📁 **Test models**: [`benchmarks/main.cpp`](benchmarks/main.cpp) – 6 realistic scenarios with nested structs, arrays, maps, optionals, validation
+constraints  
 
 #### Results
 
@@ -487,15 +560,19 @@ For RapidJSON, this requires hand-written mapping code and hand-written checks. 
 | **Bus Events / Message Payloads** | **18% faster** |
 | **Metrics / Time-Series** | **10% faster** |
 
-*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static embedded config (optimal).*
+*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static
+embedded config (optimal).*
 
 #### Key Takeaways
 
 **1. Trade-offs with hand-optimized code**
 
-The **Embedded Config (Static)** benchmark uses RapidJSON's SAX parser with a hand-written state machine—the most performance-oriented approach possible. Here, manual optimization wins by **10%**. However, JsonFusion's generic reflection-based approach requires **zero mapping code**, eliminating hundreds of lines of error-prone boilerplate.
+The **Embedded Config (Static)** benchmark uses RapidJSON's SAX parser with a hand-written state machine—the most performance-oriented approach possible.
+Here, manual optimization wins by **10%**. However, JsonFusion's generic reflection-based approach requires **zero mapping code**, eliminating hundreds of
+lines of error-prone boilerplate.
 
-For a 10% performance difference on trivial static cases, you get compile-time type safety, declarative validation, and zero maintenance burden. On dynamic containers, JsonFusion is **22% faster** while still requiring zero code.
+For a 10% performance difference on trivial static cases, you get compile-time type safety, declarative validation, and zero maintenance burden. On
+dynamic containers, JsonFusion is **22% faster** while still requiring zero code.
 
 **2. Wins where it matters**
 
@@ -514,7 +591,8 @@ JsonFusion trades a small loss on trivial static cases for massive productivity 
 
 **4. Fair comparison**
 
-RapidJSON benchmarks use DOM + manual populate (typical usage) or hand-written SAX state machines (embedded static case). Both do the same work as JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of complete workflows, not raw parsing speed.
+RapidJSON benchmarks use DOM + manual populate (typical usage) or hand-written SAX state machines (embedded static case). Both do the same work as
+JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of complete workflows, not raw parsing speed.
 
 **5. Large file performance: canada.json (2.2 MB, 117K+ coordinates)**
 
@@ -526,11 +604,13 @@ The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stre
 
 **Streaming for object counting**:
 - Hand-written RapidJSON SAX serves as baseline
-- JsonFusion typed streaming is ~47% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no manual state machines
+- JsonFusion typed streaming is ~47% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
+manual state machines
 - **JsonFusion with selective skipping**: **34% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip_json<>` in the model
 - **JsonFusion + yyjson (streaming): 35% faster than RapidJSON SAX** with the same type-safe, generic API
 
-The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema, JsonFusion's declarative skipping works uniformly across any model. With the yyjson backend, you get both performance and composability.
+The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema,
+JsonFusion's declarative skipping works uniformly across any model. With the yyjson backend, you get both performance and composability.
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
@@ -541,20 +621,25 @@ The twitter.json benchmark tests realistic deeply nested objects with optionals 
 **C++ Library Comparison:**
 
 JsonFusion with yyjson backend delivers full type-safe mapping with validation and is:
-- **35% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for this setup and data)
+- **35% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for
+this setup and data)
 - **45% faster than RapidJSON + manual populate** (eliminates 450+ lines of hand-written mapping code)
 - **With streaming API: 45% faster than reflect-cpp, 55% faster than RapidJSON + manual**
-- **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
+- **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by
+trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
 
-*Remarkable: JsonFusion's full parse + populate with yyjson takes nearly the same time as RapidJSON's DOM-only parse (which gives you an unusable tree), all thanks to yyjson's exceptional performance.*
+*Remarkable: JsonFusion's full parse + populate with yyjson takes nearly the same time as RapidJSON's DOM-only parse (which gives you an unusable tree),
+all thanks to yyjson's exceptional performance.*
 
 **Cross-Language Comparison:**
 
 For perspective, managed languages on the same benchmark (.NET 9.0.112, OpenJDK 21.0.9):
-- **Java DSL-JSON** (compile-time code generation): ~918 µs — **Faster than reflect-cpp and most C++ approaches!** Shows that compile-time generation delivers near-native performance even in managed languages.
+- **Java DSL-JSON** (compile-time code generation): ~918 µs — **Faster than reflect-cpp and most C++ approaches!** Shows that compile-time generation
+delivers near-native performance even in managed languages.
 - **C# System.Text.Json** (source generation + JIT): ~1533 µs — Slightly slower than RapidJSON + manual C++, but in the same ballpark.
 
-This demonstrates that modern managed runtimes can be competitive, especially with compile-time code generation. However, optimized C++ still provides advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1× faster than Java.
+This demonstrates that modern managed runtimes can be competitive, especially with compile-time code generation. However, optimized C++ still provides
+advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1× faster than Java.
 
 **Performance Summary (twitter.json, parse + populate + validate, same arm64 Ubuntu Linux 24.04 machine, GCC 13.3):**
 
@@ -700,7 +785,8 @@ No need to use any global variables/singletons
 
 #### High-Level Stateful Streaming API
 
-For complex streaming scenarios, you can combine **lambda streamers** with **compile-time context** to build elegant, composable pipelines. Example: counting objects in deeply nested GeoJSON without materializing containers:
+For complex streaming scenarios, you can combine **lambda streamers** with **compile-time context** to build elegant, composable pipelines. Example:
+counting objects in deeply nested GeoJSON without materializing containers:
 
 ```cpp
 struct Stats {
@@ -768,11 +854,13 @@ This is fundamentally different from traditional SAX:
 | No validation | Schema validation while streaming |
 | Per-schema custom code | Generic, reusable, composable |
 
-📁 **Real-world example**: [`benchmarks/canada_json/canada_json_parsing.hpp`](benchmarks/canada_json/canada_json_parsing.hpp) (processes 2.2 MB GeoJSON, 117K+ coordinates)
+📁 **Real-world example**: [`benchmarks/canada_json/canada_json_parsing.hpp`](benchmarks/canada_json/canada_json_parsing.hpp) (processes 2.2 MB GeoJSON,
+117K+ coordinates)
 
 ### Compile-Time Testing
 
-JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using `static_assert`. No test framework, no runtime: the compiler is the test runner.
+JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using
+`static_assert`. No test framework, no runtime: the compiler is the test runner.
 
 **Why constexpr tests:**
 - **Proves zero hidden allocations**: If it compiles in `constexpr`, no hidden unsafe dynamic allocation happened
