@@ -490,7 +490,7 @@ JsonFusion targets two distinct scenarios with different priorities:
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
 *eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
-With `JSONFUSION_USE_FAST_FLOAT=0`, there are no external runtime dependencies of the library itself except of memcpy/memset. 
+With `JSONFUSION_USE_FAST_FLOAT=0`, there are no explicit runtime dependencies of the library itself.
 
 Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.

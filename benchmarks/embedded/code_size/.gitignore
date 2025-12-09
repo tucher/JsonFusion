@@ -15,6 +15,12 @@
 # *.map
 
 # Downloaded dependencies
+libs/
 ArduinoJson.h
 ArduinoJson-*.h
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
 
