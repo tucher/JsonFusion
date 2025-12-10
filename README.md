@@ -518,7 +518,8 @@ fixed-size arrays, validation constraints, and optional fields.
 
 | Library       | -O3 (Speed) | -Os (Size) | -Os vs JsonFusion |
 |---------------|-------------|------------|-------------------|
-| **JsonFusion** | 30 KB | **11 KB** | **Baseline** |
+| Glaze         | 9 KB | 53 KB | +365% |
+| **JsonFusion** | **17 KB** | **11 KB** | **Baseline** |
 | ArduinoJson   | 35 KB | 13 KB | +18% |
 | cJSON         | 19 KB | 18 KB | +58% |
 | jsmn          | 20 KB | 19 KB | +71% |
@@ -526,16 +527,18 @@ fixed-size arrays, validation constraints, and optional fields.
 **Key Takeaways:**
 
 1. **For embedded setups, `JSONFUSION_USE_FAST_FLOAT=0` enables a lightweight in-house floating-point parser**, eliminating all libc floating-point
-machinery (no strtod, no printf). Code size: **11-30 KB** depending on optimization—**37-71% smaller than industry-standard libraries** (ArduinoJson, cJSON, jsmn).
+machinery (no strtod, no printf). Code size: **11-17 KB** depending on optimization—**18-71% smaller than industry-standard libraries** (ArduinoJson, cJSON, jsmn).
 
 2. **Type-driven code compresses better**: With `-Os`, the compiler aggressively deduplicates JsonFusion's template-based parsing.
-Manual C code (jsmn, cJSON) doesn't compress well—unique functions per type don't deduplicate. JsonFusion **shrinks 63%** (30 KB → 11 KB)
-with `-Os`; jsmn/cJSON barely shrink (~7%).
+Manual C code (jsmn, cJSON) doesn't compress well—unique functions per type don't deduplicate. JsonFusion **shrinks 33%** (17 KB → 11 KB)
+with `-Os`; jsmn/cJSON barely shrink (~7%). Glaze's inline-optimized design expands **6× with `-Os`** (9 KB → 53 KB).
 
 3. **Type-driven, single architecture**: Same high-level parsing code works everywhere. The only configuration needed is choosing the
 float backend
 (`JSONFUSION_USE_FAST_FLOAT=0` for embedded). Modern compilers then automatically optimize for the target—high-performance on servers (~1.5 ms for twitter.json.
 json), compact on MCUs (11 KB flash). The core type-driven design remains unchanged.
+
+4. **Predictable scaling**: Each subsequent model of similar structural complexity adds **~5 KB** for `-O3` and **~2.5 KB** for `-Os`. The shared infrastructure is compiled once; only type-specific dispatch logic grows with each model.
 
 
 ### Parsing Speed (High-Performance Focus)

@@ -729,6 +729,21 @@ constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, s
     return ok;
 }
 
+template<std::size_t I, class ObjT, class Tokenizer, class CTX, class UserCtx>
+constexpr bool parse_struct_field_one(
+    ObjT& structObj,
+    Tokenizer& reader,
+    CTX& ctx,
+    UserCtx* userCtx)
+{
+    using Opts = options::detail::aggregate_field_opts_getter<ObjT, I>;
+    auto& field = introspection::getStructElementByIndex<I>(structObj);
+    return ParseValue<Opts>(
+        StructFieldMeta<ObjT, I>::getRef(field),
+        reader, ctx, userCtx
+    );
+}
+
 template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
@@ -745,6 +760,26 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+
+    string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
+        FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
+    };
+
+    // using Fn = bool(*)(ObjT&, Tokenizer&, CTX&, UserCtx*);
+
+    // static constexpr auto make_table = []<std::size_t... I>(std::index_sequence<I...>) {
+    //     return std::array<Fn, sizeof...(I)>{
+    //         [](ObjT&o, Tokenizer&t, CTX&c, UserCtx*uc) -> bool {
+    //             return parse_struct_field_one<I, ObjT, Tokenizer, CTX, UserCtx>(o, t, c, uc);
+    //         }...
+    //     };
+    // };
+
+    // static constexpr auto table =
+    //     make_table(std::make_index_sequence<FH::rawFieldsCount>{});
+
+    char * b = searcher.buffer();
+
     while(true) {
         if(json_reader::TryParseStatus st = reader.read_object_end(); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
@@ -767,12 +802,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
             return true;
         }
-        
-        string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
-            FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
-        };
+        searcher.reset();
 
-        char * b = searcher.buffer();
         ParseError err{ParseError::NO_ERROR};
         if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, err, searcher.current_length(), true)) {
             if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
@@ -820,11 +851,16 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             typename CTX::PathGuard guard = ctx.getMapItemGuard(res->name);
             std::size_t structIndex = res->originalIndex;
 
-
+            // if(!table[res->originalIndex](obj, reader, ctx, userCtx)) {
+            //     return false;
+            // } else {
+            //     parsedFieldsByIndex[arrIndex] = true;
+            // }
             if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
                 return false;
+            }else {
+                parsedFieldsByIndex[arrIndex] = true;
             }
-            parsedFieldsByIndex[arrIndex] = true;
         }
 
 
@@ -840,19 +876,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 /* #### SPECIAL CASE FOR ARRAYS DESRTUCTURING #### */
 
-template <class ObjT, std::size_t... StructIndex>
-constexpr bool IsFieldSkipped(std::index_sequence<StructIndex...>, std::size_t index) {
-    bool ok = false;
-    (
-        (index == StructIndex
-             ? (
-                   ok = fieldIsNotJSON<ObjT, StructIndex>()
-                   , 0)
-             : 0),
-        ...
-        );
-    return ok;
-}
+
 
 
 
@@ -873,6 +897,24 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
+    // using Fn = bool(*)(ObjT&, Tokenizer&, CTX&, UserCtx*);
+
+    // static constexpr auto make_table = []<std::size_t... I>(std::index_sequence<I...>) {
+    //     return std::array<Fn, sizeof...(I)>{
+    //         [](ObjT&o, Tokenizer&t, CTX&c, UserCtx*uc) -> bool {
+    //             return parse_struct_field_one<I, ObjT, Tokenizer, CTX, UserCtx>(o, t, c, uc);
+    //         }...
+    //     };
+    // };
+
+    // static constexpr auto table =
+    //     make_table(std::make_index_sequence<totalFieldsCount>{});
+
+    static constexpr std::array<bool, totalFieldsCount> isFieldSkipped = []<std::size_t... I>(std::index_sequence<I...>) {
+        return std::array<bool, sizeof...(I)>{
+            fieldIsNotJSON<ObjT, I>()...
+        };
+    }(std::make_index_sequence<totalFieldsCount>{});
     while(true) {
         if(json_reader::TryParseStatus st = reader.read_array_end(); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
@@ -888,7 +930,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
 
-            while(IsFieldSkipped<ObjT>(std::make_index_sequence<totalFieldsCount>{}, requiredIndex)) {
+            while(requiredIndex < totalFieldsCount && isFieldSkipped[requiredIndex]) {
                 requiredIndex ++;
             }
 
@@ -905,7 +947,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             return true;
         }
 
-        while(IsFieldSkipped<ObjT>(std::make_index_sequence<totalFieldsCount>{}, requiredIndex)) {
+        while(requiredIndex < totalFieldsCount && isFieldSkipped[requiredIndex]) {
             requiredIndex ++;
         }
 
@@ -917,6 +959,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<totalFieldsCount>{}, requiredIndex, userCtx)) {
             return false;
         }
+        // if(!table[requiredIndex](obj, reader, ctx, userCtx)) {
+        //     return false;
+        // }
         parsed_items_count ++;
         requiredIndex ++;
 
