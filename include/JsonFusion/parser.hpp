@@ -975,6 +975,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 
 template <class FieldOptions, static_schema::JsonParsableValue Field, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+    requires (!static_schema::ParseTransformer<Field>)
 constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
@@ -1013,6 +1014,23 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
         }
     }
 }
+
+template <class FieldOptions, static_schema::JsonParsableValue Field, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+    requires static_schema::ParseTransformer<Field>
+constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+    using StT = static_schema::parse_transform_traits<Field>::wire_type;
+    StT ob;
+    using Meta = options::detail::annotation_meta_getter<StT>;
+    bool r = parser_details::ParseValue<typename Meta::options>(Meta::getRef(ob), reader, ctx, userCtx);
+    if(r) {
+        if(!field.transform_from(ob)) {
+            ctx.setError(ParseError::TRANSFORMER_ERROR, reader.current());
+            return false;
+        }
+    }
+    return r;
+}
+
 
 } // namespace parser_details
 

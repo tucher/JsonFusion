@@ -29,6 +29,7 @@ template<typename>
 struct lambda_streamer_traits;
 
 // Supported callable shape: bool(*)(Ctx*, const Arg&)
+// Warning: be really careful with inlining: mark the function as noinline if it is not a small function
 template<typename Ctx, typename Arg>
 struct lambda_streamer_traits<bool(*)(Ctx*, const Arg&)> {
     using ctx_type   = Ctx;

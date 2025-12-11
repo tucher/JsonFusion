@@ -34,7 +34,8 @@ enum class ParseError {
     NON_STRING_IN_STRING_STORAGE,
     NON_ARRAY_IN_ARRAY_LIKE_VALUE,
     NON_OBJECT_IN_MAP_LIKE_VALUE,
-    NON_ARRAY_IN_DESTRUCTURED_STRUCT
+    NON_ARRAY_IN_DESTRUCTURED_STRUCT,
+    TRANSFORMER_ERROR
 };
 
 constexpr std::string_view error_to_string(ParseError e) {
@@ -66,6 +67,7 @@ constexpr std::string_view error_to_string(ParseError e) {
     case ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE: return "NON_ARRAY_IN_ARRAY_LIKE_VALUE"; break;
     case ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE: return "NON_OBJECT_IN_MAP_LIKE_VALUE"; break;
     case ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT: return "NON_ARRAY_IN_DESTRUCTURED_STRUCT"; break;
+    case ParseError::TRANSFORMER_ERROR: return "TRANSFORMER_ERROR"; break;
 
     }
     return "N/A";

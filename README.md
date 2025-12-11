@@ -77,6 +77,7 @@ JsonFusion::Serialize(conf, output);
   - [Supported Options](#supported-options-include)
 - [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
 - [Benchmarks](#benchmarks)
+- [Custom Types & Transformers](#custom-types--transformers)
 - [Advanced Features](#advanced-features)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
@@ -666,6 +667,67 @@ advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1
 📁 **Java benchmark**: [`benchmarks/twitter_json_java/`](benchmarks/twitter_json_java/)  
 📁 **C# benchmark**: [`benchmarks/twitter_json_c_sharp/`](benchmarks/twitter_json_c_sharp/)  
 📁 **Data model**: [`benchmarks/twitter_json/twitter_model_generic.hpp`](benchmarks/twitter_json/twitter_model_generic.hpp) 
+
+## Custom Types & Transformers
+
+JsonFusion doesn't include built-in support for application-specific types like dates, UUIDs, or currencies, as well as high-level JSON schema algebra. Instead, it provides **generic transformation hooks** that let you define custom conversions between JSON representations and your domain types.
+
+**Example: ISO Date String → Microseconds**
+
+```cpp
+#include <JsonFusion/parser.hpp>
+#include <JsonFusion/serializer.hpp>
+#include <JsonFusion/generic_transformers.hpp>
+#include <chrono>
+#include <sstream>
+#include <iomanip>
+
+// Parse "2024-12-31T23:59:59Z" → microseconds since epoch
+bool parse_iso_date(int64_t& usec, const std::string& iso);
+
+// Microseconds since epoch → "2024-12-31T23:59:59Z"
+bool format_iso_date(const int64_t& usec, std::string& iso);
+
+// Define the transformer
+using Timestamp = JsonFusion::transformers::Transformed<
+    int64_t,              // Store as microseconds
+    std::string,          // Wire format is ISO string
+    parse_iso_date,       // Parse function
+    format_iso_date       // Serialize function
+>;
+
+struct Event {
+    A<Timestamp,     key<"timestamp">> timestamp_us;
+    std::string name;
+};
+
+// Usage
+Event event;
+auto result = JsonFusion::Parse(event, R"({
+    "timestamp": "2024-12-31T23:59:59Z",
+    "name": "New Year"
+})");
+
+// Access: event.timestamp.value is int64_t (microseconds)
+std::cout << "Microseconds: " << event.timestamp_us->value << "\n";
+
+// Serialization converts back to ISO string
+std::string json;
+JsonFusion::Serialize(event, json);
+// {"timestamp":"2024-12-31T23:59:59Z","name":"New Year"}
+```
+
+**Key features:**
+- **Fully composable**: Transformers work with arrays, optionals, nested structs, etc.
+- **Bidirectional**: Single definition handles both parsing and serialization
+- **Zero-overhead**: All transformations resolve at compile time
+- **Type-safe**: Errors caught during compilation
+
+📖 **Full guide**: [docs/TRANSFORMERS.md](docs/TRANSFORMERS.md) covers:
+- Core concepts (`ParseTransformer`, `SerializeTransformer`)
+- Building blocks (`Transformed`, `ArrayReduceField`, `MapReduceField`)
+- Composition patterns
+- Relationship with streaming interfaces
 
 ## Advanced Features
 

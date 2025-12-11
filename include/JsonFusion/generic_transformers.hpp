@@ -1,90 +1,87 @@
 #pragma once
-
-#include <iterator>
-#include <ranges>
-#include <utility>
-#include <cstddef>
-
+#include <JsonFusion/static_schema.hpp>
 namespace JsonFusion {
+namespace transformers {
+    
+template<
+    class StoredT,
+    class WireT,
+    auto FromFn,   // bool(StoredT&, const WireT&)
+    auto ToFn      // bool(const StoredT&, WireT&)
+>
+struct Transformed {
+    using stored_type = StoredT;
+    using wire_type   = WireT;
 
-template <class ... Options>
-struct OptionsPack {
-    static constexpr std::size_t Count = sizeof...(Options);
-};
+    StoredT value{};  // what the user “really” owns in the model
 
-template <class T, typename... OptionsAndAnnotations>
-struct Annotated {
-    T value = T();
-    using value_type = T;
-    using Options = OptionsPack<OptionsAndAnnotations...>;
+    
 
-
-    template<class Ctx>
-    constexpr void set_jsonfusion_context(Ctx * ctx) {
-        if constexpr( requires{value.set_jsonfusion_context(ctx);} ) {
-            value.set_jsonfusion_context(ctx);
-        }
+     // ---- Parse side: wire -> stored ----
+    constexpr bool transform_from(const WireT& wire) {
+        return FromFn(value, wire);
     }
-    // Conversions/forwarding so parser can treat Annotated<T> like T
 
+    // ---- Serialize side: stored -> wire ----
+    constexpr bool transform_to(WireT& wire) const {
+        return ToFn(value, wire);
+    }
 
-    // defaulted special members
-    constexpr Annotated() = default;
+    constexpr Transformed() = default;
 
+    constexpr Transformed(const Transformed&) = default;
+    constexpr Transformed(Transformed&&) = default;
+    constexpr Transformed& operator=(const Transformed&) = default;
+    constexpr Transformed& operator=(Transformed&&) = default;
 
-    constexpr Annotated(const Annotated&) = default;
-    constexpr Annotated(Annotated&&) = default;
-    constexpr Annotated& operator=(const Annotated&) = default;
-    constexpr Annotated& operator=(Annotated&&) = default;
-
-    // construct from T or anything convertible to T
+    // construct from StoredT or anything convertible to StoredT
     template<class U>
-        requires std::convertible_to<U, T>
-    constexpr Annotated(U&& u) : value(std::forward<U>(u)) {}
+        requires std::convertible_to<U, StoredT>
+    constexpr Transformed(U&& u) : value(std::forward<U>(u)) {}
 
     template<class U>
-        requires std::convertible_to<U, T>
-    constexpr Annotated& operator=(U&& u) {
+        requires std::convertible_to<U, StoredT>
+    constexpr Transformed& operator=(U&& u) {
         value = std::forward<U>(u);
         return *this;
     }
 
-    constexpr operator T&()             { return value; }
-    constexpr operator const T&() const { return value; }
+    constexpr operator StoredT&()             { return value; }
+    constexpr operator const StoredT&() const { return value; }
 
-    constexpr Annotated& operator=(const T& v) {
+    constexpr Transformed& operator=(const StoredT& v) {
         value = v;
         return *this;
     }
-    constexpr T*       operator->()       { return std::addressof(value); }
-    constexpr const T* operator->() const { return std::addressof(value); }
+    constexpr StoredT*       operator->()       { return std::addressof(value); }
+    constexpr const StoredT* operator->() const { return std::addressof(value); }
 
-    constexpr T&       get()       { return value; }
-    constexpr const T& get() const { return value; }
+    constexpr StoredT&       get()       { return value; }
+    constexpr const StoredT& get() const { return value; }
 
 
-    template<class U = T>
+    template<class U = StoredT>
         requires std::ranges::range<U>
     constexpr auto begin() {
         using std::begin;
         return begin(value);
     }
 
-    template<class U = T>
+    template<class U = StoredT>
         requires std::ranges::range<const U>
     constexpr auto begin() const {
         using std::begin;
         return begin(value);
     }
 
-    template<class U = T>
+    template<class U = StoredT>
         requires std::ranges::range<U>
     constexpr auto end() {
         using std::end;
         return end(value);
     }
 
-    template<class U = T>
+    template<class U = StoredT>
         requires std::ranges::range<const U>
     constexpr auto end() const {
         using std::end;
@@ -92,73 +89,76 @@ struct Annotated {
     }
 
     // size() forwarding (string, vector, array, etc.)
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (const U& u) { u.size(); }
     constexpr auto size() const {
         return value.size();
     }
 
     // data() forwarding
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (U& u) { u.data(); }
     constexpr auto data() {
         return value.data();
     }
 
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (const U& u) { u.data(); }
     constexpr auto data() const {
         return value.data();
     }
 
     // operator[] forwarding (arrays, string, vector, etc.)
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (U& u) { u[std::size_t{0}]; }
     constexpr decltype(auto) operator[](std::size_t i) {
         return value[i];
     }
 
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (const U& u) { u[std::size_t{0}]; }
     constexpr decltype(auto) operator[](std::size_t i) const {
         return value[i];
     }
 
     // push_back (strings, vectors, etc.)
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (U& u, const typename U::value_type& x) { u.push_back(x); }
     constexpr void push_back(const typename U::value_type& x) {
         value.push_back(x);
     }
 
     // clear()
-    template<class U = T>
+    template<class U = StoredT>
         requires requires (U& u) { u.clear(); }
     constexpr void clear() {
         value.clear();
     }
+
+   
 };
-// 1) Annotated<T, ...> == Annotated<T, ...>
+
+
 template<class T, class... OptsL, class... OptsR>
-constexpr bool operator==(const Annotated<T, OptsL...>& lhs,
-                const Annotated<T, OptsR...>& rhs)
+constexpr bool operator==(const Transformed<T, OptsL...>& lhs,
+                const Transformed<T, OptsR...>& rhs)
     noexcept(noexcept(lhs.value == rhs.value))
 {
     return lhs.value == rhs.value;
 }
 
 template<class T, class... OptsL, class... OptsR>
-constexpr bool operator!=(const Annotated<T, OptsL...>& lhs,
-                const Annotated<T, OptsR...>& rhs)
+constexpr bool operator!=(const Transformed<T, OptsL...>& lhs,
+                const Transformed<T, OptsR...>& rhs)
     noexcept(noexcept(lhs.value != rhs.value))
 {
     return lhs.value != rhs.value;
 }
 
-// 2) Annotated<T, ...> == U (for any U where T == U is valid)
+// 2) Transformed<T, ...> == U (for any U where T == U is valid)
 template<class T, class... Opts, class U>
     requires requires (const T& t, const U& u) { t == u; }
-constexpr bool operator==(const Annotated<T, Opts...>& lhs,
+constexpr bool operator==(const Transformed<T, Opts...>& lhs,
                 const U& rhs)
     noexcept(noexcept(std::declval<const T&>() == std::declval<const U&>()))
 {
@@ -167,18 +167,18 @@ constexpr bool operator==(const Annotated<T, Opts...>& lhs,
 
 template<class T, class... Opts, class U>
     requires requires (const T& t, const U& u) { t != u; }
-constexpr bool operator!=(const Annotated<T, Opts...>& lhs,
+constexpr bool operator!=(const Transformed<T, Opts...>& lhs,
                 const U& rhs)
     noexcept(noexcept(std::declval<const T&>() != std::declval<const U&>()))
 {
     return lhs.value != rhs;
 }
 
-// 3) U == Annotated<T, ...>
+// 3) U == Transformed<T, ...>
 template<class U, class T, class... Opts>
     requires requires (const U& u, const T& t) { u == t; }
 constexpr bool operator==(const U& lhs,
-                const Annotated<T, Opts...>& rhs)
+                const Transformed<T, Opts...>& rhs)
     noexcept(noexcept(std::declval<const U&>() == std::declval<const T&>()))
 {
     return lhs == rhs.value;
@@ -187,23 +187,34 @@ constexpr bool operator==(const U& lhs,
 template<class U, class T, class... Opts>
     requires requires (const U& u, const T& t) { u != t; }
 constexpr bool operator!=(const U& lhs,
-                const Annotated<T, Opts...>& rhs)
+                const Transformed<T, Opts...>& rhs)
     noexcept(noexcept(std::declval<const U&>() != std::declval<const T&>()))
 {
     return lhs != rhs.value;
 }
 
-template<class T, class ... O>
-    using A = JsonFusion::Annotated<T, O...>;
 
+template<class ElemWire, class StoredT, auto ReduceFn>
+struct ArrayReduceField {
+    struct Streamer {
+        using value_type = ElemWire;
+        StoredT state{};
 
-template <class T, std::size_t Index>
-struct AnnotatedField {
-    // using Options = OptionsPack<>;
+        void reset() { state = StoredT{}; }
+        bool consume(const value_type& v) {
+            return std::invoke(ReduceFn, state, v);
+        }
+        bool finalize(bool ok) { return ok; }
+    };
+
+    using wire_type = Streamer;
+    StoredT value{};
+
+    bool transform_from(const wire_type& w) {
+        value = w.state;
+        return true;
+    }
 };
 
-
-
-} // namespace JsonFusion
-
-
+}
+}

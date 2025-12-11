@@ -25,7 +25,8 @@ enum class SerializeError {
     FIXED_SIZE_CONTAINER_OVERFLOW,
     ILLFORMED_NUMBER,
     STRING_CONTENT_ERROR,
-    INPUT_STREAM_ERROR
+    INPUT_STREAM_ERROR,
+    TRANSFORMER_ERROR
 };
 
 
@@ -524,9 +525,34 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 }
 
 template <class FieldOptions, static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+    requires (!static_schema::SerializeTransformer<Field>)
 constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
+        return true;
+    } else if constexpr(FieldOptions::template has_option<options::detail::json_sink_tag>) {
+        if constexpr(static_schema::DynamicContainerTypeConcept<Field>) {
+            for(char ch: obj) {
+                if(currentPos == end) {
+                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    return false;
+                }
+                *currentPos ++ = ch;
+            }
+
+
+        } else {
+            char *d = static_schema::static_string_traits<Field>::data(obj);
+            for(std::size_t i = 0; i < static_schema::static_string_traits<Field>::max_size(obj); i ++) {
+                if(currentPos == end) {
+                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
+                    return false;
+                }
+                *currentPos ++ = d[i];
+            }
+
+            return true;
+        }
         return true;
     }else if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
 
@@ -537,7 +563,23 @@ constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & e
     return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), currentPos, end, ctx, userCtx);
 }
 
+template <class FieldOptions, static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+    requires static_schema::SerializeTransformer<Field>
+constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+    using ObT = static_schema::serialize_transform_traits<Field>::wire_type;
+    ObT ob;
+    using Meta = options::detail::annotation_meta_getter<ObT>;
+    if(!obj.transform_to(ob)) {
+        ctx.setError(SerializeError::TRANSFORMER_ERROR, currentPos);
+        return false;
+    } else {
+        return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), currentPos, end, ctx, userCtx);
+    }
+
+}
+
 } // namespace serializer_details
+
 
 
 

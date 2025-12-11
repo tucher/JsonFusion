@@ -413,6 +413,11 @@ struct map_read_cursor<M> {
     }
 };
 
+template<class T, class = void>
+struct parse_transform_traits;
+
+template<class T, class = void>
+struct serialize_transform_traits;
 
 
 /* ######## Bool type detection ######## */
@@ -431,7 +436,8 @@ concept JsonString =
     std::same_as<AnnotatedValue<C>, std::string>      ||
     std::same_as<AnnotatedValue<C>, std::string_view> ||
     (std::ranges::contiguous_range<AnnotatedValue<C>> &&
-     std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>);
+     std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>
+    && !parse_transform_traits<C>::is_transformer && !serialize_transform_traits<C>::is_transformer);
 
 
 
@@ -485,6 +491,8 @@ struct is_json_object {
             return false; // maps are handled separately
         }else if constexpr (MapWritable<U>) {
             return false; // maps are handled separately
+        }else if constexpr (parse_transform_traits<U>::is_transformer || serialize_transform_traits<U>::is_transformer){
+            return false;
         }else if constexpr (!std::is_class_v<U>) {
             return false;
         } else if constexpr (!std::is_aggregate_v<U>) {
@@ -523,7 +531,9 @@ struct is_json_serializable_array {
         using U = AnnotatedValue<T>;
         if constexpr (JsonString<T>||JsonBool<T> || JsonNumber<T>)
             return false; //not arrays
-        else {
+        else if constexpr(serialize_transform_traits<U>::is_transformer) {
+            return false;
+        }else {
             if constexpr(ArrayReadable<U>) {
                 return is_json_serializable_value<typename array_read_cursor<AnnotatedValue<T>>::element_type>::value;
             } else {
@@ -581,24 +591,24 @@ struct is_nullable_json_serializable_value {
 
 
 template<class Field>
-concept JsonNullableSerializableValue = is_nullable_json_serializable_value<Field>::value;
+concept JsonNullableSerializableValue = is_nullable_json_serializable_value<Field>::value||
+                                        (serialize_transform_traits<Field>::is_transformer && is_nullable_json_serializable_value<typename serialize_transform_traits<Field>::wire_type>::value);
 
 template<class Field>
-concept JsonNonNullableSerializableValue = is_non_null_json_serializable_value<Field>::value;
+concept JsonNonNullableSerializableValue = is_non_null_json_serializable_value<Field>::value ||
+                                           (serialize_transform_traits<Field>::is_transformer && is_non_null_json_serializable_value<typename serialize_transform_traits<Field>::wire_type>::value);
 
 
 template<class T>
 struct is_json_serializable_value {
     static constexpr bool value = is_non_null_json_serializable_value<T>::value
-                                  || is_nullable_json_serializable_value<T>::value;
+                                  || is_nullable_json_serializable_value<T>::value || serialize_transform_traits<T>::is_transformer;
 };
 
 template<class C>
 concept JsonSerializableValue = !input_checks::is_directly_forbidden_v<C> &&  is_json_serializable_value<C>::value;
 
 template<class T> struct is_json_parsable_value;  // primary declaration
-template<class T> struct is_json_parsable_map;     // forward declaration
-template<class T> struct is_json_serializable_map; // forward declaration
 
 
 template<class T>
@@ -610,6 +620,8 @@ struct is_json_parsable_array {
         else {
             if constexpr(ArrayWritable<U>) {
                 return is_json_parsable_value<typename array_write_cursor<AnnotatedValue<T>>::element_type>::value;
+            }if constexpr(parse_transform_traits<U>::is_transformer) {
+                return false;
             } else {
                 return false;
             }
@@ -662,16 +674,20 @@ struct is_nullable_json_parsable_value {
 
 
 template<class Field>
-concept JsonNullableParsableValue = is_nullable_json_parsable_value<Field>::value;
+concept JsonNullableParsableValue = is_nullable_json_parsable_value<Field>::value||
+                                    (parse_transform_traits<Field>::is_transformer && is_nullable_json_parsable_value<typename parse_transform_traits<Field>::wire_type>::value);
+
 
 template<class Field>
-concept JsonNonNullableParsableValue = is_non_null_json_parsable_value<Field>::value;
+concept JsonNonNullableParsableValue = is_non_null_json_parsable_value<Field>::value||
+                                       (parse_transform_traits<Field>::is_transformer && is_non_null_json_parsable_value<typename parse_transform_traits<Field>::wire_type>::value);
+
 
 
 template<class T>
 struct is_json_parsable_value {
     static constexpr bool value = is_non_null_json_parsable_value<T>::value
-                                  || is_nullable_json_parsable_value<T>::value;
+                                  || is_nullable_json_parsable_value<T>::value || parse_transform_traits<T>::is_transformer;
 };
 
 template<class C>
@@ -1124,6 +1140,76 @@ template<class T>
 struct always_false : std::false_type {};
 }
 
+
+
+template<class T>
+using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
+
+template<class T>
+concept ParseTransformer =
+    requires(remove_cvref_t<T> t,
+             const typename remove_cvref_t<T>::wire_type& w)
+{
+    // Must declare wire_type
+    typename remove_cvref_t<T>::wire_type;
+
+    // Must implement: bool transform_from(const wire_type&)
+    { t.transform_from(w) } -> std::same_as<bool>;
+} && JsonParsableValue<typename remove_cvref_t<T>::wire_type> ;
+
+template<class T, class>
+struct parse_transform_traits {
+    static constexpr bool is_transformer = false;
+    // no wire_type alias here on purpose to avoid hard errors
+};
+
+template<class T>
+struct parse_transform_traits<
+    T,
+    std::enable_if_t<ParseTransformer<T>>
+    >
+{
+    static constexpr bool is_transformer = true;
+    using wire_type = typename remove_cvref_t<T>::wire_type;
+};
+
+template<class T>
+inline constexpr bool is_parse_transformer_v =
+    parse_transform_traits<T>::is_transformer;
+
+template<class T>
+concept SerializeTransformer =
+    requires(const remove_cvref_t<T> t,
+             typename remove_cvref_t<T>::wire_type& w)
+{
+    // Must declare wire_type
+    typename remove_cvref_t<T>::wire_type;
+
+    // Must implement: bool transform_to(wire_type&) const
+    { t.transform_to(w) } -> std::same_as<bool>;
+} && JsonSerializableValue<typename remove_cvref_t<T>::wire_type>;
+
+template<class T, class >
+struct serialize_transform_traits {
+    static constexpr bool is_transformer = false;
+    // no wire_type alias here on purpose to avoid hard errors
+};
+
+template<class T>
+struct serialize_transform_traits<
+    T,
+    std::enable_if_t<SerializeTransformer<T>>
+    >
+{
+    static constexpr bool is_transformer = true;
+    using wire_type = typename remove_cvref_t<T>::wire_type;
+};
+
+template<class T>
+inline constexpr bool is_serialize_transformer_v =
+    serialize_transform_traits<T>::is_transformer;
+
+
 } //static_schema
 namespace schema_analyzis {
 using namespace static_schema;
@@ -1136,55 +1222,59 @@ consteval std::size_t calc_type_depth() {
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return SCHEMA_UNBOUNDED;
     } else {
-        if constexpr (JsonNullableParsableValue<T>) {
-            if constexpr (is_specialization_of<T, std::optional>::value) {
-                return calc_type_depth<typename T::value_type, SeenTypes...>();
-            } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
-                return calc_type_depth<typename T::element_type, SeenTypes...>();
-            } else {
-                static_assert(false, "Bad nullable storage");
-                return SCHEMA_UNBOUNDED;
-            }
+        if constexpr(ParseTransformer<T>) {
+            return  calc_type_depth<typename T::wire_type, SeenTypes...>();
         } else {
-            if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
-                return 1;
-            } else { //containers
-                if constexpr(ArrayWritable<T>) {
-                    using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
-                    if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
-                        return SCHEMA_UNBOUNDED;
-                    } else
-                        return 1 + r;
-                } else if constexpr(MapWritable<T>) {
-                    using ElemT = AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>;
-                    if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
-                        return SCHEMA_UNBOUNDED;
-                    } else
-                        return 1 + r;
-                } else { // objects
+            if constexpr (JsonNullableParsableValue<T>) {
+                if constexpr (is_specialization_of<T, std::optional>::value) {
+                    return calc_type_depth<typename T::value_type, SeenTypes...>();
+                } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
+                    return calc_type_depth<typename T::element_type, SeenTypes...>();
+                } else {
+                    static_assert(false, "Bad nullable storage");
+                    return SCHEMA_UNBOUNDED;
+                }
+            } else {
+                if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                    return 1;
+                } else { //containers
+                    if constexpr(ArrayWritable<T>) {
+                        using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
+                        if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
+                            return SCHEMA_UNBOUNDED;
+                        } else
+                            return 1 + r;
+                    } else if constexpr(MapWritable<T>) {
+                        using ElemT = AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>;
+                        if(std::size_t r = calc_type_depth<ElemT, T, SeenTypes...>(); r == SCHEMA_UNBOUNDED) {
+                            return SCHEMA_UNBOUNDED;
+                        } else
+                            return 1 + r;
+                    } else { // objects
 
-                    auto fieldDepthGetter = [](auto ic) -> std::size_t {
-                        constexpr std::size_t StructIndex = decltype(ic)::value;
-                        using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
-                        using Opts    = options::detail::annotation_meta_getter<Field>::options;
-                        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
-                            return 0;
+                        auto fieldDepthGetter = [](auto ic) -> std::size_t {
+                            constexpr std::size_t StructIndex = decltype(ic)::value;
+                            using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
+                            using Opts    = options::detail::annotation_meta_getter<Field>::options;
+                            if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                                return 0;
+                            } else {
+                                using FeildT = AnnotatedValue<Field>;
+                                return calc_type_depth<FeildT, T, SeenTypes...>();
+                            }
+                        };
+                        constexpr std::size_t struct_elements_count = introspection::structureElementsCount<T>;
+                        if constexpr (struct_elements_count == 0) {
+                            return 1;
                         } else {
-                            using FeildT = AnnotatedValue<Field>;
-                            return calc_type_depth<FeildT, T, SeenTypes...>();
-                        }
-                    };
-                    constexpr std::size_t struct_elements_count = introspection::structureElementsCount<T>;
-                    if constexpr (struct_elements_count == 0) {
-                        return 1;
-                    } else {
-                        std::size_t r = [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
-                            return std::max({fieldDepthGetter(std::integral_constant<std::size_t, I>{})...});
-                        }(std::make_index_sequence<struct_elements_count>{});
-                        if(r == SCHEMA_UNBOUNDED) {
-                            return r;
-                        } else {
-                            return 1 +r;
+                            std::size_t r = [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
+                                return std::max({fieldDepthGetter(std::integral_constant<std::size_t, I>{})...});
+                            }(std::make_index_sequence<struct_elements_count>{});
+                            if(r == SCHEMA_UNBOUNDED) {
+                                return r;
+                            } else {
+                                return 1 +r;
+                            }
                         }
                     }
                 }
@@ -1200,40 +1290,44 @@ consteval std::size_t has_maps() {
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return false;
     } else {
-        if constexpr (JsonNullableParsableValue<T>) {
-            if constexpr (is_specialization_of<T, std::optional>::value) {
-                return has_maps<typename T::value_type, SeenTypes...>();
-            } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
-                return has_maps<typename T::element_type, SeenTypes...>();
-            } else {
-                static_assert(false, "Bad nullable storage");
-                return SCHEMA_UNBOUNDED;
-            }
+        if constexpr(ParseTransformer<T>) {
+            return  has_maps<typename T::wire_type, SeenTypes...>();
         } else {
-            if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
-                return false;
-            } else { //containers
-                if constexpr(ArrayWritable<T>) {
-                    using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
-                    return has_maps<ElemT, SeenTypes...>();
-                } else if constexpr(MapWritable<T>) {
-                    return true;
-                } else { // objects
-                    auto mapFinder = [](auto ic) -> std::size_t {
-                        constexpr std::size_t StructIndex = decltype(ic)::value;
-                        using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
-                        using Opts    = options::detail::annotation_meta_getter<Field>::options;
-                        if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
-                            return false;
-                        } else {
-                            using FeildT = AnnotatedValue<Field>;
-                            return has_maps<FeildT, T, SeenTypes...>();
-                        }
-                    };
+            if constexpr (JsonNullableParsableValue<T>) {
+                if constexpr (is_specialization_of<T, std::optional>::value) {
+                    return has_maps<typename T::value_type, SeenTypes...>();
+                } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
+                    return has_maps<typename T::element_type, SeenTypes...>();
+                } else {
+                    static_assert(false, "Bad nullable storage");
+                    return SCHEMA_UNBOUNDED;
+                }
+            } else {
+                if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                    return false;
+                } else { //containers
+                    if constexpr(ArrayWritable<T>) {
+                        using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
+                        return has_maps<ElemT, SeenTypes...>();
+                    } else if constexpr(MapWritable<T>) {
+                        return true;
+                    } else { // objects
+                        auto mapFinder = [](auto ic) -> std::size_t {
+                            constexpr std::size_t StructIndex = decltype(ic)::value;
+                            using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
+                            using Opts    = options::detail::annotation_meta_getter<Field>::options;
+                            if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                                return false;
+                            } else {
+                                using FeildT = AnnotatedValue<Field>;
+                                return has_maps<FeildT, T, SeenTypes...>();
+                            }
+                        };
 
-                    return [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
-                        return (mapFinder(std::integral_constant<std::size_t, I>{}) || ...);
-                    }(std::make_index_sequence<introspection::structureElementsCount<T>>{});
+                        return [&]<std::size_t... I>(std::index_sequence<I...>) -> std::size_t {
+                            return (mapFinder(std::integral_constant<std::size_t, I>{}) || ...);
+                        }(std::make_index_sequence<introspection::structureElementsCount<T>>{});
+                    }
                 }
             }
         }

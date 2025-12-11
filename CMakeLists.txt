@@ -132,6 +132,8 @@ target_include_directories(canada_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
+target_compile_definitions(canada_json_parsing PUBLIC JSONFUSION_USE_FAST_FLOAT=1)
+
 
 
 

@@ -687,6 +687,8 @@ template<class T>
 struct always_false : std::false_type {};
 }
 
+// Warning: be really careful with inlining: mark the function as noinline if it is not a small function
+
 template<class PhaseTag, auto Fn>
 struct fn_validator {
     template<class Tag, std::size_t Index, class Storage, class... PhaseArgs>
