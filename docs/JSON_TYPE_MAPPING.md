@@ -366,7 +366,7 @@ struct Person {
 1. **Field names**: Compile-time fixed (or via `key<"name">` annotation)
 2. **Field types**: Each field has its own type (can differ)
 3. **Field count**: Fixed at compile time
-4. **Required fields**: By default all struct fields are not required (must be absent in JSON), including `std::optional`/`std::unique_ptr<T>` fields. `std::optional`/`std::unique_ptr<T>` only allows `null` values, not absence. To enforce presence, use struct-level `not_required<...>`/`required<...>` validators.
+4. **Required fields**: By default all struct fields are not required (may be absent in JSON), including `std::optional`/`std::unique_ptr<T>` fields. `std::optional`/`std::unique_ptr<T>` only allows `null` values, not controls presense/absence. To enforce presence, use struct-level `not_required<...>`/`required<...>` validators.
 5. **Unknown fields**: Rejected by default
 
 ```cpp
@@ -376,7 +376,7 @@ struct Config {
 };
 
 Parse(config, R"({"port": 8080, "host": "localhost"})");  // OK
-Parse(config, R"({"port": 8080})");                       // Error: missing "host"
+Parse(config, R"({"port": 8080})");                       // OK: "host" is not required by default 
 Parse(config, R"({"port": 8080, "host": "localhost", "extra": 1})");  // Error: unknown field
 ```
 

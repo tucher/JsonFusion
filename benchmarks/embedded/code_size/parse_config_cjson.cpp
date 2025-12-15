@@ -284,10 +284,245 @@ cleanup:
     return success;
 }
 
+// Parse RpcCommand
+extern "C" __attribute__((used)) bool parse_rpc_command_cjson(const char* data, size_t size) {
+    embedded_benchmark::RpcCommand rpc_cmd;  // Local variable
+    cJSON* root = cJSON_ParseWithLength(data, size);
+    if (!root) return false;
+    
+    // Declare all variables at the top
+    bool success = true;
+    cJSON* command_id;
+    cJSON* timestamp_us;
+    cJSON* sequence;
+    cJSON* priority;
+    cJSON* targets;
+    cJSON* params;
+    cJSON* execution;
+    cJSON* response_config;
+    int targets_count;
+    int params_count;
+    
+    // Required: command_id must be present
+    command_id = cJSON_GetObjectItem(root, "command_id");
+    if (!command_id || !cJSON_IsString(command_id)) {
+        success = false;
+        goto cleanup;
+    }
+    if (!copy_cjson_string(command_id, rpc_cmd.command_id.data(), rpc_cmd.command_id.size())) {
+        success = false;
+        goto cleanup;
+    }
+    
+    // Required: timestamp_us must be present
+    timestamp_us = cJSON_GetObjectItem(root, "timestamp_us");
+    if (!timestamp_us || !cJSON_IsNumber(timestamp_us)) {
+        success = false;
+        goto cleanup;
+    }
+    rpc_cmd.timestamp_us = static_cast<uint64_t>(timestamp_us->valuedouble);
+    
+    // Optional: sequence
+    sequence = cJSON_GetObjectItem(root, "sequence");
+    if (sequence && cJSON_IsNumber(sequence)) {
+        rpc_cmd.sequence = static_cast<uint16_t>(sequence->valueint);
+    }
+    
+    // Optional: priority (with validation if present)
+    priority = cJSON_GetObjectItem(root, "priority");
+    if (priority && cJSON_IsNumber(priority)) {
+        int prio = priority->valueint;
+        if (prio < 0 || prio > 10) {
+            success = false;
+            goto cleanup;
+        }
+        rpc_cmd.priority = static_cast<uint8_t>(prio);
+    }
+    
+    // Required: targets array must be present with min 1 item
+    targets = cJSON_GetObjectItem(root, "targets");
+    if (!targets || !cJSON_IsArray(targets)) {
+        success = false;
+        goto cleanup;
+    }
+    targets_count = cJSON_GetArraySize(targets);
+    if (targets_count < 1 || targets_count > static_cast<int>(embedded_benchmark::RpcCommand::kMaxTargets)) {
+        success = false;
+        goto cleanup;
+    }
+    
+    rpc_cmd.targets_count = 0;
+    for (int i = 0; i < targets_count; ++i) {
+        cJSON* target_obj = cJSON_GetArrayItem(targets, i);
+        if (!cJSON_IsObject(target_obj)) {
+            success = false;
+            goto cleanup;
+        }
+        
+        auto& target = rpc_cmd.targets[i];
+        
+        // Required: device_id must be present
+        cJSON* device_id = cJSON_GetObjectItem(target_obj, "device_id");
+        if (!device_id || !cJSON_IsString(device_id)) {
+            success = false;
+            goto cleanup;
+        }
+        if (!copy_cjson_string(device_id, target.device_id.data(), target.device_id.size())) {
+            success = false;
+            goto cleanup;
+        }
+        
+        // Optional: subsystem
+        cJSON* subsystem = cJSON_GetObjectItem(target_obj, "subsystem");
+        if (subsystem && cJSON_IsString(subsystem)) {
+            copy_cjson_string(subsystem, target.subsystem.data(), target.subsystem.size());
+        }
+        
+        rpc_cmd.targets_count++;
+    }
+    
+    // Required: params array must be present with min 1 item
+    params = cJSON_GetObjectItem(root, "params");
+    if (!params || !cJSON_IsArray(params)) {
+        success = false;
+        goto cleanup;
+    }
+    params_count = cJSON_GetArraySize(params);
+    if (params_count < 1 || params_count > static_cast<int>(embedded_benchmark::RpcCommand::kMaxParams)) {
+        success = false;
+        goto cleanup;
+    }
+    
+    rpc_cmd.params_count = 0;
+    for (int i = 0; i < params_count; ++i) {
+        cJSON* param_obj = cJSON_GetArrayItem(params, i);
+        if (!cJSON_IsObject(param_obj)) {
+            success = false;
+            goto cleanup;
+        }
+        
+        auto& param = rpc_cmd.params[i];
+        
+        // Required: key must be present
+        cJSON* key = cJSON_GetObjectItem(param_obj, "key");
+        if (!key || !cJSON_IsString(key)) {
+            success = false;
+            goto cleanup;
+        }
+        if (!copy_cjson_string(key, param.key.data(), param.key.size())) {
+            success = false;
+            goto cleanup;
+        }
+        
+        // Optional: value fields
+        cJSON* int_value = cJSON_GetObjectItem(param_obj, "int_value");
+        if (int_value && cJSON_IsNumber(int_value)) {
+            param.int_value = static_cast<int64_t>(int_value->valuedouble);
+        }
+        
+        cJSON* float_value = cJSON_GetObjectItem(param_obj, "float_value");
+        if (float_value && cJSON_IsNumber(float_value)) {
+            double fval = float_value->valuedouble;
+            if (fval < -1000000.0 || fval > 1000000.0) {
+                success = false;
+                goto cleanup;
+            }
+            param.float_value = fval;
+        }
+        
+        cJSON* bool_value = cJSON_GetObjectItem(param_obj, "bool_value");
+        if (bool_value && cJSON_IsBool(bool_value)) {
+            param.bool_value = cJSON_IsTrue(bool_value);
+        }
+        
+        cJSON* string_value = cJSON_GetObjectItem(param_obj, "string_value");
+        if (string_value && cJSON_IsString(string_value)) {
+            param.string_value.emplace();
+            copy_cjson_string(string_value, param.string_value->data(), param.string_value->size());
+        }
+        
+        rpc_cmd.params_count++;
+    }
+    
+    // Optional: execution section
+    execution = cJSON_GetObjectItem(root, "execution");
+    if (execution && cJSON_IsObject(execution)) {
+        embedded_benchmark::RpcCommand::ExecutionOptions exec;
+        
+        // Required if section present: timeout_ms
+        cJSON* timeout_ms = cJSON_GetObjectItem(execution, "timeout_ms");
+        if (!timeout_ms || !cJSON_IsNumber(timeout_ms)) {
+            success = false;
+            goto cleanup;
+        }
+        uint32_t timeout = static_cast<uint32_t>(timeout_ms->valuedouble);
+        if (timeout > 300000) {
+            success = false;
+            goto cleanup;
+        }
+        exec.timeout_ms = timeout;
+        
+        // Optional: retry_on_failure
+        cJSON* retry = cJSON_GetObjectItem(execution, "retry_on_failure");
+        if (retry && cJSON_IsBool(retry)) {
+            exec.retry_on_failure = cJSON_IsTrue(retry);
+        }
+        
+        // Optional: max_retries (with validation if present)
+        cJSON* max_retries = cJSON_GetObjectItem(execution, "max_retries");
+        if (max_retries && cJSON_IsNumber(max_retries)) {
+            int retries = max_retries->valueint;
+            if (retries < 0 || retries > 5) {
+                success = false;
+                goto cleanup;
+            }
+            exec.max_retries = static_cast<uint8_t>(retries);
+        }
+        
+        rpc_cmd.execution = exec;
+    }
+    
+    // Optional: response_config section
+    response_config = cJSON_GetObjectItem(root, "response_config");
+    if (response_config && cJSON_IsObject(response_config)) {
+        embedded_benchmark::RpcCommand::ResponseConfig resp;
+        
+        // Optional: callback_url
+        cJSON* callback_url = cJSON_GetObjectItem(response_config, "callback_url");
+        if (callback_url && cJSON_IsString(callback_url)) {
+            copy_cjson_string(callback_url, resp.callback_url.data(), resp.callback_url.size());
+        }
+        
+        // Required if section present: acknowledge
+        cJSON* acknowledge = cJSON_GetObjectItem(response_config, "acknowledge");
+        if (!acknowledge || !cJSON_IsBool(acknowledge)) {
+            success = false;
+            goto cleanup;
+        }
+        resp.acknowledge = cJSON_IsTrue(acknowledge);
+        
+        // Required if section present: send_result
+        cJSON* send_result = cJSON_GetObjectItem(response_config, "send_result");
+        if (!send_result || !cJSON_IsBool(send_result)) {
+            success = false;
+            goto cleanup;
+        }
+        resp.send_result = cJSON_IsTrue(send_result);
+        
+        rpc_cmd.response_config = resp;
+    }
+    
+cleanup:
+    cJSON_Delete(root);
+    return success;
+}
+
 // Entry point
 extern "C" __attribute__((used)) int main() {
     volatile bool result = parse_config_cjson("", 0);
+    volatile bool rpc_result = parse_rpc_command_cjson("", 0);
     (void)result;
+    (void)rpc_result;
     while(1) {}
     return 0;
 }

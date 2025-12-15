@@ -16,12 +16,19 @@ extern "C" __attribute__((used)) bool parse_config(const char* data, size_t size
     return !error;
 }
 
+extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t size) {
+    embedded_benchmark::RpcCommand cmd;
+    auto error = glz::read_json(cmd, std::string_view(data, size));
+    return !error;
+}
 // Entry point - ensures parse_config is not eliminated by linker
 // In a real embedded system, this would be your main loop
 int main() {
     // Call parse_config to ensure it's included in binary
     volatile bool result = parse_config("", 0);
+    volatile bool rpc_result = parse_rpc_command("", 0);
     (void)result;
+    (void)rpc_result;
     
     // Infinite loop (typical for embedded without OS)
     while(1) {}

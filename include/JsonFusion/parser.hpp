@@ -687,7 +687,7 @@ struct FieldsHelper {
     }();
 
     static consteval std::size_t indexInSortedByName(std::string_view name) {
-        for(int i = 0; i < fieldsCount; i++) {
+        for(std::size_t i = 0; i < fieldsCount; i++) {
             if(fieldIndexesSortedByFieldName[i].name == name) {
                 return i;
             }

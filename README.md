@@ -105,9 +105,9 @@ how it is usually done in Python, Java, Go, etc..
  workflows on realistic data (see [Benchmarks](#benchmarks)). What would take hundreds of 
  lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs 
  (which you'd need anyway) and JsonFusion handles the rest. With optional yyjson backend, JsonFusion is significantly faster than RapidJSON and faster than reflect-cpp.
-- **Competitive binary footprint**: compact code size  
- competitive with or smaller than industry-standard embedded libraries, while maintaining type safety. 
- Same codebase scales from constrained MCUs to high-performance servers.
+- **Competitive binary footprint**: On embedded ARM (Cortex-M7 and Cortex-M0+), JsonFusion achieves **16-21 KB** code size on typical application setup with `-Os`, 
+ matching or beating industry-standard libraries while maintaining modern C++23 type safety and declarative validation. 
+ Consistently competitive with both `-O3` (speed) and `-Os` (size) optimizations across platforms, from resource-constrained MCUs to high-performance servers.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
 - No macros, no codegen, no registration – relies on PFR-driven introspection
@@ -502,63 +502,62 @@ a hack – C++26 is expected to standardize native reflection, making this appro
 
 ### Binary Size (Embedded Focus)
 
-Measured on **ARM Cortex-M7** (modern embedded MCUs like STM32H7, SAMV7) and **AVR ATmega2560** (8-bit Arduino) using a realistic configuration model with nested structures,
-fixed-size arrays, validation constraints, and optional fields.
+Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cortex-M0+** (resource-constrained 32-bit MCUs) using a realistic embedded workload: parsing **two distinct JSON message types**—a configuration object and an RPC command structure—with nested objects, arrays, validation constraints, and optional fields.
 
-**What we're measuring:** Complete workflow: **parse JSON + populate structs + validate constraints**. All libraries perform the same work.
+**What we're measuring:** Complete workflow for **two models**: **parse JSON + populate structs + validate constraints**. This simulates real embedded systems that handle multiple message types (config, commands, telemetry, etc.).
 
-📁 **Benchmark**: [`benchmarks/embedded/code_size/`](benchmarks/embedded/code_size/)
+📁 **Benchmark**: [`benchmarks/embedded/code_size/`](benchmarks/embedded/code_size/)  
+📁 **Models**: [`embedded_config.hpp`](benchmarks/embedded/code_size/embedded_config.hpp) (EmbeddedConfig + RpcCommand)
 
 **Test Setup:**
-- **ARM Cortex-M7**: `arm-none-eabi-gcc 13.3.1`, target: `-mcpu=cortex-m7 -mthumb -mfloat-abi=hard -mfpu=fpv5-d16`
-- **AVR ATmega2560**: [avr-gcc 15.2.0](https://github.com/ZakKemble/avr-gcc-build), target: `-mmcu=atmega2560`, stdlib: [avr-libstdcpp](https://github.com/modm-io/avr-libstdcpp)
+- **Compiler**: `arm-none-eabi-gcc 13.3.1`
+- **Targets**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb`) and Cortex-M0+ (`-mcpu=cortex-m0plus -mthumb`)
 - **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
-- **Linking**: ARM: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
-- **Float mode**: `JSONFUSION_USE_FAST_FLOAT=0` (in-house lightweight float parser, no libc dependencies)
-
-#### ARM Cortex-M7 Results
+- **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
+- **JsonFusion config**: `JSONFUSION_USE_FAST_FLOAT=0` (in-house lightweight float parser, no libc dependencies)
 
 **Results (`.text` section - code size in flash):**
 
-| Library       | -O3 (Speed) | -Os (Size) | -Os vs JsonFusion |
-|---------------|-------------|------------|-------------------|
-| Glaze         | 9 KB | 53 KB | +365% |
-| **JsonFusion** | **17 KB** | **11 KB** | **Baseline** |
-| ArduinoJson   | 35 KB | 13 KB | +18% |
-| cJSON         | 19 KB | 18 KB | +58% |
-| jsmn          | 20 KB | 19 KB | +71% |
+| Library       | M7 -O3 | M7 -Os | M0+ -O3 | M0+ -Os |
+|---------------|--------|--------|---------|---------|
+| **JsonFusion** | **24.1 KB** | **16.3 KB** | **31.4 KB** | **21.2 KB** |
+| ArduinoJson   | 46.1 KB | 15.8 KB | 57.8 KB | 23.3 KB |
+| jsmn          | 22.0 KB | 19.7 KB | 31.2 KB | 28.3 KB |
+| cJSON         | 20.2 KB | 18.9 KB | 32.0 KB | 27.5 KB |
+| Glaze         | 48.8 KB | 64.1 KB | 61.7 KB | 75.1 KB |
 
 **Key Takeaways:**
 
-1. **For embedded setups, `JSONFUSION_USE_FAST_FLOAT=0` enables a lightweight in-house floating-point parser**, eliminating all libc floating-point
-machinery (no strtod, no printf). Code size: **11-17 KB** depending on optimization—**18-71% smaller than industry-standard libraries** (ArduinoJson, cJSON, jsmn).
+1. **JsonFusion with `-Os` matches or beats all libraries on both platforms:**  
+   - **M7**: 16.3 KB (only 3% larger than ArduinoJson's 15.8 KB, **smaller than jsmn/cJSON**)
+   - **M0+**: 21.2 KB (9% smaller than ArduinoJson's 23.3 KB, **smallest of all tested**)
+   
+   While ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling), JsonFusion delivers the same validation with **zero manual code**—just define your structs.
 
-2. **Type-driven code compresses better**: With `-Os`, the compiler aggressively deduplicates JsonFusion's template-based parsing.
-Manual C code (jsmn, cJSON) doesn't compress well—unique functions per type don't deduplicate. JsonFusion **shrinks 33%** (17 KB → 11 KB)
-with `-Os`; jsmn/cJSON barely shrink (~7%). Glaze's inline-optimized design expands **6× with `-Os`** (9 KB → 53 KB).
+2. **Glaze exhibits classic template code bloating:** With `-Os`, Glaze produces **64-75 KB**—**4× larger than JsonFusion**. When parsing multiple types, the aggressive inlining strategy that works for single-type benchmarks leads to significant code duplication.
 
-3. **Type-driven, single architecture**: Same high-level parsing code works everywhere. The only configuration needed is choosing the
-float backend
-(`JSONFUSION_USE_FAST_FLOAT=0` for embedded). Modern compilers then automatically optimize for the target—high-performance on servers (~1.5 ms for twitter.json),
-compact on MCUs (11 KB flash). The core type-driven design remains unchanged.
+3. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
+   - **M7**: Shrink 33% with `-Os` (24.1 KB → 16.3 KB)
+   - **M0+**: Shrink 32% with `-Os` (31.4 KB → 21.2 KB)
+   
+   Manual C code (jsmn, cJSON) barely compresses (~10-15%) because each type gets unique hand-written functions that don't deduplicate. JsonFusion's shared Reader infrastructure + type-specific dispatch compresses well.
 
-4. **Predictable scaling**: Each subsequent model of similar structural complexity adds **~5 KB** for `-O3` and **~2.5 KB** for `-Os`. The shared infrastructure is compiled once; only type-specific dispatch logic grows with each model.
+4. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
 
-#### AVR ATmega2560 Results (8-bit Architecture)
+#### Bonus: 8-bit AVR Support
 
-**Results (`.text` section - code size in flash):**
+JsonFusion **compiles for AVR ATmega2560** (8-bit Arduino) **without any code changes**, though this is an exotic setup requiring [modern avr-gcc 15](https://github.com/ZakKemble/avr-gcc-build) and [non-standard avr-libstdcpp](https://github.com/modm-io/avr-libstdcpp). 
 
-| Library       | -O3 (Speed) | -Os (Size) |
-|---------------|-------------|------------|
+**AVR Results (`.text` section - code size in flash):**
+
+| Library       | -O3 | -Os |
+|---------------|-----|-----|
 | jsmn          | 9.4 KB | 7.2 KB |
 | cJSON         | 14.8 KB | 7.6 KB |
 | ArduinoJson   | 50.9 KB | 15.4 KB |
 | **JsonFusion** | **32.1 KB** | **21.1 KB** |
-| Glaze         | N/A | N/A |
 
-**Key Takeaway:**
-
-On 8-bit AVR, JsonFusion's template-heavy design incurs overhead compared to minimal C parsers (jsmn, cJSON). The tradeoff: Modern C++23 with type safety, declarative validation, and the same codebase  that scales from MCUs to servers, versus manual parsing. JsonFusion successfully demonstrates that modern C++ can target extreme resource constraints—from 8-bit MCUs to cloud—with a single architecture.
+On 8-bit AVR, JsonFusion's generic code incurs overhead compared to minimal C parsers, but remains competitive with ArduinoJson. The value proposition: modern C++23 with type safety and the same codebase that runs on 32-bit ARM and 64-bit servers, versus manual parsing.
 
 
 ### Parsing Speed (High-Performance Focus)

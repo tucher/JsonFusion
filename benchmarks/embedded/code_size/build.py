@@ -21,22 +21,11 @@ AVR_ATMEGA_2560_TEST = False
 
 # ARM Cortex-M7 target configuration
 compiler_prefix="arm-none-eabi-"
-CPU_FLAGS = [
-    "-mcpu=cortex-m7",
-    "-mthumb",
-    "-mfloat-abi=hard",
-    "-mfpu=fpv5-d16",
-]
+
 
 if AVR_ATMEGA_2560_TEST:
     compiler_prefix="avr-"
-    CPU_FLAGS = [
-        f"-I/libstdcpp",
-        "-mmcu=atmega2560",
-        "-g0",
-        "-Wall",
-        "-fno-threadsafe-statics"
-    ]
+
 
 @dataclass
 class Library:
@@ -62,6 +51,7 @@ class BuildConfig:
 
 # Embedded-friendly flags
 EMBEDDED_FLAGS = [
+    "-Wall",                             # Enable all warnings
     "-fno-exceptions",
     "-fno-rtti",
     "-ffunction-sections",
@@ -72,10 +62,47 @@ EMBEDDED_FLAGS = [
 ]
 
 # Build configurations
-BUILD_CONFIGS = [
-    BuildConfig("aggressive_opt", ["-O3", "-flto"]),
-    BuildConfig("minimal_size", ["-Os", "-flto"]),
-]
+if not AVR_ATMEGA_2560_TEST:
+    BUILD_CONFIGS = [
+        BuildConfig("O3 cortext-m7", ["-O3", "-flto",
+            "-mcpu=cortex-m7",
+            "-mthumb",
+            "-mfloat-abi=hard",
+            "-mfpu=fpv5-d16",
+        ]),
+        BuildConfig("Os cortext-m7", ["-Os", "-flto",
+            "-mcpu=cortex-m7",
+            "-mthumb",
+            "-mfloat-abi=hard",
+            "-mfpu=fpv5-d16",
+        ]),
+        BuildConfig("O3 cortext-m0+", ["-O3", "-flto",
+            "-mcpu=cortex-m0plus",
+            "-mthumb",
+            "-mfloat-abi=soft",
+        ]),
+        BuildConfig("Os cortext-m0+", ["-Os", "-flto",
+            "-mcpu=cortex-m0plus",
+            "-mthumb",
+            "-mfloat-abi=soft",
+        ]),
+    ]
+else:
+    BUILD_CONFIGS = [
+        BuildConfig("O3 atmega2560", ["-O3", "-flto",
+            f"-I/libstdcpp",
+            "-mmcu=atmega2560",
+            "-g0",
+            "-fno-threadsafe-statics",
+        ]),
+        BuildConfig("Os atmega2560", ["-Os", "-flto",
+            f"-I/libstdcpp",
+            "-mmcu=atmega2560",
+            "-g0",
+            "-fno-threadsafe-statics",
+        ]),
+      
+    ]
 
 # Libraries to benchmark
 LIBRARIES = [
@@ -221,7 +248,6 @@ class EmbeddedBenchmark:
         cmd = [
             f"{compiler_prefix}g++",
             "-std=c++23",
-            *CPU_FLAGS,
             *EMBEDDED_FLAGS,
             *config.opt_flags,
             *self.includes,
@@ -247,7 +273,6 @@ class EmbeddedBenchmark:
         
         cmd = [
             f"{compiler_prefix}g++",
-            *CPU_FLAGS,
             *EMBEDDED_FLAGS,
             *config.opt_flags,
             # "-specs=nano.specs", "-specs=nosys.specs",
@@ -426,7 +451,7 @@ class EmbeddedBenchmark:
                 for config_name in config_names:
                     size = self.results[config_name].get(lib_name, 0)
                     size_kb = size / 1024
-                    print(f" {size_kb:6.1f} KB ({size:5} B)  ", end="")
+                    print(f" {size_kb:6.1f} KB          ", end="")
                 print()
         
         print()
@@ -435,7 +460,6 @@ class EmbeddedBenchmark:
     def run(self, clean: bool = True):
         """Main build process"""
         print(Colors.green("=== Embedded Binary Size Benchmark ==="))
-        print("Target: ARM Cortex-M7 (Thumb-2, Hardware FP)")
         print(f"Comparing: {', '.join(lib.name for lib in LIBRARIES)}")
         print()
         
@@ -462,6 +486,7 @@ class EmbeddedBenchmark:
         
         # Print summary
         self.print_summary()
+        self.clean()
 
 
 # ============================================================================

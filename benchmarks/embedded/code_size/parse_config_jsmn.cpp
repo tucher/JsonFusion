@@ -341,10 +341,211 @@ extern "C" __attribute__((used)) bool parse_config_jsmn(const char* data, size_t
     return true;
 }
 
+// Parse RpcCommand Target
+bool parse_rpc_target(const char* json, const jsmntok_t* tokens, int& idx, embedded_benchmark::RpcCommand::Target& target) {
+    const jsmntok_t* obj = &tokens[idx++];
+    if (obj->type != JSMN_OBJECT) return false;
+    
+    int fields = obj->size;
+    for (int i = 0; i < fields; ++i) {
+        const jsmntok_t* key = &tokens[idx++];
+        const jsmntok_t* val = &tokens[idx++];
+        
+        if (tok_eq(json, key, "device_id")) {
+            if (!tok_copy_str(json, val, target.device_id.data(), target.device_id.size())) return false;
+        } else if (tok_eq(json, key, "subsystem")) {
+            tok_copy_str(json, val, target.subsystem.data(), target.subsystem.size());
+        }
+    }
+    return true;
+}
+
+// Parse RpcCommand Parameter
+bool parse_rpc_parameter(const char* json, const jsmntok_t* tokens, int& idx, embedded_benchmark::RpcCommand::Parameter& param) {
+    const jsmntok_t* obj = &tokens[idx++];
+    if (obj->type != JSMN_OBJECT) return false;
+    
+    int fields = obj->size;
+    for (int i = 0; i < fields; ++i) {
+        const jsmntok_t* key = &tokens[idx++];
+        const jsmntok_t* val = &tokens[idx++];
+        
+        if (tok_eq(json, key, "key")) {
+            if (!tok_copy_str(json, val, param.key.data(), param.key.size())) return false;
+        } else if (tok_eq(json, key, "int_value")) {
+            int64_t ival;
+            if (tok_parse_int64(json, val, ival)) {
+                param.int_value = ival;
+            }
+        } else if (tok_eq(json, key, "float_value")) {
+            double fval;
+            if (tok_parse_double(json, val, fval)) {
+                if (fval >= -1000000.0 && fval <= 1000000.0) {
+                    param.float_value = fval;
+                } else {
+                    return false;
+                }
+            }
+        } else if (tok_eq(json, key, "bool_value")) {
+            bool bval;
+            if (tok_parse_bool(json, val, bval)) {
+                param.bool_value = bval;
+            }
+        } else if (tok_eq(json, key, "string_value")) {
+            param.string_value.emplace();
+            tok_copy_str(json, val, param.string_value->data(), param.string_value->size());
+        }
+    }
+    return true;
+}
+
+// Parse RpcCommand
+extern "C" __attribute__((used)) bool parse_rpc_command_jsmn(const char* data, size_t size) {
+    embedded_benchmark::RpcCommand rpc_cmd;  // Local variable
+    jsmn_parser parser;
+    jsmn_init(&parser);
+    
+    int num_tokens = jsmn_parse(&parser, data, size, tokens, MAX_TOKENS);
+    if (num_tokens < 0) return false;
+    
+    if (num_tokens < 1 || tokens[0].type != JSMN_OBJECT) return false;
+    
+    int idx = 1;
+    int fields = tokens[0].size;
+    
+    // Track required fields
+    bool has_command_id = false;
+    bool has_timestamp_us = false;
+    bool has_targets = false;
+    bool has_params = false;
+    
+    for (int i = 0; i < fields; ++i) {
+        const jsmntok_t* key = &tokens[idx++];
+        
+        if (tok_eq(data, key, "command_id")) {
+            const jsmntok_t* val = &tokens[idx++];
+            if (!tok_copy_str(data, val, rpc_cmd.command_id.data(), rpc_cmd.command_id.size())) return false;
+            has_command_id = true;
+        } else if (tok_eq(data, key, "timestamp_us")) {
+            const jsmntok_t* val = &tokens[idx++];
+            int64_t ts;
+            if (!tok_parse_int64(data, val, ts)) return false;
+            rpc_cmd.timestamp_us = static_cast<uint64_t>(ts);
+            has_timestamp_us = true;
+        } else if (tok_eq(data, key, "sequence")) {
+            const jsmntok_t* val = &tokens[idx++];
+            tok_parse_uint16(data, val, rpc_cmd.sequence);  // Optional field
+        } else if (tok_eq(data, key, "priority")) {
+            const jsmntok_t* val = &tokens[idx++];
+            int prio;
+            if (tok_parse_int(data, val, prio)) {
+                if (prio >= 0 && prio <= 10) {
+                    rpc_cmd.priority = static_cast<uint8_t>(prio);
+                } else {
+                    return false;  // Validation failure
+                }
+            }
+        } else if (tok_eq(data, key, "targets")) {
+            const jsmntok_t* arr = &tokens[idx++];
+            if (arr->type != JSMN_ARRAY) return false;
+            if (arr->size < 1) return false; // min_items<1> validation
+            if (arr->size > embedded_benchmark::RpcCommand::kMaxTargets) return false;
+            
+            rpc_cmd.targets_count = 0;
+            for (int j = 0; j < arr->size; ++j) {
+                if (!parse_rpc_target(data, tokens, idx, rpc_cmd.targets[j])) return false;
+                rpc_cmd.targets_count++;
+            }
+            has_targets = true;
+        } else if (tok_eq(data, key, "params")) {
+            const jsmntok_t* arr = &tokens[idx++];
+            if (arr->type != JSMN_ARRAY) return false;
+            if (arr->size < 1) return false; // min_items<1> validation
+            if (arr->size > embedded_benchmark::RpcCommand::kMaxParams) return false;
+            
+            rpc_cmd.params_count = 0;
+            for (int j = 0; j < arr->size; ++j) {
+                if (!parse_rpc_parameter(data, tokens, idx, rpc_cmd.params[j])) return false;
+                rpc_cmd.params_count++;
+            }
+            has_params = true;
+        } else if (tok_eq(data, key, "execution")) {
+            const jsmntok_t* obj = &tokens[idx++];
+            if (obj->type == JSMN_OBJECT) {
+                embedded_benchmark::RpcCommand::ExecutionOptions exec;
+                int exec_fields = obj->size;
+                bool has_timeout_ms = false;
+                
+                for (int j = 0; j < exec_fields; ++j) {
+                    const jsmntok_t* exec_key = &tokens[idx++];
+                    const jsmntok_t* exec_val = &tokens[idx++];
+                    
+                    if (tok_eq(data, exec_key, "timeout_ms")) {
+                        if (!tok_parse_uint32(data, exec_val, exec.timeout_ms)) return false;
+                        if (exec.timeout_ms > 300000) return false;
+                        has_timeout_ms = true;
+                    } else if (tok_eq(data, exec_key, "retry_on_failure")) {
+                        tok_parse_bool(data, exec_val, exec.retry_on_failure);
+                    } else if (tok_eq(data, exec_key, "max_retries")) {
+                        int retries;
+                        if (tok_parse_int(data, exec_val, retries)) {
+                            if (retries >= 0 && retries <= 5) {
+                                exec.max_retries = static_cast<uint8_t>(retries);
+                            }
+                        }
+                    }
+                }
+                
+                // timeout_ms is required if execution section is present
+                if (!has_timeout_ms) return false;
+                rpc_cmd.execution = exec;
+            }
+        } else if (tok_eq(data, key, "response_config")) {
+            const jsmntok_t* obj = &tokens[idx++];
+            if (obj->type == JSMN_OBJECT) {
+                embedded_benchmark::RpcCommand::ResponseConfig resp;
+                int resp_fields = obj->size;
+                bool has_acknowledge = false;
+                bool has_send_result = false;
+                
+                for (int j = 0; j < resp_fields; ++j) {
+                    const jsmntok_t* resp_key = &tokens[idx++];
+                    const jsmntok_t* resp_val = &tokens[idx++];
+                    
+                    if (tok_eq(data, resp_key, "callback_url")) {
+                        tok_copy_str(data, resp_val, resp.callback_url.data(), resp.callback_url.size());
+                    } else if (tok_eq(data, resp_key, "acknowledge")) {
+                        if (!tok_parse_bool(data, resp_val, resp.acknowledge)) return false;
+                        has_acknowledge = true;
+                    } else if (tok_eq(data, resp_key, "send_result")) {
+                        if (!tok_parse_bool(data, resp_val, resp.send_result)) return false;
+                        has_send_result = true;
+                    }
+                }
+                
+                // acknowledge and send_result are required if response_config section is present
+                if (!has_acknowledge || !has_send_result) return false;
+                rpc_cmd.response_config = resp;
+            }
+        } else {
+            idx++; // Skip unknown field
+        }
+    }
+    
+    // Validate required top-level fields were present
+    if (!has_command_id || !has_timestamp_us || !has_targets || !has_params) {
+        return false;
+    }
+    
+    return true;
+}
+
 // Entry point
 extern "C" __attribute__((used)) int main() {
     volatile bool result = parse_config_jsmn("", 0);
+    volatile bool rpc_result = parse_rpc_command_jsmn("", 0);
     (void)result;
+    (void)rpc_result;
     while(1) {}
     return 0;
 }

@@ -6,6 +6,7 @@
 #include "embedded_config.hpp"
 
 using embedded_benchmark::EmbeddedConfig;
+using embedded_benchmark::RpcCommand;
 
 // Global config instance
 EmbeddedConfig g_config;
@@ -193,10 +194,155 @@ extern "C" __attribute__((used)) bool parse_config_arduinojson(const char* data,
     return true;
 }
 
+// Parse RpcCommand (matching JsonFusion validation logic)
+extern "C" __attribute__((used)) bool parse_rpc_command_arduinojson(const char* data, size_t size) {
+    static JsonDocument doc;
+    RpcCommand rpc_cmd;  // Local variable
+    
+    DeserializationError error = deserializeJson(doc, data, size);
+    if (error) return false;
+    
+    JsonObject root = doc.as<JsonObject>();
+    
+    // Required: command_id must be present
+    if (!root["command_id"].is<const char*>()) return false;
+    if (!copy_string(root["command_id"], rpc_cmd.command_id)) return false;
+    
+    // Required: timestamp_us must be present
+    if (!root["timestamp_us"].is<uint64_t>()) return false;
+    rpc_cmd.timestamp_us = root["timestamp_us"];
+    
+    // Optional: sequence
+    if (root["sequence"].is<uint16_t>()) {
+        rpc_cmd.sequence = root["sequence"];
+    }
+    
+    // Optional: priority (with validation if present)
+    if (root["priority"].is<uint8_t>()) {
+        uint8_t priority = root["priority"];
+        if (!validate_range_int<uint8_t, 0, 10>(priority)) return false;
+        rpc_cmd.priority = priority;
+    }
+    
+    // Required: targets array must be present with min 1 item
+    if (!root["targets"].is<JsonArray>()) return false;
+    JsonArray targets = root["targets"];
+    if (targets.size() == 0) return false;  // min_items<1> validation
+    if (targets.size() > RpcCommand::kMaxTargets) return false;
+    
+    rpc_cmd.targets_count = 0;
+    for (JsonObject target_obj : targets) {
+        if (rpc_cmd.targets_count >= RpcCommand::kMaxTargets) break;
+        
+        auto& target = rpc_cmd.targets[rpc_cmd.targets_count];
+        
+        // Required: device_id must be present in each target
+        if (!target_obj["device_id"].is<const char*>()) return false;
+        if (!copy_string(target_obj["device_id"], target.device_id)) return false;
+        
+        // Optional: subsystem
+        if (target_obj["subsystem"].is<const char*>()) {
+            copy_string(target_obj["subsystem"], target.subsystem);
+        }
+        
+        rpc_cmd.targets_count++;
+    }
+    
+    // Required: params array must be present with min 1 item
+    if (!root["params"].is<JsonArray>()) return false;
+    JsonArray params = root["params"];
+    if (params.size() == 0) return false;  // min_items<1> validation
+    if (params.size() > RpcCommand::kMaxParams) return false;
+    
+    rpc_cmd.params_count = 0;
+    for (JsonObject param_obj : params) {
+        if (rpc_cmd.params_count >= RpcCommand::kMaxParams) break;
+        
+        auto& param = rpc_cmd.params[rpc_cmd.params_count];
+        
+        // Required: key must be present in each parameter
+        if (!param_obj["key"].is<const char*>()) return false;
+        if (!copy_string(param_obj["key"], param.key)) return false;
+        
+        // Optional: value fields (union-like, at least one should be present in practice)
+        if (param_obj["int_value"].is<int64_t>()) {
+            param.int_value = param_obj["int_value"].as<int64_t>();
+        }
+        
+        if (param_obj["float_value"].is<double>()) {
+            double fval = param_obj["float_value"];
+            if (!validate_double_range(fval, -1000000.0, 1000000.0)) return false;
+            param.float_value = fval;
+        }
+        
+        if (param_obj["bool_value"].is<bool>()) {
+            param.bool_value = param_obj["bool_value"].as<bool>();
+        }
+        
+        if (param_obj["string_value"].is<const char*>()) {
+            param.string_value.emplace();
+            copy_string(param_obj["string_value"], *param.string_value);
+        }
+        
+        rpc_cmd.params_count++;
+    }
+    
+    // Optional: execution section
+    if (root["execution"].is<JsonObject>()) {
+        JsonObject exec_obj = root["execution"];
+        RpcCommand::ExecutionOptions exec;
+        
+        // Required if section present: timeout_ms
+        if (!exec_obj["timeout_ms"].is<uint32_t>()) return false;
+        uint32_t timeout = exec_obj["timeout_ms"];
+        if (!validate_range_int<uint32_t, 0, 300000>(timeout)) return false;
+        exec.timeout_ms = timeout;
+        
+        // Optional: retry_on_failure
+        if (exec_obj["retry_on_failure"].is<bool>()) {
+            exec.retry_on_failure = exec_obj["retry_on_failure"];
+        }
+        
+        // Optional: max_retries (with validation if present)
+        if (exec_obj["max_retries"].is<uint8_t>()) {
+            uint8_t retries = exec_obj["max_retries"];
+            if (!validate_range_int<uint8_t, 0, 5>(retries)) return false;
+            exec.max_retries = retries;
+        }
+        
+        rpc_cmd.execution = exec;
+    }
+    
+    // Optional: response_config section
+    if (root["response_config"].is<JsonObject>()) {
+        JsonObject resp_obj = root["response_config"];
+        RpcCommand::ResponseConfig resp;
+        
+        // Optional: callback_url
+        if (resp_obj["callback_url"].is<const char*>()) {
+            copy_string(resp_obj["callback_url"], resp.callback_url);
+        }
+        
+        // Required if section present: acknowledge
+        if (!resp_obj["acknowledge"].is<bool>()) return false;
+        resp.acknowledge = resp_obj["acknowledge"];
+        
+        // Required if section present: send_result
+        if (!resp_obj["send_result"].is<bool>()) return false;
+        resp.send_result = resp_obj["send_result"];
+        
+        rpc_cmd.response_config = resp;
+    }
+    
+    return true;
+}
+
 // Entry point
 int main() {
     volatile bool result = parse_config_arduinojson("", 0);
+    volatile bool rpc_result = parse_rpc_command_arduinojson("", 0);
     (void)result;
+    (void)rpc_result;
     while(1) {}
     return 0;
 }

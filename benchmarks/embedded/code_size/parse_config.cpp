@@ -88,6 +88,61 @@ struct EmbeddedConfig {
     Logging logging;
 };
 
+// RPC Command structure with validation and required/optional field specifications
+struct RpcCommand_ {
+    static constexpr std::size_t kMaxParams = 8;
+    static constexpr std::size_t kMaxTargets = 4;
+
+    // Command identification
+    SmallStr  command_id;       // Required
+    uint64_t  timestamp_us;     // Required
+    uint16_t  sequence;         // Optional - server can auto-assign
+    A<uint8_t, range<0, 10>> priority;  // Optional - has default
+    
+    // Target specification
+    struct Target_ {
+        SmallStr device_id;     // Required
+        SmallStr subsystem;     // Optional - defaults to whole device
+    };
+    using Target = A<Target_, required<"device_id">>;
+    
+    A<array<Target, kMaxTargets>, min_items<1>> targets;  // Required
+    
+    // Command parameters
+    struct Parameter_ {
+        SmallStr key;           // Required
+        
+        // Union-like value storage (all optional by default)
+        optional<int64_t> int_value;
+        A<optional<FPLike64>, range<-1000000, 1000000>> float_value;
+        optional<bool> bool_value;
+        optional<SmallStr> string_value;
+    };
+    using Parameter = A<Parameter_, required<"key">>;
+    
+    A<array<Parameter, kMaxParams>, min_items<1>> params;  // Required
+    
+    // Execution constraints (entire section optional)
+    struct ExecutionOptions {
+        A<uint32_t, range<0, 300000>> timeout_ms;  // Required if section present
+        bool     retry_on_failure;                  // Optional - defaults to false
+        A<uint8_t, range<0, 5>> max_retries;       // Optional - defaults to 0
+    };
+    
+    A<optional<ExecutionOptions>, required<"timeout_ms">> execution;  // Optional section
+    
+    // Callback/response configuration (entire section optional)
+    struct ResponseConfig {
+        SmallStr callback_url;  // Optional - can use default endpoint
+        bool     acknowledge;   // Required if section present
+        bool     send_result;   // Required if section present
+    };
+    
+    A<optional<ResponseConfig>, required<"acknowledge", "send_result">> response_config;  // Optional section
+};
+
+using RpcCommand = A<RpcCommand_, required<"command_id", "timestamp_us", "targets", "params">>;
+
 }  // namespace
 
 // Global config instance (will go in .bss section)
@@ -100,12 +155,19 @@ extern "C" __attribute__((used)) bool parse_config(const char* data, size_t size
     return !!result;
 }
 
+extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t size) {
+    RpcCommand cmd;
+    auto result = JsonFusion::Parse(cmd, std::string_view(data, size));
+    return !!result;
+}
 // Entry point - ensures parse_config is not eliminated by linker
 // In a real embedded system, this would be your main loop
 int main() {
     // Call parse_config to ensure it's included in binary
     volatile bool result = parse_config("", 0);
+    volatile bool rpc_result = parse_rpc_command("", 0);
     (void)result;
+    (void)rpc_result;
     
     // Infinite loop (typical for embedded without OS)
     while(1) {}
