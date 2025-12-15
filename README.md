@@ -1,12 +1,9 @@
-# JsonFusion, yet another C++ JSON library
-
-disclaimer: under heavy development
+# JsonFusion
 
 Parse JSON directly into your structs with validation and no glue code.
 
 
-#### Strongly typed, macro-free, codegen-free, with no allocations inside the library, zero-recursion on fixed-size containers, single-pass,
-high-performance JSON parser/serializer with declarative models and validation
+#### Type-driven JSON parser/serializer with declarative validation: define your types, compiler optimizes for your target—fast on servers, compact on MCUs. Zero boilerplate, zero tuning, same code everywhere.
 
 Your C++ types are the schema.
 JsonFusion generates a specialized parser for them at compile time.
