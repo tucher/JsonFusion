@@ -27,7 +27,7 @@ public:
     using iterator_type = It;
 
     constexpr JsonIteratorReader(It & first, const Sent & last)
-        : current_(first), end_(last), m_error(ParseError::NO_ERROR) {}
+        : m_error(ParseError::NO_ERROR), current_(first), end_(last) {}
 
 
 

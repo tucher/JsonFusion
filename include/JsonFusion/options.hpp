@@ -48,7 +48,7 @@ struct skip_json {
 };
 
 
-template<std::size_t MaxSkipDepth=64, std::size_t MaxStringLength_=(1<<16)>
+template<std::size_t MaxSkipDepth=64, std::size_t MaxStringLength_=(1<<15)>
 struct json_sink {
     static constexpr std::size_t MaxStringLength = MaxStringLength_;
     static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
