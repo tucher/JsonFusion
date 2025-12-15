@@ -12,7 +12,7 @@
 embedded_benchmark::EmbeddedConfig g_config_jsmn;
 
 // Maximum tokens for our JSON (adjust as needed)
-constexpr size_t MAX_TOKENS = 2048;
+constexpr size_t MAX_TOKENS = 512;
 
 // Token array (stack allocated)
 static jsmntok_t tokens[MAX_TOKENS];
@@ -50,7 +50,7 @@ inline bool tok_parse_int64(const char* json, const jsmntok_t* tok, int64_t& out
     if (len >= sizeof(buf)) return false;
     memcpy(buf, json + tok->start, len);
     buf[len] = '\0';
-    out = atoll(buf);
+    out = atol(buf);
     return true;
 }
 

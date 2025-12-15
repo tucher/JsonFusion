@@ -1,6 +1,6 @@
 // ArduinoJson benchmark - manual parsing + validation
 // Implements the SAME validation logic as JsonFusion for fair comparison
-
+#define ARDUINOJSON_USE_LONG_LONG 1
 #include <ArduinoJson.h>
 #include <string_view>
 #include "embedded_config.hpp"

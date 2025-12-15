@@ -33,7 +33,9 @@ if AVR_ATMEGA_2560_TEST:
     CPU_FLAGS = [
         f"-I/libstdcpp",
         "-mmcu=atmega2560",
-        "-g0"
+        "-g0",
+        "-Wall",
+        "-fno-threadsafe-statics"
     ]
 
 @dataclass
@@ -82,6 +84,27 @@ LIBRARIES = [
         source_file="parse_config.cpp",
         description="JsonFusion with in-house float parser",
     ),
+    Library(
+        name="ArduinoJson",
+        source_file="parse_config_arduinojson.cpp",
+        description="ArduinoJson v7.2.1",
+        dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.2.1/ArduinoJson.h"],
+    ),
+    Library(
+        name="jsmn",
+        source_file="parse_config_jsmn.cpp",
+        description="jsmn - minimalist JSON tokenizer",
+        dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
+    ),
+    Library(
+        name="cJSON",
+        source_file="parse_config_cjson.cpp",
+        description="cJSON - lightweight JSON parser in C",
+        dependencies=[
+            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
+            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
+        ],
+    ),
 ]
 if not AVR_ATMEGA_2560_TEST:
     LIBRARIES += [
@@ -92,28 +115,7 @@ if not AVR_ATMEGA_2560_TEST:
             dependencies=[
         
             ],
-        ),
-        Library(
-            name="ArduinoJson",
-            source_file="parse_config_arduinojson.cpp",
-            description="ArduinoJson v7.2.1",
-            dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.2.1/ArduinoJson.h"],
-        ),
-        Library(
-            name="jsmn",
-            source_file="parse_config_jsmn.cpp",
-            description="jsmn - minimalist JSON tokenizer",
-            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
-        ),
-        Library(
-            name="cJSON",
-            source_file="parse_config_cjson.cpp",
-            description="cJSON - lightweight JSON parser in C",
-            dependencies=[
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
-            ],
-        ),
+        )
     ]
 
 # Linker warning patterns to filter out
@@ -234,7 +236,8 @@ class EmbeddedBenchmark:
             print(Colors.red(f"✗ Compilation failed"))
             print(result.stderr)
             sys.exit(1)
-        
+        print(result.stderr)
+        print(result.stdout)
         return output_o
     
     def link(self, lib: Library, config: BuildConfig, obj_file: Path) -> Path:
@@ -299,7 +302,7 @@ class EmbeddedBenchmark:
         
         # Top symbols
         print()
-        print("=== Top 10 Symbols by Size ===")
+        # print("=== Top 10 Symbols by Size ===")
         nm_result = subprocess.run(
             [f"{compiler_prefix}gcc-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
             capture_output=True, text=True
