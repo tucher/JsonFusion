@@ -310,12 +310,8 @@ constexpr bool test_json_sink_multiple_fields() {
 }
 static_assert(test_json_sink_multiple_fields(), "json_sink with multiple fields");
 
-// Test: json_sink with escape sequences in strings
-// IMPORTANT: json_sink unescapes escape sequences during parsing and outputs invalid JSON
-// This is an implementation limitation - the captured string contains unescaped characters,
-// not valid JSON escape sequences. For example, "\n" becomes an actual newline character,
-// making the output invalid JSON.
-constexpr bool test_json_sink_escape_sequences() {
+// Test: json_sink with escape sequences - basic escapes
+constexpr bool test_json_sink_escape_sequences_basic() {
     struct Test {
         Annotated<std::string, json_sink<>> captured;
     };
@@ -327,21 +323,119 @@ constexpr bool test_json_sink_escape_sequences() {
     
     if (!result) return false;
     
-    // json_sink unescapes during parsing, so:
-    // - \n becomes actual newline character (not the two characters '\' and 'n')
-    // - \t becomes actual tab character
-    // - \" becomes actual quote character
-    // This means the output is NOT valid JSON - it contains unescaped control characters
-    // The captured string will have actual newline, tab, and quote characters, not JSON escapes
+    // json_sink now PRESERVES escape sequences as valid JSON
+    // The captured string should contain the raw JSON with escapes intact:
+    // "hello\nworld\t\"quote\"" (with literal backslash-n, backslash-t, etc.)
+    std::string expected = "\"hello\\nworld\\t\\\"quote\\\"\"";
+    if (obj.captured.get() != expected) return false;
     
-    // Verify something was captured (exact format is implementation-defined due to unescaping)
-    if (obj.captured.get().empty()) return false;
-    
-    // The captured string will contain actual newline/tab/quote characters, making it invalid JSON
-    // This is a known limitation of the current implementation
     return true;
 }
-static_assert(test_json_sink_escape_sequences(), "json_sink with escape sequences - outputs invalid JSON due to unescaping");
+static_assert(test_json_sink_escape_sequences_basic(), "json_sink with escape sequences - preserves escapes");
+
+// Test: json_sink with all standard escape types
+constexpr bool test_json_sink_all_escape_types() {
+    struct Test {
+        Annotated<std::string, json_sink<>> captured;
+    };
+    
+    Test obj{};
+    // Test all JSON escape sequences: \" \\ \/ \b \f \n \r \t
+    std::string json = R"({"captured": "quote:\" slash:\\ solidus:\/ back:\b form:\f newline:\n return:\r tab:\t"})";
+    auto result = Parse(obj, json);
+    
+    if (!result) return false;
+    
+    // All escapes should be preserved
+    std::string expected = R"("quote:\" slash:\\ solidus:\/ back:\b form:\f newline:\n return:\r tab:\t")";
+    if (obj.captured.get() != expected) return false;
+    
+    return true;
+}
+static_assert(test_json_sink_all_escape_types(), "json_sink with all standard escape types");
+
+// Test: json_sink with Unicode escape sequences
+constexpr bool test_json_sink_unicode_escapes() {
+    struct Test {
+        Annotated<std::string, json_sink<>> captured;
+    };
+    
+    Test obj{};
+    // Unicode escape: \u0041 is 'A'
+    std::string json = R"({"captured": "Unicode: \u0041\u0042\u0043"})";
+    auto result = Parse(obj, json);
+    
+    if (!result) return false;
+    
+    // Unicode escapes should be preserved as-is
+    std::string expected = R"("Unicode: \u0041\u0042\u0043")";
+    if (obj.captured.get() != expected) return false;
+    
+    return true;
+}
+static_assert(test_json_sink_unicode_escapes(), "json_sink with Unicode escapes");
+
+// Test: json_sink with Unicode surrogate pairs
+constexpr bool test_json_sink_surrogate_pairs() {
+    struct Test {
+        Annotated<std::string, json_sink<>> captured;
+    };
+    
+    Test obj{};
+    // Surrogate pair for emoji 😀 (U+1F600): \ud83d\ude00
+    std::string json = R"({"captured": "emoji: \ud83d\ude00"})";
+    auto result = Parse(obj, json);
+    
+    if (!result) return false;
+    
+    // Surrogate pairs should be preserved
+    std::string expected = R"("emoji: \ud83d\ude00")";
+    if (obj.captured.get() != expected) return false;
+    
+    return true;
+}
+static_assert(test_json_sink_surrogate_pairs(), "json_sink with Unicode surrogate pairs");
+
+// Test: json_sink with escapes in nested structures
+constexpr bool test_json_sink_escapes_in_nested() {
+    struct Test {
+        Annotated<std::string, json_sink<>> captured;
+    };
+    
+    Test obj{};
+    std::string json = R"({"captured": {"key": "val\nue", "array": ["item\t1", "item\"2"]}})";
+    auto result = Parse(obj, json);
+    
+    if (!result) return false;
+    
+    // Escapes should be preserved in nested structures
+    std::string expected = R"({"key":"val\nue","array":["item\t1","item\"2"]})";
+    if (obj.captured.get() != expected) return false;
+    
+    return true;
+}
+static_assert(test_json_sink_escapes_in_nested(), "json_sink with escapes in nested structures");
+
+// Test: json_sink with mixed content and escapes
+constexpr bool test_json_sink_mixed_escapes() {
+    struct Test {
+        Annotated<std::string, json_sink<>> captured;
+    };
+    
+    Test obj{};
+    // Mix of strings with escapes, numbers, booleans, null
+    std::string json = R"({"captured": [42, "text\nwith\nlines", true, null, "quote:\""]})";
+    auto result = Parse(obj, json);
+    
+    if (!result) return false;
+    
+    // All escapes preserved
+    std::string expected = R"([42,"text\nwith\nlines",true,null,"quote:\""])";
+    if (obj.captured.get() != expected) return false;
+    
+    return true;
+}
+static_assert(test_json_sink_mixed_escapes(), "json_sink with mixed content and escapes");
 
 // Test: json_sink with number formats
 constexpr bool test_json_sink_number_formats() {

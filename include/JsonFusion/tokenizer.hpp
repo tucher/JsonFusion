@@ -614,7 +614,7 @@ private:
 
         if (c == '"') {
 
-            return read_string_with_filler(filler);
+            return skip_string_raw_via_filler(filler);
         }
 
         if (c == 't') {
@@ -687,7 +687,7 @@ private:
             switch (ch) {
             case '"': {
                 // mirrors the entire string via sinkInserter
-                if (!read_string_with_filler(filler) ) {
+                if (!skip_string_raw_via_filler(filler) ) {
                     return false;
                 }
                 break;
@@ -980,6 +980,202 @@ private:
         }
         constexpr void finish(){}
     };
+
+    template<class Filler>
+    constexpr bool skip_string_raw_via_filler(Filler& f) {
+        // Copy raw JSON string (with escapes) char-by-char through filler
+        // Validates JSON string syntax but doesn't unescape
+        
+        // Expect opening quote
+        if (atEnd() || *current_ != '"') {
+            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+            return false;
+        }
+        if (!f('"')) {
+            setError(ParseError::JSON_SINK_OVERFLOW, current_);
+            return false;
+        }
+        ++current_;
+        
+        // Read until closing quote
+        while (true) {
+            if (atEnd()) {
+                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                return false;
+            }
+            
+            char c = *current_;
+            
+            // Closing quote
+            if (c == '"') {
+                if (!f('"')) {
+                    setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                    return false;
+                }
+                ++current_;
+                return true;
+            }
+            
+            // Escape sequence
+            if (c == '\\') {
+                if (!f('\\')) {
+                    setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                    return false;
+                }
+                ++current_;
+                
+                if (atEnd()) {
+                    setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                    return false;
+                }
+                
+                char esc = *current_;
+                
+                // Validate and copy escape character
+                switch (esc) {
+                case '"':
+                case '/':
+                case '\\':
+                case 'b':
+                case 'f':
+                case 'r':
+                case 'n':
+                case 't':
+                    if (!f(esc)) {
+                        setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                        return false;
+                    }
+                    ++current_;
+                    break;
+                    
+                case 'u': {
+                    // Unicode escape: \uXXXX (and potentially surrogate pair)
+                    if (!f('u')) {
+                        setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                        return false;
+                    }
+                    ++current_;
+                    
+                    // Read and validate 4 hex digits
+                    char hex[4];
+                    for (int i = 0; i < 4; ++i) {
+                        if (atEnd()) {
+                            setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                            return false;
+                        }
+                        char h = *current_;
+                        if (!((h >= '0' && h <= '9') || (h >= 'A' && h <= 'F') || (h >= 'a' && h <= 'f'))) {
+                            setError(ParseError::ILLFORMED_STRING, current_);
+                            return false;
+                        }
+                        hex[i] = h;
+                        if (!f(h)) {
+                            setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                            return false;
+                        }
+                        ++current_;
+                    }
+                    
+                    // Check if it's a high surrogate (D800-DBFF), which requires a pair
+                    std::uint16_t u1 = 0;
+                    for (int i = 0; i < 4; ++i) {
+                        char h = hex[i];
+                        std::uint8_t v;
+                        if (h >= '0' && h <= '9') {
+                            v = static_cast<std::uint8_t>(h - '0');
+                        } else if (h >= 'A' && h <= 'F') {
+                            v = static_cast<std::uint8_t>(h - 'A' + 10);
+                        } else {
+                            v = static_cast<std::uint8_t>(h - 'a' + 10);
+                        }
+                        u1 = static_cast<std::uint16_t>((u1 << 4) | v);
+                    }
+                    
+                    // High surrogate: expect \uXXXX for low surrogate
+                    if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
+                        if (atEnd() || *current_ != '\\') {
+                            setError(ParseError::ILLFORMED_STRING, current_);
+                            return false;
+                        }
+                        if (!f('\\')) {
+                            setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                            return false;
+                        }
+                        ++current_;
+                        
+                        if (atEnd() || *current_ != 'u') {
+                            setError(ParseError::ILLFORMED_STRING, current_);
+                            return false;
+                        }
+                        if (!f('u')) {
+                            setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                            return false;
+                        }
+                        ++current_;
+                        
+                        // Read and validate second 4 hex digits
+                        std::uint16_t u2 = 0;
+                        for (int i = 0; i < 4; ++i) {
+                            if (atEnd()) {
+                                setError(ParseError::UNEXPECTED_END_OF_DATA, current_);
+                                return false;
+                            }
+                            char h = *current_;
+                            if (!((h >= '0' && h <= '9') || (h >= 'A' && h <= 'F') || (h >= 'a' && h <= 'f'))) {
+                                setError(ParseError::ILLFORMED_STRING, current_);
+                                return false;
+                            }
+                            std::uint8_t v;
+                            if (h >= '0' && h <= '9') {
+                                v = static_cast<std::uint8_t>(h - '0');
+                            } else if (h >= 'A' && h <= 'F') {
+                                v = static_cast<std::uint8_t>(h - 'A' + 10);
+                            } else {
+                                v = static_cast<std::uint8_t>(h - 'a' + 10);
+                            }
+                            u2 = static_cast<std::uint16_t>((u2 << 4) | v);
+                            
+                            if (!f(h)) {
+                                setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                                return false;
+                            }
+                            ++current_;
+                        }
+                        
+                        // Validate low surrogate range
+                        if (u2 < 0xDC00u || u2 > 0xDFFFu) {
+                            setError(ParseError::ILLFORMED_STRING, current_);
+                            return false;
+                        }
+                    } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
+                        // Lone low surrogate
+                        setError(ParseError::ILLFORMED_STRING, current_);
+                        return false;
+                    }
+                    break;
+                }
+                    
+                default:
+                    setError(ParseError::ILLFORMED_STRING, current_);
+                    return false;
+                }
+                continue;
+            }
+            
+            // Control characters must be escaped (RFC 8259 §7)
+            if (static_cast<unsigned char>(c) <= 0x1F) {
+                setError(ParseError::ILLFORMED_STRING, current_);
+                return false;
+            }
+            
+            // Normal character - just copy
+            if (!f(c)) {
+                setError(ParseError::JSON_SINK_OVERFLOW, current_);
+                return false;
+            }
+            ++current_;
+        }
+    }
 
     template<class Filler>
     constexpr bool read_string_with_filler(Filler & f) {
