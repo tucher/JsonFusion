@@ -34,29 +34,7 @@ concept CharSentinelForOut =
     std::sentinel_for<Sent, It>;
 
 
-namespace io_details {
-struct limitless_sentinel {};
 
-constexpr bool operator==(const std::back_insert_iterator<std::string>&,
-                                 const limitless_sentinel&) noexcept {
-    return false;
-}
-
-constexpr bool operator==(const limitless_sentinel&,
-                                 const std::back_insert_iterator<std::string>&) noexcept {
-    return false;
-}
-
-constexpr bool operator!=(const std::back_insert_iterator<std::string>& it,
-                                 const limitless_sentinel& s) noexcept {
-    return !(it == s);
-}
-
-constexpr bool operator!=(const limitless_sentinel& s,
-                                 const std::back_insert_iterator<std::string>& it) noexcept {
-    return !(it == s);
-}
-}
 
 } // namespace JsonFusion
 

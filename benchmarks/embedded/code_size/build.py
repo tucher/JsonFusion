@@ -17,6 +17,25 @@ import urllib.request
 # Configuration
 # ============================================================================
 
+AVR_ATMEGA_2560_TEST = False
+
+# ARM Cortex-M7 target configuration
+compiler_prefix="arm-none-eabi-"
+CPU_FLAGS = [
+    "-mcpu=cortex-m7",
+    "-mthumb",
+    "-mfloat-abi=hard",
+    "-mfpu=fpv5-d16",
+]
+
+if AVR_ATMEGA_2560_TEST:
+    compiler_prefix="avr-"
+    CPU_FLAGS = [
+        f"-I/libstdcpp",
+        "-mmcu=atmega2560",
+        "-g0"
+    ]
+
 @dataclass
 class Library:
     """Configuration for a library to benchmark"""
@@ -37,13 +56,7 @@ class BuildConfig:
     opt_flags: List[str]
 
 
-# ARM Cortex-M7 target configuration
-ARM_FLAGS = [
-    "-mcpu=cortex-m7",
-    "-mthumb",
-    "-mfloat-abi=hard",
-    "-mfpu=fpv5-d16",
-]
+
 
 # Embedded-friendly flags
 EMBEDDED_FLAGS = [
@@ -69,36 +82,39 @@ LIBRARIES = [
         source_file="parse_config.cpp",
         description="JsonFusion with in-house float parser",
     ),
-    Library(
-        name="Glaze",
-        source_file="parse_config_glaze.cpp",
-        description="Glaze - probably the fastest JSON parser in C++",
-        dependencies=[
-       
-        ],
-    ),
-    Library(
-        name="ArduinoJson",
-        source_file="parse_config_arduinojson.cpp",
-        description="ArduinoJson v7.2.1",
-        dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.2.1/ArduinoJson.h"],
-    ),
-    Library(
-        name="jsmn",
-        source_file="parse_config_jsmn.cpp",
-        description="jsmn - minimalist JSON tokenizer",
-        dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
-    ),
-    Library(
-        name="cJSON",
-        source_file="parse_config_cjson.cpp",
-        description="cJSON - lightweight JSON parser in C",
-        dependencies=[
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
-        ],
-    ),
 ]
+if not AVR_ATMEGA_2560_TEST:
+    LIBRARIES += [
+        Library(
+            name="Glaze",
+            source_file="parse_config_glaze.cpp",
+            description="Glaze - probably the fastest JSON parser in C++",
+            dependencies=[
+        
+            ],
+        ),
+        Library(
+            name="ArduinoJson",
+            source_file="parse_config_arduinojson.cpp",
+            description="ArduinoJson v7.2.1",
+            dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.2.1/ArduinoJson.h"],
+        ),
+        Library(
+            name="jsmn",
+            source_file="parse_config_jsmn.cpp",
+            description="jsmn - minimalist JSON tokenizer",
+            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
+        ),
+        Library(
+            name="cJSON",
+            source_file="parse_config_cjson.cpp",
+            description="cJSON - lightweight JSON parser in C",
+            dependencies=[
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
+            ],
+        ),
+    ]
 
 # Linker warning patterns to filter out
 LINKER_WARNING_FILTERS = [
@@ -201,9 +217,9 @@ class EmbeddedBenchmark:
         source = self.script_dir / lib.source_file
         
         cmd = [
-            "arm-none-eabi-g++",
+            f"{compiler_prefix}g++",
             "-std=c++23",
-            *ARM_FLAGS,
+            *CPU_FLAGS,
             *EMBEDDED_FLAGS,
             *config.opt_flags,
             *self.includes,
@@ -227,16 +243,18 @@ class EmbeddedBenchmark:
         map_file = self.script_dir / f"parse_config_{lib.name.lower()}_{config.name}.map"
         
         cmd = [
-            "arm-none-eabi-g++",
-            *ARM_FLAGS,
+            f"{compiler_prefix}g++",
+            *CPU_FLAGS,
             *EMBEDDED_FLAGS,
             *config.opt_flags,
-            "-specs=nano.specs", "-specs=nosys.specs",
+            # "-specs=nano.specs", "-specs=nosys.specs",
             "-Wl,--gc-sections",
             f"-Wl,-Map={map_file}",
             str(obj_file),
             "-o", str(output_elf),
         ]
+        if not AVR_ATMEGA_2560_TEST:
+            cmd += ["-specs=nano.specs", "-specs=nosys.specs"]
         
         print("Linking to ELF...")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -264,7 +282,7 @@ class EmbeddedBenchmark:
         
         # Overall size
         result = subprocess.run(
-            ["arm-none-eabi-size", str(elf_file)],
+            [f"{compiler_prefix}size", str(elf_file)],
             capture_output=True, text=True
         )
         print(result.stdout)
@@ -272,7 +290,7 @@ class EmbeddedBenchmark:
         # Detailed by section
         print("=== Detailed Size (by section) ===")
         result = subprocess.run(
-            ["arm-none-eabi-size", "-A", str(elf_file)],
+            [f"{compiler_prefix}size", "-A", str(elf_file)],
             capture_output=True, text=True
         )
         for line in result.stdout.split('\n'):
@@ -283,7 +301,7 @@ class EmbeddedBenchmark:
         print()
         print("=== Top 10 Symbols by Size ===")
         nm_result = subprocess.run(
-            ["arm-none-eabi-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
+            [f"{compiler_prefix}gcc-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
             capture_output=True, text=True
         )
         # Filter out BSS symbols and take top 10
@@ -292,14 +310,14 @@ class EmbeddedBenchmark:
         
         # Demangle
         demangle_result = subprocess.run(
-            ["arm-none-eabi-c++filt"],
+            [f"{compiler_prefix}c++filt"],
             input=top_symbols, capture_output=True, text=True
         )
         # print(demangle_result.stdout)
         
         # Extract .text size
         result = subprocess.run(
-            ["arm-none-eabi-size", str(elf_file)],
+            [f"{compiler_prefix}size", str(elf_file)],
             capture_output=True, text=True
         )
         lines = result.stdout.strip().split('\n')

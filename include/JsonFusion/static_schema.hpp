@@ -1,10 +1,13 @@
 #pragma once
 #include <ranges>
 #include <type_traits>
+#if __has_include(<string>)
 #include <string>
+#endif
 #include <string_view>
 #include <optional>
 #include <utility>
+#include <algorithm>
 
 
 #include "options.hpp"
@@ -433,7 +436,9 @@ concept JsonNumber =
 /* ######## String type detection ######## */
 template<class C>
 concept JsonString =
-    std::same_as<AnnotatedValue<C>, std::string>      ||
+#if __has_include(<string>)
+    // std::same_as<AnnotatedValue<C>, std::string>      ||
+#endif
     std::same_as<AnnotatedValue<C>, std::string_view> ||
     (std::ranges::contiguous_range<AnnotatedValue<C>> &&
      std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>

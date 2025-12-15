@@ -596,6 +596,30 @@ constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, con
 namespace serializer_details {
 
 }
+#if __has_include(<string>)
+namespace io_details {
+struct limitless_sentinel {};
+
+constexpr bool operator==(const std::back_insert_iterator<std::string>&,
+                                 const limitless_sentinel&) noexcept {
+    return false;
+}
+
+constexpr bool operator==(const limitless_sentinel&,
+                                 const std::back_insert_iterator<std::string>&) noexcept {
+    return false;
+}
+
+constexpr bool operator!=(const std::back_insert_iterator<std::string>& it,
+                                 const limitless_sentinel& s) noexcept {
+    return !(it == s);
+}
+
+constexpr bool operator!=(const limitless_sentinel& s,
+                                 const std::back_insert_iterator<std::string>& it) noexcept {
+    return !(it == s);
+}
+}
 
 template<static_schema::JsonSerializableValue InputObjectT, class UserCtx = void>
 constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ctx = nullptr)
@@ -609,7 +633,7 @@ constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ct
 
     return Serialize(obj, it, end, ctx);  // calls the iterator-based core
 }
-
+#endif
 
 
 template <class T>

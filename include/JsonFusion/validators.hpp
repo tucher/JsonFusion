@@ -3,6 +3,7 @@
 #include <limits>
 #include <utility>
 #include <bitset>
+#include <functional>
 
 #include "options.hpp"
 #include "string_search.hpp"

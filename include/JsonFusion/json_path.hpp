@@ -167,9 +167,11 @@ struct JsonPath {
                             return false;
                     } else {
                         if constexpr(allowed_std_string_allocation()) {
+#if __has_include(<string>)
                             if(obj.contains(std::string(storage[offs].field_name)))
                                 return visit(obj[std::string(storage[offs].field_name)], std::forward<Visitor>(v), offs + 1);
                             else
+#endif
                                 return false;
                         } else {
                             static_assert(!sizeof(T), "Either enable JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS macro or use map-like, which supports std::string_view");

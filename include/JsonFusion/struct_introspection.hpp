@@ -2,7 +2,10 @@
 
 #include <cstddef>
 #include <string_view>
-#include <pfr.hpp>
+#include <pfr/tuple_size.hpp>
+#include <pfr/core.hpp>
+#include <pfr/core_name.hpp>
+
 #include "const_string.hpp"
 #include "annotated.hpp"
 

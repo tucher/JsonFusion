@@ -1072,10 +1072,10 @@ constexpr auto Parse(InputObjectT& obj, std::string_view sv, UserCtx * userCtx =
 
 
 // string front-end TODO
-template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
-constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
-    return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
-}
+// template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
+// constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
+//     return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
+// }
 
 
 template <class T>
