@@ -63,6 +63,7 @@ JsonFusion::Serialize(conf, output);
 
 - [Installation](#installation)
 - [Main Features](#main-features)
+- [Design Goals (and Tradeoffs)](#design-goals-and-tradeoffs)
 - [Types as Performance Hints](#types-as-performance-hints)
 - [Positioning](#positioning)
   - [No Extra "Mapping" Layer](#no-extra-handwritten-mappingvalidation-layer-with-competitive-performance)
@@ -117,6 +118,21 @@ compile-time sized storage based on schema depth analysis (zero runtime allocati
 and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
 - **Escape hatches**: Use `json_sink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing).
 JsonFusion validates JSON correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.
+
+## Design Goals (and Tradeoffs)
+
+- **Single source of truth**: Your C++ types are the JSON schema (no separate IDL/codegen).
+
+- **One-pass, fused work**: Parse, validate, and populate structs in a single pass—no intermediate DOM, no post-processing.
+
+- **Predictable footprint**: Template-heavy design structured to avoid code-size explosion across multiple models with both `-O3` and `-Os`. Shared infrastructure prevents duplication.
+
+- **No hidden runtime knobs**: Behavior is controlled by types and annotations, not global flags (aside from optional float implementation choice for embedded).
+
+- **Three layers only**:
+  1. JSON structure ↔ C++ types
+  2. Constraints/validators on those types
+  3. Transformers/streamers to integrate JSON with your domain logic
 
 ## Types as Performance Hints
 
@@ -686,6 +702,14 @@ advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1
 ## Custom Types & Transformers
 
 JsonFusion doesn't include built-in support for application-specific types like dates, UUIDs, or currencies, as well as high-level JSON schema algebra. Instead, it provides **generic transformation hooks** that let you define custom conversions between JSON representations and your domain types.
+
+Internally, JsonFusion thinks in three layers:
+
+1. **Native JSON layer** – objects/arrays/strings/numbers/bools/null mapped to C++ types.
+2. **Constraint layer** – validators (`range<>`, `min_length<>`, etc.) that restrict the valid subset of JSON for that type.
+3. **Domain layer** – transformers and streamers that turn JSON-shaped data into domain types (dates, IDs, aggregates) or side effects.
+
+📖 **Deep dive**: [docs/JSON_SCHEMA.md](docs/JSON_SCHEMA.md) - JSON type mapping and why no first-class `std::variant`
 
 **Example: ISO Date String → Microseconds**
 
