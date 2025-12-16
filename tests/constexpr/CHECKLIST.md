@@ -91,7 +91,6 @@ Quick reference for tracking test implementation progress.
 - [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
 - [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (**TODO: test with in-house FP parser**)
 - [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (**TODO: test serialization precision**)
-- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization) - NOT NEEDED NOW
 - [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
 - [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
 
@@ -182,7 +181,6 @@ Quick reference for tracking test implementation progress.
 - ✅ `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
 - [ ] `skip_materializing` - Skip C++-side work (**TODO: test with in-house FP parser**)
 - [ ] `float_decimals<>` - Serialization precision (**TODO: test with in-house FP parser**)
-- [ ] `binary_fields_search` - Binary search optimization **NOT NEEDED NOW**
 - [ ] `description<>` - Metadata (optional tests) **NOT NEEDED NOW**
 
 **Completed Categories:**

@@ -64,6 +64,7 @@ JsonFusion::Serialize(conf, output);
 - [Installation](#installation)
 - [Main Features](#main-features)
 - [Design Goals (and Tradeoffs)](#design-goals-and-tradeoffs)
+- [Zero Runtime Subsystem](#zero-runtime-subsystem)
 - [Types as Performance Hints](#types-as-performance-hints)
 - [Positioning](#positioning)
   - [No Extra "Mapping" Layer](#no-extra-handwritten-mappingvalidation-layer-with-competitive-performance)
@@ -133,6 +134,27 @@ JsonFusion validates JSON correctness while preserving the original fragment as 
   1. JSON structure ↔ C++ types
   2. Constraints/validators on those types
   3. Transformers/streamers to integrate JSON with your domain logic
+
+## Zero Runtime Subsystem
+
+JsonFusion has no runtime "engine" layer. All schema plumbing—validators, transformers, options, streamers—is evaluated at compile time and either reduced to simple branches or optimized away entirely if unused.
+
+**What the compiler includes:**
+- Standard C/C++ primitives: `memcpy`, `memmove`, `memcmp`
+- Floating-point helpers from libgcc/libm (e.g., `__aeabi_dadd` on ARM)
+- Whatever your model uses: `std::vector`, `std::string`, `std::map`, `std::optional`
+
+**What JsonFusion uses internally (header-only, compile-time only):**
+- `std::array`, `std::bitset`, `std::optional`, `std::pair`, `std::tuple`
+- `<type_traits>`, `<utility>`, `<limits>` (purely compile-time)
+
+**What JsonFusion never pulls in:**
+- No runtime STL algorithms, containers (`std::unordered_map`, `std::set`), or iostreams
+- No threads, atomics, filesystem, chrono, locale, regex
+- No RTTI or exceptions required (`-fno-exceptions` works fine)
+- No virtual dispatch or polymorphic base classes
+
+**One codebase, all targets:** The same template-driven design works on ARM Cortex-M0 and x64 servers—no separate "lite" version for embedded, because the design doesn't need one. Compile-time evaluation means each target gets exactly what it needs, nothing more.
 
 ## Types as Performance Hints
 

@@ -114,13 +114,6 @@ struct allow_excess_fields{
     }
 };
 
-struct binary_fields_search{
-    using tag = detail::binary_fields_search_tag;
-    static constexpr std::string_view to_string() {
-        return "binary_fields_search";
-    }
-};
-
 namespace detail {
 
 

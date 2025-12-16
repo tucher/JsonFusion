@@ -464,15 +464,8 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Integration with serialization
   - **Note: Floating-point serialization is NOT constexpr-compatible in JsonFusion**
 
-### 5.10 binary_fields_search
 
-- `test_annotated_binary_fields_search.cpp`
-  - `binary_fields_search` - Use binary search for field lookup
-  - Performance optimization for structs with many fields
-  - Comparison with default linear search
-  - Threshold behavior
-
-### 5.11 description (Metadata)
+### 5.10 description (Metadata)
 
 - `test_annotated_description.cpp` (optional - metadata only)
   - `description<"text">` - Documentation metadata
