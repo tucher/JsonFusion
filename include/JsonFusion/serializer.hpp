@@ -93,7 +93,7 @@ constexpr SerializeError outputEscapedString(It & outputPos, const Sent &end, co
     *outputPos ++ = '"';
     std::size_t segSize = 0;
     std::size_t counter = 0;
-    char toOutEscaped [2] = {0, 0};
+    char toOutEscaped [6] = {0, 0, 0, 0, 0, 0};  // Increased to fit \uXXXX
     char toOutSize = 0;
     bool is_null_end = false;
     while(counter < size) {
@@ -110,8 +110,16 @@ constexpr SerializeError outputEscapedString(It & outputPos, const Sent &end, co
             if(null_ended && c == 0) {
                 is_null_end = true;
             }
-            else if(c < 32) {
-                return SerializeError::STRING_CONTENT_ERROR;
+            else if(static_cast<unsigned char>(c) < 32) {
+                // Control character (0x00-0x1F): escape as \uXXXX per RFC 8259
+                toOutEscaped[0] = '\\';
+                toOutEscaped[1] = 'u';
+                toOutEscaped[2] = '0';
+                toOutEscaped[3] = '0';
+                unsigned char uc = static_cast<unsigned char>(c);
+                toOutEscaped[4] = "0123456789abcdef"[(uc >> 4) & 0xF];
+                toOutEscaped[5] = "0123456789abcdef"[uc & 0xF];
+                toOutSize = 6;
             } else {
                 toOutEscaped[0] = c;
                 toOutSize = 1;

@@ -6,6 +6,12 @@
 using namespace JsonFusion;
 using namespace JsonFusion::validators;
 
+// Constexpr-compatible absolute value for testing
+template<typename T>
+constexpr T test_abs(T value) {
+    return value < T(0) ? -value : value;
+}
+
 // ============================================================================
 // Test: constant<> - Boolean Constants
 // ============================================================================
@@ -267,4 +273,119 @@ constexpr bool test_multiple_constants_one_fails() {
     return !result && result.validationErrors().error() == SchemaError::wrong_constant_value;
 }
 static_assert(test_multiple_constants_one_fails(), "Multiple constants - one fails");
+
+// ============================================================================
+// Test: constant<> - Float Constants
+// ============================================================================
+
+// Test: constant<3.14f> accepts 3.14 (float)
+constexpr bool test_constant_float_valid() {
+    struct Test {
+        Annotated<float, constant<3.14f>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 3.14})";
+    auto result = Parse(obj, json);
+    
+    return result && test_abs(obj.value.get() - 3.14f) < 0.001f;
+}
+static_assert(test_constant_float_valid(), "constant<3.14f> accepts 3.14");
+
+// Test: constant<3.14f> rejects different value
+constexpr bool test_constant_float_invalid() {
+    struct Test {
+        Annotated<float, constant<3.14f>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 2.71})";
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::wrong_constant_value;
+}
+static_assert(test_constant_float_invalid(), "constant<3.14f> rejects 2.71");
+
+// Test: constant<0.0f> accepts zero (float)
+constexpr bool test_constant_float_zero_valid() {
+    struct Test {
+        Annotated<float, constant<0.0f>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 0.0})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.value.get() == 0.0f;
+}
+static_assert(test_constant_float_zero_valid(), "constant<0.0f> accepts zero");
+
+// Test: constant<-2.5f> accepts negative (float)
+constexpr bool test_constant_float_negative_valid() {
+    struct Test {
+        Annotated<float, constant<-2.5f>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": -2.5})";
+    auto result = Parse(obj, json);
+    
+    return result && test_abs(obj.value.get() - (-2.5f)) < 0.001f;
+}
+static_assert(test_constant_float_negative_valid(), "constant<-2.5f> accepts negative");
+
+// ============================================================================
+// Test: constant<> - Double Constants
+// ============================================================================
+
+// Test: constant<3.14> accepts 3.14 (double)
+constexpr bool test_constant_double_valid() {
+    struct Test {
+        Annotated<double, constant<3.14>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 3.14})";
+    auto result = Parse(obj, json);
+    
+    return result && test_abs(obj.value.get() - 3.14) < 0.0001;
+}
+static_assert(test_constant_double_valid(), "constant<3.14> accepts 3.14");
+
+// Test: constant<3.14> rejects different value
+constexpr bool test_constant_double_invalid() {
+    struct Test {
+        Annotated<double, constant<3.14>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 2.71})";
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::wrong_constant_value;
+}
+static_assert(test_constant_double_invalid(), "constant<3.14> rejects 2.71");
+
+// Test: constant<0.0> accepts zero (double)
+constexpr bool test_constant_double_zero_valid() {
+    struct Test {
+        Annotated<double, constant<0.0>> value;
+    };
+    
+    Test obj{};
+    std::string json = R"({"value": 0.0})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.value.get() == 0.0;
+}
+static_assert(test_constant_double_zero_valid(), "constant<0.0> accepts zero");
+
+// ============================================================================
+// Test: Type Mismatch (compile-time rejection)
+// ============================================================================
+
+// Note: The following WOULD fail at compile time (static_assert in validator):
+// struct BadNarrowing { A<float, constant<3.14>> value; };   // double→float narrowing
+// struct BadWidening  { A<double, constant<3.14f>> value; };  // float→double widening causes precision mismatch
+// Both require exact type match: use 3.14f for float, 3.14 for double
 

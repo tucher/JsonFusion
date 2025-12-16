@@ -12,22 +12,6 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 - **Incremental validation testing** - Verify early rejection paths work correctly
 - **Comprehensive validator coverage** - Test each validator individually and in combination
 
-## ⚠️ Important Constexpr Limitations
-
-**Floating-Point Types Are NOT Constexpr-Compatible:**
-- Floating-point parsing (`float`, `double`) is **NOT** constexpr-compatible in JsonFusion
-- Floating-point serialization is **NOT** constexpr-compatible
-- Tests marked with ⚠️ **NO FLOATING-POINT** or ⚠️ **RUNTIME ONLY** should use integer types only
-- `range<>` validator works only with integer types in constexpr tests
-- `constant<>` validator works only with bool and integer types (not float/double)
-- `float_decimals<>` and `skip_materializing` options are runtime-only features
-
-**What IS Constexpr-Compatible:**
-- All integer types (`int`, `int8_t`, `int16_t`, `int32_t`, `int64_t`, unsigned variants)
-- `bool`, `char`, `std::array<char, N>` (strings)
-- `std::string`, `std::vector<T>` (C++23)
-- `std::optional<T>`, `std::array<T, N>`
-- All validators and options except those explicitly marked as runtime-only
 
 ---
 
@@ -260,15 +244,15 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ### 4.1 Primitive Validators
 
-- ✅ `test_validation_constant.cpp` ⚠️ **INTEGER/BOOL ONLY (no floating-point)**
+- ✅ `test_validation_constant.cpp`
   - `constant<true>` - bool constants
-  - `constant<42>` - number constants (int only, **no float/double** - not constexpr-compatible)
+  - `constant<42>` - number constants
   - `string_constant<"value">` - string constants
   - Rejects non-matching values
   - With different primitive types (integers and bools only)
   - Early rejection for string constants (incremental validation)
 
-### 4.2 Number Range Validation ⚠️ **INTEGER ONLY (no floating-point)**
+### 4.2 Number Range Validation 
 
 - ✅ `test_validation_range_int.cpp`
   - `Annotated<int, range<0, 100>>` - valid values at boundaries
@@ -446,23 +430,15 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Depth limit behavior
   - Integration with `std::string` fields
 
-### 5.8 skip_materializing ⚠️ **NOT FOR CONSTEXPR TESTS**
 
-- `test_annotated_skip_materializing.cpp` ⚠️ **RUNTIME ONLY (floating-point not constexpr-compatible)**
-  - `skip_materializing` - Skip C++-side work (e.g., string->float conversion)
-  - Performance optimization for validation-only scenarios
-  - Does not affect JSON validity checking
-  - Works with floating-point types (float, double)
-  - **Note: Floating-point operations are NOT constexpr-compatible in JsonFusion**
 
-### 5.9 float_decimals ⚠️ **NOT FOR CONSTEXPR TESTS**
+### 5.9 float_decimals
 
-- `test_annotated_float_decimals.cpp` ⚠️ **RUNTIME ONLY (floating-point not constexpr-compatible)**
+- `test_annotated_float_decimals.cpp`
   - `float_decimals<N>` - Control decimal precision in serialization
   - Rounding behavior
   - Different precision values
   - Integration with serialization
-  - **Note: Floating-point serialization is NOT constexpr-compatible in JsonFusion**
 
 
 ### 5.10 description (Metadata)
@@ -789,17 +765,16 @@ Tests should use user-defined parsing/serializing contexts
 
 ## 10. JSON Spec Compliance (RFC 8259)
 
-### 10.1 Numbers ⚠️ **INTEGER ONLY FOR CONSTEXPR TESTS**
+### 10.1 Numbers 
 
-- `test_json_numbers_format.cpp` ⚠️ **INTEGER PARSING ONLY (no floating-point)**
+- `test_json_numbers_format.cpp` 
   - Integer: `123`, `-123`, `0`
-  - **Decimal: `123.456`, `-123.456` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
-  - **Exponent: `1e10`, `1E10`, `1e+10`, `1e-10` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
-  - **Combined: `1.23e-4` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
+  - **Decimal: `123.456`, `-123.456`
+  - **Exponent: `1e10`, `1E10`, `1e+10`, `1e-10` - 
+  - **Combined: `1.23e-4` - 
   - Leading zeros (should reject): `01`, `00.5` (integer part only)
-  - **Trailing decimal (should reject): `1.` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
-  - **Leading decimal (should reject): `.5` - ⚠️ NOT constexpr-compatible (skip in constexpr tests)**
-  - **Note: Floating-point number parsing is NOT constexpr-compatible in JsonFusion**
+  - **Trailing decimal (should reject): `1.` - 
+  - **Leading decimal (should reject): `.5` - 
 
 ### 10.2 Strings
 

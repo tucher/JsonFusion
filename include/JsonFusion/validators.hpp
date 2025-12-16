@@ -6,6 +6,20 @@
 #include <functional>
 
 #include "options.hpp"
+
+namespace JsonFusion {
+namespace validators {
+namespace validators_detail {
+
+// Constexpr-compatible absolute value for floating-point
+template<typename T>
+constexpr T constexpr_abs(T value) {
+    return value < T(0) ? -value : value;
+}
+
+} // namespace validators_detail
+} // namespace validators
+} // namespace JsonFusion
 #include "string_search.hpp"
 #include "parse_errors.hpp"
 
@@ -190,11 +204,48 @@ struct constant {
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::number_parsing_finished>
     static constexpr  bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx) {
-        if(v != C) {
-            ctx.setError(SchemaError::wrong_constant_value, Index);
-            return false;
+        if constexpr (std::is_floating_point_v<Storage>) {
+            static_assert(std::is_floating_point_v<decltype(C)>, "Constant is not floating point");
+            
+            // Reject NaN and Infinity - not valid JSON numbers per RFC 8259
+            static_assert(C == C, "NaN is not a valid JSON number"); // NaN != NaN
+            static_assert(C != std::numeric_limits<decltype(C)>::infinity() && 
+                          C != -std::numeric_limits<decltype(C)>::infinity(), 
+                          "Infinity is not a valid JSON number");
+            
+            // Require exact type match - no narrowing or widening
+            // (Widening float→double creates precision mismatches: 3.14f != 3.14 as double)
+            static_assert(std::is_same_v<decltype(C), Storage>, 
+                          "Constant type must exactly match field type (use 3.14f for float, 3.14 for double)");
+            
+            // Cast to Storage type for comparison to handle widening conversions
+            constexpr Storage ConstValue = static_cast<Storage>(C);
+            Storage diff = validators_detail::constexpr_abs(v - ConstValue);
+            Storage absV = validators_detail::constexpr_abs(v);
+            Storage absConst = validators_detail::constexpr_abs(ConstValue);
+            Storage maxVal = (absV > absConst) ? absV : absConst;
+            
+            if (diff <= std::numeric_limits<Storage>::epsilon() * maxVal * Storage(2.0)
+            || diff < std::numeric_limits<Storage>::min()) {
+                return true;
+            } else {
+                ctx.setError(SchemaError::wrong_constant_value, Index);
+                return false;
+            }
         } else {
-            return true;
+            static_assert(std::is_integral_v<decltype(C)>, "Constant is not integral");
+            if constexpr (std::is_unsigned_v<Storage>) {
+                static_assert(static_cast<std::make_unsigned_t<decltype(C)>>(C) <= std::numeric_limits<Storage>::max(), "Constant is out of range");
+            } else {
+                static_assert(C >= std::numeric_limits<Storage>::min() && C <= std::numeric_limits<Storage>::max(), "Constant is out of range");
+            }
+
+            if(v != static_cast<Storage>(C)) {
+                ctx.setError(SchemaError::wrong_constant_value, Index);
+                return false;
+            } else {    
+                return true;
+            }
         }
     }
 

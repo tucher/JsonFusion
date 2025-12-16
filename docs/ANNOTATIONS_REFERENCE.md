@@ -94,7 +94,6 @@ key<"jsonName">              // Override JSON key name (use "jsonName" instead o
 not_json                     // Exclude field from JSON serialization/deserialization
 description<"text">          // Documentation metadata for schema generation
 skip_json<depth=64>          // Fast-skip this value without underlying JSON, with handling up to `depth` levels
-skip_materializing           // Where applicable, do as less C++-side work as possible. For doubles: skip string->float conversion. Does not affect JSON validness checking
 json_sink<depth=64, max_length=1<<16>          // Capture RAW JSON into underlying string-like object, with fixed maximum nesting level and limited length. Whitespaces are removed. Validates json overall correctness, does not check anything else.
 ```
 

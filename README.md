@@ -137,24 +137,50 @@ JsonFusion validates JSON correctness while preserving the original fragment as 
 
 ## Zero Runtime Subsystem
 
-JsonFusion has no runtime "engine" layer. All schema plumbing—validators, transformers, options, streamers—is evaluated at compile time and either reduced to simple branches or optimized away entirely if unused.
+JsonFusion doesn’t ship a runtime “engine”. All schema plumbing — validators, transformers, options, streamers — is resolved at compile time and either:
+- turns into a couple of plain branches, or
+- disappears entirely if unused.
 
-**What the compiler includes:**
-- Standard C/C++ primitives: `memcpy`, `memmove`, `memcmp`
-- Floating-point helpers from libgcc/libm (e.g., `__aeabi_dadd` on ARM)
-- Whatever your model uses: `std::vector`, `std::string`, `std::map`, `std::optional`
+### What actually ends up in your binary
 
-**What JsonFusion uses internally (header-only, compile-time only):**
-- `std::array`, `std::bitset`, `std::optional`, `std::pair`, `std::tuple`
-- `<type_traits>`, `<utility>`, `<limits>` (purely compile-time)
+The only runtime pieces you pay for are:
 
-**What JsonFusion never pulls in:**
-- No runtime STL algorithms, containers (`std::unordered_map`, `std::set`), or iostreams
-- No threads, atomics, filesystem, chrono, locale, regex
-- No RTTI or exceptions required (`-fno-exceptions` works fine)
-- No virtual dispatch or polymorphic base classes
+- Basic C/C++ primitives  
+  `memcpy`, `memmove`, `memcmp`, integer ops, plus a few floating-point helpers from libgcc/libm (e.g. `__aeabi_dadd` on ARM).
 
-**One codebase, all targets:** The same template-driven design works on ARM Cortex-M0 and x64 servers—no separate "lite" version for embedded, because the design doesn't need one. Compile-time evaluation means each target gets exactly what it needs, nothing more.
+- Whatever *your model* chooses to use  
+  `std::vector`, `std::string`, `std::map`, `std::optional`, etc. If it’s in your struct, the compiler will pull it in. If it isn’t, JsonFusion doesn’t.
+
+### What JsonFusion itself uses
+
+Internally the core is almost entirely compile-time:
+
+- Tiny, value-like types:  
+  `std::array`, `std::bitset`, `std::optional`, `std::pair`, `std::tuple`
+- Type machinery only:  
+  `<type_traits>`, `<utility>`, `<limits>`, etc.
+
+These are all header-only and generate trivial code; there’s no heavy runtime STL machinery in the core.
+
+### What JsonFusion never drags in
+
+JsonFusion does **not** depend on:
+
+- Dynamic STL containers or algorithms (`std::unordered_map`, `std::set`, `<algorithm>` on big ranges)
+- iostreams, threads, atomics, filesystem, chrono, locale, regex
+- RTTI or exceptions (`-fno-exceptions -fno-rtti` is fully supported)
+- Virtual bases or polymorphic hierarchies
+
+If you see any of those in your binary, it came from your code, not from JsonFusion.
+
+### One codebase, all targets
+
+The same template-driven design is used everywhere — from ARM Cortex-M0/M7 microcontrollers to x64 servers. There is no “lite” embedded fork:
+
+- On big systems, the compiler inlines and folds the templates into tight loops over your model.
+- On microcontrollers, the same code compiles down (under `-Os`/LTO) to a small, predictable blob with no hidden runtime subsystem.
+
+The only real question is not *“how do I tune JsonFusion?”* but *“is this design a good fit for my application’s constraints?”*
 
 ## Types as Performance Hints
 

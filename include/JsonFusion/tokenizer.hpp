@@ -524,9 +524,23 @@ private:
             }
 
             if (c == '.' && !seenDot && !inExp) {
+                // RFC 8259: Decimal point requires digits before AND after
+                if (!seenDigitBeforeExp) {
+                    // Leading dot like ".42" is invalid
+                    setError(ParseError::ILLFORMED_NUMBER, current_);
+                    return false;
+                }
+                
                 seenDot = true;
                 if (!push_char(c)) return false;
                 ++current_;
+                
+                // Ensure at least one digit follows the decimal point
+                if (atEnd() || !(*current_ >= '0' && *current_ <= '9')) {
+                    // Trailing dot like "42." is invalid
+                    setError(ParseError::ILLFORMED_NUMBER, current_);
+                    return false;
+                }
                 continue;
             }
 

@@ -59,13 +59,6 @@ struct json_sink {
 };
 
 
-struct skip_materializing {
-    using tag = detail::skip_materializing_tag;
-    static constexpr std::string_view to_string() {
-        return "skip_materializing";
-    }
-};
-
 template<ConstString Desc>
 struct key {
     static_assert(Desc.check(), "[[[ JsonFusion ]]] Jsonkey contains control characters");

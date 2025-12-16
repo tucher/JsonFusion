@@ -57,10 +57,6 @@ struct PointSkippedXY {
     A<float, skip_json<>> y;
 };
 
-struct PointUnmaterializedXY {
-    A<float, skip_materializing> x;
-    A<float, skip_materializing> y;
-};
 
 template<typename PT>
 using PointAsArray = Annotated<PT, as_array>;
