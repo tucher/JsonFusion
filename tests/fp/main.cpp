@@ -5,7 +5,7 @@
 #include <random>
 #include <iostream>
 #include <iomanip>
-#define JSONFUSION_USE_FAST_FLOAT 0  // desktop default
+// #define JSONFUSION_FP_BACKEND 1  // on-house is the default, no need to switch anything
 
 #include <JsonFusion/fp_to_str.hpp>
 

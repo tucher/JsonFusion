@@ -127,7 +127,7 @@ JsonFusion validates JSON correctness while preserving the original fragment as 
 
 - **Predictable footprint**: Template-heavy design structured to avoid code-size explosion across multiple models with both `-O3` and `-Os`. Shared infrastructure prevents duplication.
 
-- **No hidden runtime knobs**: Behavior is controlled by types and annotations, not global flags (aside from optional float implementation choice for embedded).
+- **No hidden runtime knobs**: Behavior is controlled by types and annotations, not global flags.
 
 - **Three layers only**:
   1. JSON structure ↔ C++ types
@@ -203,8 +203,7 @@ byte-by-byte with full control and no intermediate buffers.
 
 Plays well with -fno-exceptions / -fno-rtti style builds.
 
-**Configurable dependencies**: By default uses external fast float parsers/serializers. Define `JSONFUSION_USE_FAST_FLOAT=0` to switch to in-house tiny
-implementations, reducing binary size for embedded builds.
+**No external dependencies**: By default uses in-house  float parser/serializer.
 
 **Your structs define everything**: On tiny microcontrollers without floating-point support, just don’t use float/double in your struct definitions. 
 In that case the float parsing code is never instantiated or compiled into the binary; there is no special global configuration needed. 
@@ -505,7 +504,7 @@ JsonFusion targets two distinct scenarios with different priorities:
 **Performance philosophy**: JsonFusion tries to achieve both speed and compactness by 
 *eliminating unnecessary work*, rather than through manual micro-optimizations. 
 The core is platform/CPU agnostic (no SIMD, no hand-tuned assembly). 
-With `JSONFUSION_USE_FAST_FLOAT=0`, there are no explicit runtime dependencies of the library itself.
+With the default `JSONFUSION_FP_BACKEND=0`, there are no explicit runtime dependencies of the library itself.
 
 Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.
@@ -527,7 +526,6 @@ Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cor
 - **Targets**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb`) and Cortex-M0+ (`-mcpu=cortex-m0plus -mthumb`)
 - **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
 - **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
-- **JsonFusion config**: `JSONFUSION_USE_FAST_FLOAT=0` (in-house lightweight float parser, no libc dependencies)
 
 **Results (`.text` section - code size in flash):**
 
@@ -588,16 +586,17 @@ For RapidJSON, this requires hand-written mapping code and hand-written checks. 
 📁 **Test models**: [`benchmarks/main.cpp`](benchmarks/main.cpp) – 6 realistic scenarios with nested structs, arrays, maps, optionals, validation
 constraints  
 
+
 #### Results
 
 | Benchmark Scenario | JsonFusion vs RapidJSON |
 |-------------------|-------------------------|
 | **Embedded Config (Static)** | **10% slower** |
-| **Embedded Config (Dynamic)** | **22% faster** |
-| **Telemetry Samples** | **13% faster** |
-| **RPC Commands** | **27% faster** |
-| **Log Events** | **9% faster** |
-| **Bus Events / Message Payloads** | **18% faster** |
+| **Embedded Config (Dynamic)** | **25% faster** |
+| **Telemetry Samples** | **15% faster** |
+| **RPC Commands** | **40% faster** |
+| **Log Events** | **10% faster** |
+| **Bus Events / Message Payloads** | **25% faster** |
 | **Metrics / Time-Series** | **10% faster** |
 
 *Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static
@@ -612,14 +611,11 @@ Here, manual optimization wins by **10%**. However, JsonFusion's generic reflect
 lines of error-prone boilerplate.
 
 For a 10% performance difference on trivial static cases, you get compile-time type safety, declarative validation, and zero maintenance burden. On
-dynamic containers, JsonFusion is **22% faster** while still requiring zero code.
+dynamic containers, JsonFusion is faster while still requiring zero code.
 
 **2. Wins where it matters**
 
-JsonFusion is faster than RapidJSON + manual code on realistic workloads:
-- **Dynamic containers**: 22% faster (memory allocation patterns favor single-pass)
-- **Complex nested structures**: 27% faster (RPC commands)
-- **Validation-heavy workloads**: 9-18% faster (telemetry, logs, events)
+JsonFusion is generally faster than RapidJSON + manual code on realistic workloads.
 
 **3. Productivity vs peak performance**
 
@@ -639,14 +635,14 @@ JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of
 The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stress test.
 
 **Parse-and-populate** (production use case):
-- JsonFusion (iterator) and RapidJSON (with manual populate) perform **essentially identically**
-- **JsonFusion + yyjson: 50% faster than both** - yyjson's optimized numeric parsing shines on this workload
+- JsonFusion (iterator) is 40% slower than RapidJSON (with manual populate)
+- **JsonFusion + yyjson: 50% faster than RapidJSON** - yyjson's optimized numeric parsing shines on this workload
 
 **Streaming for object counting**:
 - Hand-written RapidJSON SAX serves as baseline
-- JsonFusion typed streaming is ~47% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
+- JsonFusion typed streaming is ~50% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
 manual state machines
-- **JsonFusion with selective skipping**: **34% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip_json<>` in the model
+- **JsonFusion with selective skipping**: **15% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip_json<>` in the model
 - **JsonFusion + yyjson (streaming): 35% faster than RapidJSON SAX** with the same type-safe, generic API
 
 The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema,
@@ -1011,3 +1007,4 @@ This approach aligns with JsonFusion's philosophy: leverage compile-time introsp
 - Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
 - **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
+- **Floating-point numbers handling**: JsonFusion uses an in-house constexpr-compatible FP parser/serializer by default (`JSONFUSION_FP_BACKEND=0`). While tested for correctness and sufficient for typical use cases, it is not as precise or fast as state-of-the-art implementations like fast_float. For applications with extreme FP requirements, the backend is swappable—see [docs/FP_BACKEND_ARCHITECTURE.md](docs/FP_BACKEND_ARCHITECTURE.md) for details on alternative backends or implementing custom FP handling.

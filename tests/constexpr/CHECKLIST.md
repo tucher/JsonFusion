@@ -2,14 +2,19 @@
 
 Quick reference for tracking test implementation progress.
 
-## ⚠️ Important: Floating-Point Limitations
+**📋 For detailed plans on pending tests, see [PENDING_TESTS_TODO.md](./PENDING_TESTS_TODO.md)**
 
-**Floating-point types (`float`, `double`) are NOT constexpr-compatible in JsonFusion.**
-- Tests marked with ⚠️ **NO FLOATING-POINT** or ⚠️ **RUNTIME ONLY** should use integer types only
-- `range<>` validator: integer types only in constexpr tests
-- `constant<>` validator: bool and integer types only (not float/double)
-- `float_decimals<>` and `skip_materializing`: runtime-only features
-- JSON number format tests: integer parsing only (no decimals/exponents)
+## ⚠️ Important: Floating-Point in Constexpr Tests
+
+**In-house floating-point parser IS constexpr-compatible:**
+- Do NOT use `#define JSONFUSION_FP_BACKEND 1` at the top of constexpr float tests
+- The in-house FP parser/serializer works fully in constexpr context
+- All floating-point features should be tested in constexpr (parsing, serialization, validation)
+
+**3rd-party fast_float library is NOT constexpr:**
+- Tests marked ⚠️ **RUNTIME ONLY** refer to features that require fast_float (high-performance mode)
+- `skip_materializing` with fast_float: runtime-only (but works with in-house parser)
+- For constexpr tests, NEVER use `JSONFUSION_FP_BACKEND=1`
 
 ## io/ (1 file) ✅ COMPLETE
 - [x] test_io_iterators.cpp - Byte-by-byte streaming with custom iterators
@@ -22,12 +27,14 @@ Quick reference for tracking test implementation progress.
 - [x] test_map_stdlib_interface.cpp
 - [x] test_structural_detection.cpp
 
-## primitives/ (12 files) ✅ COMPLETE
+## primitives/ (14 files) ✅ COMPLETE
 - [x] test_parse_int.cpp
 - [x] test_parse_bool.cpp
 - [x] test_parse_char_array.cpp
+- [x] test_parse_float.cpp - Float/double parsing
 - [x] test_serialize_int.cpp
 - [x] test_serialize_bool.cpp
+- [x] test_serialize_float.cpp - Float/double serialization
 - [x] test_parse_integers_signed.cpp
 - [x] test_parse_integers_unsigned.cpp
 - [x] test_parse_integers_overflow.cpp
@@ -55,7 +62,7 @@ Quick reference for tracking test implementation progress.
 - [x] test_json_syntax_valid.cpp - Valid JSON syntax (empty keys, deep nesting, large arrays)
 - [x] test_json_syntax_invalid.cpp - Invalid JSON syntax error detection
 - [x] test_json_strings_unicode.cpp - Unicode escapes, surrogate pairs, RFC 8259 compliance
-- [ ] test_json_numbers_format.cpp - ⚠️ **INTEGER PARSING ONLY (no floating-point decimals/exponents)**
+- [ ] test_json_numbers_format.cpp - Integer AND floating-point format
 
 ## validation/ (13 files) ✅ COMPLETE
 - [x] test_map_validators.cpp - All map validators (45 tests)
@@ -64,10 +71,10 @@ Quick reference for tracking test implementation progress.
   - `required_keys`, `allowed_keys`, `forbidden_keys`
 - [x] test_string_enum.cpp - String enum validation (17 tests)
   - `enum_values<...>` with incremental validation
-- [x] test_validation_constant.cpp - `constant<>` (bool, **integer only**), `string_constant<>` ⚠️ **NO FLOATING-POINT**
-- [x] test_validation_range_int.cpp - `range<>` for integers ⚠️ **NO FLOATING-POINT**
-- [x] test_validation_range_signed.cpp - `range<>` for all signed int types ⚠️ **NO FLOATING-POINT**
-- [x] test_validation_range_unsigned.cpp - `range<>` for all unsigned int types ⚠️ **NO FLOATING-POINT**
+- [x] test_validation_constant.cpp - `constant<>` (bool, integer, **TODO: add float tests**)
+- [x] test_validation_range_int.cpp - `range<>` for integers (**TODO: add float tests**)
+- [x] test_validation_range_signed.cpp - `range<>` for all signed int types
+- [x] test_validation_range_unsigned.cpp - `range<>` for all unsigned int types
 - [x] test_validation_string_length.cpp - `min_length<>`, `max_length<>`
 - [x] test_validation_array_items.cpp - `min_items<>`, `max_items<>`
 - [x] test_validation_struct_fields_presence.cpp - `not_required<>`/`required<>` (object-level)
@@ -82,8 +89,8 @@ Quick reference for tracking test implementation progress.
 - [ ] test_annotated_not_json.cpp - `not_json` (skip field) - NOT NEEDED NOW (covered in roundtrip tests)
 - [x] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
 - [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
-- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
-- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
+- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (**TODO: test with in-house FP parser**)
+- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (**TODO: test serialization precision**)
 - [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization) - NOT NEEDED NOW
 - [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
 - [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
@@ -120,25 +127,6 @@ Quick reference for tracking test implementation progress.
 - [ ] test_cpp_zero_sized.cpp
 - [ ] test_cpp_default_values.cpp
 
-## validation/ (additional - 5 files) - NOT STARTED
-- [ ] test_validation_range_int.cpp
-- [ ] test_validation_string_length.cpp
-- [ ] test_validation_array_items.cpp
-- [ ] test_validation_multiple_constraints.cpp
-- [ ] test_validation_nested_objects.cpp
-
-## annotations/ (9 files) - 2/9 COMPLETE
-- [x] test_annotated_key.cpp - `key<"json_name">` remapping (covered in roundtrip tests)
-- [x] test_annotated_as_array.cpp - `as_array` (struct as array) (covered in roundtrip tests)
-- [ ] test_annotated_not_json.cpp - `not_json` (skip field) - NOT NEEDED NOW
-- [x] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
-- [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
-- [ ] test_annotated_skip_materializing.cpp - `skip_materializing` (skip C++ work) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
-- [ ] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision) ⚠️ **RUNTIME ONLY (floating-point)** - NOT NEEDED NOW
-- [ ] test_annotated_binary_fields_search.cpp - `binary_fields_search` (binary search optimization) - NOT NEEDED NOW
-- [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
-- [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
-
 ## serialization/ (additional - 2 files) - NOT STARTED
 - [ ] test_serialize_integers_all_types.cpp
 - [ ] test_serialize_strings.cpp
@@ -167,7 +155,7 @@ Quick reference for tracking test implementation progress.
 
 ---
 
-**Progress: 53 / ~90 tests implemented (~58.9%)**
+**Progress: 74 / 90 tests implemented (82.2%)**
 
 
 
@@ -178,9 +166,9 @@ Quick reference for tracking test implementation progress.
 - ✅ `min_properties<>`, `max_properties<>` - Map property count (test_map_validators.cpp)
 - ✅ `min_key_length<>`, `max_key_length<>` - Map key length (test_map_validators.cpp)
 - ✅ `required_keys<>`, `allowed_keys<>`, `forbidden_keys<>` - Map key sets (test_map_validators.cpp)
-- ✅ `constant<>` - Bool/**integer** constants ⚠️ **NO FLOATING-POINT** (test_validation_constant.cpp)
+- ✅ `constant<>` - Bool/integer/float constants (test_validation_constant.cpp - **TODO: add float tests**)
 - ✅ `string_constant<>` - String constants (test_validation_constant.cpp)
-- ✅ `range<>` - Number range validation ⚠️ **INTEGER ONLY (no float/double)** (test_validation_range_int.cpp, test_validation_range_signed.cpp, test_validation_range_unsigned.cpp)
+- ✅ `range<>` - Number range validation (integers + **TODO: float/double**) (test_validation_range_*.cpp)
 - ✅ `min_length<>`, `max_length<>` - String length (test_validation_string_length.cpp)
 - ✅ `min_items<>`, `max_items<>` - Array item count (test_validation_array_items.cpp)
 - ✅ `not_required<>`, `required<>` - Object-level field presence validation (test_validation_struct_fields_presence.cpp)
@@ -192,31 +180,30 @@ Quick reference for tracking test implementation progress.
 - ✅ `not_json` - Skip field (covered in roundtrip tests)
 - ✅ `skip_json<>` - Fast-skip JSON value (test_annotated_skip_json.cpp)
 - ✅ `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
-- [ ] `skip_materializing` - Skip C++-side work **NOT NEEDED NOW**
-- [ ] `float_decimals<>` - Serialization precision ⚠️ **RUNTIME ONLY (floating-point)** - **NOT NEEDED NOW**
+- [ ] `skip_materializing` - Skip C++-side work (**TODO: test with in-house FP parser**)
+- [ ] `float_decimals<>` - Serialization precision (**TODO: test with in-house FP parser**)
 - [ ] `binary_fields_search` - Binary search optimization **NOT NEEDED NOW**
 - [ ] `description<>` - Metadata (optional tests) **NOT NEEDED NOW**
 
 **Completed Categories:**
 - ✅ io/ (1/1)
 - ✅ concepts/ (6/6)
-- ✅ primitives/ (12/12)
+- ✅ primitives/ (14/14) - Including float/double with in-house parser
 - ✅ composite/ (10/10) - Includes unique_ptr tests
 - ✅ roundtrip/ (3/3)
 - ✅ errors/ JSON path tracking (7/7)
-- ✅ json_spec/ (5/6) - RFC 8259 compliance (Unicode complete, numbers pending)
-- ✅ validation/ (13/13) - All validators covered (constant, range, length, items, not_required, allow_excess_fields, map validators, combined)
+- ✅ json_spec/ (5/6) - RFC 8259 compliance (Unicode complete, numbers pending with float tests)
+- ✅ validation/ (13/13) - All validators covered (need to add float tests to existing files)
 - ✅ annotations/ (4/9) - key, as_array (roundtrip), skip_json, json_sink
 - ✅ limits/ (4/4) - Nesting depth, large arrays, many fields, many map keys
 
 **In Progress:**
-- serialization/ (2/2 basic, more needed)
-- validation/ ✅ COMPLETE - All validators covered (12 files)
-- streaming/ ✅ COMPLETE - All core streaming functionality covered (primitives and maps)
+- serialization/ (2/4 files)
+- errors/ (7/15 files - additional error scenarios pending)
 
-**Priority P0 (Critical)**: Mostly complete
-**Priority P1 (High)**: ~15 remaining
-**Priority P2 (Medium)**: ~20 remaining
+**Priority P0 (Critical)**: ✅ Complete
+**Priority P1 (High)**: ~11 remaining (composite edge cases: 5, json_spec: 1, serialization: 2, errors: 3)
+**Priority P2 (Medium)**: ~5 remaining (errors: 5)
 
 ---
 

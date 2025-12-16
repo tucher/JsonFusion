@@ -1,15 +1,17 @@
 #pragma once
 
-#ifndef JSONFUSION_USE_FAST_FLOAT
-#define JSONFUSION_USE_FAST_FLOAT 1  // desktop default
+#ifndef JSONFUSION_FP_BACKEND
+#define JSONFUSION_FP_BACKEND 0  // in-house default
 #endif
 
-#if JSONFUSION_USE_FAST_FLOAT
-#include "3party/fast_double_parser.h"
-#include "3party/simdjson/to_chars.hpp"
-#else
+#if JSONFUSION_FP_BACKEND == 0
 #include <cstdint>
 #include <limits>
+#endif
+
+#if JSONFUSION_FP_BACKEND == 1
+#include "3party/fast_double_parser.h"
+#include "3party/simdjson/to_chars.hpp"
 #endif
 
 namespace JsonFusion::fp_to_str_detail {
@@ -19,6 +21,8 @@ constexpr std::size_t NumberBufSize = 64;
 #else
 constexpr std::size_t NumberBufSize = JSONFUSION_NUMBER_BUF_SIZE;
 #endif
+
+#if JSONFUSION_FP_BACKEND == 0
 
 namespace detail {
 
@@ -31,7 +35,7 @@ struct DecimalNumber {
 constexpr int32_t kMaxExp10 = 400;
 constexpr int32_t kMinExp10 = -400;
 
-inline bool parse_decimal_number(const char* buf, DecimalNumber& out) noexcept {
+constexpr inline bool parse_decimal_number(const char* buf, DecimalNumber& out) noexcept {
     const char* p = buf;
 
     bool negative = false;
@@ -144,7 +148,7 @@ inline bool parse_decimal_number(const char* buf, DecimalNumber& out) noexcept {
 }
 
 
-inline long double scale_by_power_of_10(long double value, int32_t exp10) noexcept {
+constexpr long double scale_by_power_of_10(long double value, int32_t exp10) noexcept {
     if (exp10 == 0 || value == 0.0L) {
         return value;
     }
@@ -191,9 +195,11 @@ inline long double scale_by_power_of_10(long double value, int32_t exp10) noexce
     return result;
 }
 
-inline bool parse_number_to_double_inhouse(const char* buf, double& out) noexcept {
-    DecimalNumber dec{};
-    if (!parse_decimal_number(buf, dec)) {
+}
+
+constexpr inline bool parse_number_to_double(const char * buf, double& out) {
+    detail::DecimalNumber dec{};
+    if (!detail::parse_decimal_number(buf, dec)) {
         return false; // ill-formed
     }
 
@@ -204,7 +210,7 @@ inline bool parse_number_to_double_inhouse(const char* buf, double& out) noexcep
     }
 
     long double v = static_cast<long double>(dec.mantissa);
-    v = scale_by_power_of_10(v, dec.exp10);
+    v = detail::scale_by_power_of_10(v, dec.exp10);
 
     if (dec.negative) {
         v = -v;
@@ -214,46 +220,8 @@ inline bool parse_number_to_double_inhouse(const char* buf, double& out) noexcep
     return true;
 }
 
-}
-inline bool parse_number_to_double(const char * buf, double& out) {
-#if JSONFUSION_USE_FAST_FLOAT
-    const char* endp = fast_double_parser::parse_number(buf, &out);
-    if (!endp) return false;
-    return true;
-#else
-    return detail::parse_number_to_double_inhouse(buf, out);
-#endif
-}
-
 // Format double into buffer, return pointer past last char
-inline char* format_double_to_chars(char* first, double value, std::size_t decimals) {
-#if JSONFUSION_USE_FAST_FLOAT
-    // simdjson dtoa backend
-    bool negative = std::signbit(value);
-    if (negative) {
-        value = -value;
-        *first++ = '-';
-    }
-
-    if (value == 0) {
-        *first++ = '0';
-        if(negative) {
-            *first++ = '.';
-            *first++ = '0';
-        }
-        return first;
-    }
-
-    int len = 0;
-    int decimal_exponent = 0;
-    simdjson::internal::dtoa_impl::grisu2(first, len, decimal_exponent, value);
-    constexpr int kMinExp = -4;
-    constexpr int kMaxExp = std::numeric_limits<double>::digits10;
-    return simdjson::internal::dtoa_impl::format_buffer(first, len, decimal_exponent,
-                                                        kMinExp, kMaxExp);
-#else
-    // -------- In-house dtoa, no snprintf, "general" format with significant digits --------
-
+constexpr  inline char* format_double_to_chars(char* first, double value, std::size_t decimals) {
     // JSON forbids NaN/Inf; here we just serialize them as "0" to keep things defined.
     // You can instead assert or set an error if you prefer stricter behavior.
     if (!(value == value) || value == std::numeric_limits<double>::infinity()
@@ -278,7 +246,7 @@ inline char* format_double_to_chars(char* first, double value, std::size_t decim
     }
 
     // Clamp precision to something reasonable for double: 1..17 significant digits
-    int prec;
+    int prec = 1;
     if (decimals == 0) {
         prec = 1;
     } else if (decimals > 17) {
@@ -462,7 +430,53 @@ inline char* format_double_to_chars(char* first, double value, std::size_t decim
 
         return p;
     }
-#endif
 }
+#endif
+
+
+#if JSONFUSION_FP_BACKEND == 1
+
+constexpr inline bool parse_number_to_double(const char * buf, double& out) {
+    const char* endp = fast_double_parser::parse_number(buf, &out);
+    if (!endp) return false;
+    return true;
+}
+
+constexpr  inline char* format_double_to_chars(char* first, double value, std::size_t decimals) {
+    // simdjson dtoa backend
+    bool negative = std::signbit(value);
+    if (negative) {
+        value = -value;
+        *first++ = '-';
+    }
+
+    if (value == 0) {
+        *first++ = '0';
+        if(negative) {
+            *first++ = '.';
+            *first++ = '0';
+        }
+        return first;
+    }
+
+    int len = 0;
+    int decimal_exponent = 0;
+    simdjson::internal::dtoa_impl::grisu2(first, len, decimal_exponent, value);
+    constexpr int kMinExp = -4;
+    constexpr int kMaxExp = std::numeric_limits<double>::digits10;
+    return simdjson::internal::dtoa_impl::format_buffer(first, len, decimal_exponent,
+                                                        kMinExp, kMaxExp);
+}
+
+#endif
+
+#if JSONFUSION_FP_BACKEND != 0 && JSONFUSION_FP_BACKEND != 1
+//For custom backends
+
+inline bool parse_number_to_double(const char * buf, double& out);
+inline char* format_double_to_chars(char* first, double value, std::size_t decimals);
+
+#endif
+
 
 } // namespace JsonFusion::fp_to_str_detail

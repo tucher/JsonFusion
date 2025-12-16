@@ -1,6 +1,4 @@
 
-#define JSONFUSION_USE_FAST_FLOAT 0 // use in-house fp formatting
-
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/validators.hpp>
 #include <string_view>
