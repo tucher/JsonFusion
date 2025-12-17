@@ -514,7 +514,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             cursor.finalize(true);
             return true;
         }
-        
+
         // Allocate key slot
         stream_write_result alloc_r = cursor.allocate_key();
         if(alloc_r != stream_write_result::slot_allocated) {
@@ -526,7 +526,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
         }
-        
+
         // Parse key as string with incremental validation
         typename FH::key_type& key = cursor.key_ref();
         std::string_view key_sv;
@@ -584,7 +584,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             cursor.finalize(false);
             return false;
         }
-        
+
         // Allocate value slot
         alloc_r = cursor.allocate_value_for_parsed_key();
         if(alloc_r != stream_write_result::slot_allocated) {
@@ -596,7 +596,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
         }
-        
+
         // Parse value
         typename FH::mapped_type& value = cursor.value_ref();
 
@@ -623,7 +623,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
         }
-        
+
         parsed_entries_count++;
 
         if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
@@ -637,7 +637,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             return false;
         }
     }
-    
+
     return false;
 }
 
@@ -685,6 +685,22 @@ struct FieldsHelper {
                 constexpr std::size_t J = decltype(ic)::value;
                 if constexpr (!fieldIsNotJSON<T, J>()) {
                     arr[index++] = FieldDescr{ fieldName<J>(), J };
+                }
+            };
+            (add_one(std::integral_constant<std::size_t, I>{}), ...);
+            // std::ranges::sort(arr, {}, &FieldDescr::name);
+
+            return arr;
+        }(std::make_index_sequence<rawFieldsCount>{});
+
+    static constexpr std::array<std::size_t, fieldsCount> fieldIndexes =
+        []<std::size_t... I>(std::index_sequence<I...>) consteval {
+            std::array<std::size_t, fieldsCount> arr;
+            std::size_t index = 0;
+            auto add_one = [&](auto ic) consteval {
+                constexpr std::size_t J = decltype(ic)::value;
+                if constexpr (!fieldIsNotJSON<T, J>()) {
+                    arr[index++] = J;
                 }
             };
             (add_one(std::integral_constant<std::size_t, I>{}), ...);
@@ -798,7 +814,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
-         
+
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_parsing_finished>(obj, ctx.validationCtx(), parsedFieldsByIndex, FH{})) {
                 ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
@@ -818,10 +834,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             }
 
             key_sv = std::string_view(reinterpret_cast<char*>(&arrayIndex), sizeof(arrayIndex)); // TODO
-            if(arrayIndex >= FH::fieldIndexesToFieldNames.size()) {
+            if(arrayIndex >= FH::fieldIndexes.size()) {
                 arrayIndex = -1;
             } else {
-                structIndex = FH::fieldIndexesToFieldNames[arrayIndex].originalIndex;
+                structIndex = FH::fieldIndexes[arrayIndex];
             }
         } else {
             string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
