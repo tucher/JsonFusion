@@ -26,9 +26,10 @@ struct description_tag{};
 
 struct float_decimals_tag {};
 struct as_array_tag {};
+struct indexes_as_keys_tag {};
 struct skip_json_tag {};
-struct skip_materializing_tag{};
 struct json_sink_tag{};
+struct skip_nulls_tag{};
 }
 
 struct not_json {
@@ -95,6 +96,20 @@ struct as_array {
     using tag = detail::as_array_tag;
     static constexpr std::string_view to_string() {
         return "as_array";
+    }
+};
+
+struct indexes_as_keys {
+    using tag = detail::indexes_as_keys_tag;
+    static constexpr std::string_view to_string() {
+        return "indexes_as_keys";
+    }
+};
+
+struct skip_nulls {
+    using tag = detail::skip_nulls_tag;
+    static constexpr std::string_view to_string() {
+        return "indexes_as_keys";
     }
 };
 

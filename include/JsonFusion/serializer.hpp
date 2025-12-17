@@ -385,9 +385,17 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             ctx.setError(SerializeError::INPUT_STREAM_ERROR, outputPos);
             return false;
         }
-
         const auto& key = cursor.get_key();
         const auto& value = cursor.get_value();
+
+        using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
+        if constexpr(static_schema::JsonNullableSerializableValue<typename FH::mapped_type> &&
+                      Opts::template has_option<options::detail::skip_nulls_tag>) {
+            if(static_schema::isNull(value)) {
+                continue;
+            }
+        }
+
         
         if(first) {
             first = false;
@@ -400,10 +408,25 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         }
         
         // Serialize key as string
+        if constexpr(std::integral<typename FH::key_type>) {
+            if(outputPos == end) {
+                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                return false;
+            }
+            *outputPos ++ = '"';
+        }
 
         if(!SerializeValue<options::detail::no_options>(key, outputPos, end, ctx, userCtx)) {
             return false;
         }
+        if constexpr(std::integral<typename FH::key_type>) {
+            if(outputPos == end) {
+                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                return false;
+            }
+            *outputPos ++ = '"';
+        }
+
         
         if(outputPos == end) {
             ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -412,7 +435,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         *outputPos++ = ':';
         
         // Serialize value
-        using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
+
         if(!SerializeValue<typename Meta::options>(Meta::getRef(value), outputPos, end, ctx, userCtx)) {
             return false;
         }
@@ -427,8 +450,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 }
 
 
-template <bool AsArray, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
-constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+template <bool AsArray, bool indexesAsKeys, bool SkipNulls, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
+constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
     using Meta =  options::detail::annotation_meta_getter<Field>;
     // using FieldOpts    = typename Meta::options;
@@ -436,9 +459,14 @@ constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &output
     if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
         return true;
     } else {
-        if(first) {
-            first = false;
-        } else {
+        if constexpr(static_schema::JsonNullableSerializableValue<Field> && SkipNulls){
+            if(static_schema::isNull(introspection::getStructElementByIndex<StructIndex>(structObj))) {
+                count ++;
+                return true;
+            }
+        }
+
+        if(count != 0) {
             if(outputPos == end) {
                 ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
                 return false;
@@ -446,19 +474,46 @@ constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &output
             *outputPos ++ = ',';
         }
 
+
+
         if constexpr(!AsArray) {
-            if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
-                using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
-                const auto & f =  KeyOpt::desc.toStringView();
-                if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                    ctx.setError(err, outputPos);
+            if constexpr(indexesAsKeys) {
+                if(outputPos == end) {
+                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
                     return false;
                 }
-            } else {
-                const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
-                if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                    ctx.setError(err, outputPos);
+                *outputPos ++ = '"';
+
+                char buf[fp_to_str_detail::NumberBufSize];
+
+                char* p = format_decimal_integer<std::size_t>(count, buf, buf + sizeof(buf));
+                for (char* it = buf; it != p; ++it) {
+                    if (outputPos == end) {
+                        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
+                        return false;
+                    }
+                    *outputPos++ = *it;
+                }
+
+                if(outputPos == end) {
+                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
                     return false;
+                }
+                *outputPos ++ = '"';
+            } else {
+                if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
+                    using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
+                    const auto & f =  KeyOpt::desc.toStringView();
+                    if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
+                        ctx.setError(err, outputPos);
+                        return false;
+                    }
+                } else {
+                    const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
+                    if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
+                        ctx.setError(err, outputPos);
+                        return false;
+                    }
                 }
             }
 
@@ -469,19 +524,20 @@ constexpr bool SerializeOneStructField(bool & first, ObjT& structObj, It &output
             *outputPos ++ = ':';
         }
 
-
+        count ++;
         return SerializeValue<FieldOpts>(Meta::getRef(
                                              introspection::getStructElementByIndex<StructIndex>(structObj)
                                              ), outputPos, end, ctx, userCtx);
+
     }
 
 
 }
-template <bool AsArray, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
+template <bool AsArray, bool indexesAsKeys, bool skipNulls, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
 constexpr bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
-    bool first = true;
+    std::size_t count = 0;
     return (
-        SerializeOneStructField<AsArray, StructIndex>(first, structObj, outputPos, end, ctx, userCtx)
+        SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, structObj, outputPos, end, ctx, userCtx)
         && ...
         );
 }
@@ -496,7 +552,9 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     }
     *outputPos ++ = '{';
 
-    if(!SerializeStructFields<false>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+    if(!SerializeStructFields<false,
+                               Opts::template has_option<options::detail::indexes_as_keys_tag>,
+                               Opts::template  has_option<options::detail::skip_nulls_tag>>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 
     if(outputPos == end) {
@@ -520,7 +578,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
 
 
-    if(!SerializeStructFields<true>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+    if(!SerializeStructFields<true, false, false>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 
 

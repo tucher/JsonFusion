@@ -352,9 +352,9 @@ namespace test_map_concept {
     static_assert(!JsonParsableMap<TestPointer>);
     static_assert(!JsonParsableMap<TestUniquePtr>);
     
-    // Map with invalid key type (not string)
+    // Map with invalid key type (not string or int)
     struct InvalidKeyMap {
-        using key_type = int;  // Invalid!
+        using key_type = float;  // Invalid!
         using mapped_type = int;
         
         constexpr auto try_emplace(key_type&& k, mapped_type&& v) {
@@ -368,6 +368,23 @@ namespace test_map_concept {
     static_assert(!JsonParsableValue<InvalidKeyMap>);  // Not parsable (invalid key type)
     static_assert(!JsonObject<InvalidKeyMap>);  // Also not an object
     static_assert(!JsonParsableArray<InvalidKeyMap>);  // Also not an array
+
+
+     struct IntKeyMap {
+        using key_type = std::size_t;
+        using mapped_type = int;
+        
+        constexpr auto try_emplace(key_type&& k, mapped_type&& v) {
+            return std::pair{static_cast<const key_type*>(nullptr), true};
+        }
+        constexpr void clear() {}
+    };
+
+    static_assert(JsonParsableMap<IntKeyMap>);
+    static_assert(JsonParsableValue<IntKeyMap>);  // Not parsable (invalid key type)
+    static_assert(!JsonObject<IntKeyMap>);  // Also not an object
+    static_assert(!JsonParsableArray<IntKeyMap>);  // Also not an array
+
 }
 
 // ============================================================================

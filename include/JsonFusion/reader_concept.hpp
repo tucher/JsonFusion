@@ -37,11 +37,19 @@ concept ReaderLike = requires(R reader,
                                int& int_ref,
                                double& double_ref,
                                char* char_ptr,
-                               std::size_t size) {
+                               std::size_t size,
+                               std::size_t & sizeRef,
+                               R::ArrayFrame & arrFrameRef,
+                               R::ArrayFrame & arrFrameConstRef,
+                               R::ObjectFrame & objFrameRef,
+                               R::ObjectFrame & objFrameConstRef
+                              ) {
     
     // ========== Type Requirements ==========
     // Reader must expose its iterator type
     typename R::iterator_type;
+    typename R::ArrayFrame;
+    typename R::ObjectFrame;
     
     // ========== Iterator Access ==========
     // Provides access to current position
@@ -53,16 +61,17 @@ concept ReaderLike = requires(R reader,
     
     // ========== Structural Tokens ==========
     // Array parsing
-    { mutable_reader.read_array_begin() } -> std::same_as<bool>;
-    { mutable_reader.read_array_end() } -> std::same_as<TryParseStatus>;
+    { mutable_reader.read_array_begin(arrFrameRef) } -> std::same_as<bool>;
+    { mutable_reader.read_array_end(arrFrameConstRef) } -> std::same_as<TryParseStatus>;
     
     // Object parsing
-    { mutable_reader.read_object_begin() } -> std::same_as<bool>;
-    { mutable_reader.read_object_end() } -> std::same_as<TryParseStatus>;
+    { mutable_reader.read_object_begin(objFrameRef) } -> std::same_as<bool>;
+    { mutable_reader.read_object_end(objFrameConstRef) } -> std::same_as<TryParseStatus>;
     
     // Separators
-    { mutable_reader.consume_value_separator(bool_ref) } -> std::same_as<bool>;
-    { mutable_reader.consume_kv_separator() } -> std::same_as<bool>;
+    { mutable_reader.consume_value_separator(arrFrameRef, bool_ref) } -> std::same_as<bool>;
+    { mutable_reader.consume_value_separator(objFrameRef, bool_ref) } -> std::same_as<bool>;
+    { mutable_reader.consume_kv_separator(objFrameRef) } -> std::same_as<bool>;
     
     // ========== Primitive Value Parsing ==========
     // Null parsing (with whitespace skipping)
@@ -71,14 +80,16 @@ concept ReaderLike = requires(R reader,
     // Boolean parsing
     { mutable_reader.read_bool(bool_ref) } -> std::same_as<TryParseStatus>;
     
-    // Number parsing (with optional materialization skip)
-    { mutable_reader.template read_number<int, false>(int_ref) } -> std::same_as<TryParseStatus>;
-    { mutable_reader.template read_number<double, false>(double_ref) } -> std::same_as<TryParseStatus>;
-    { mutable_reader.template read_number<int, true>(int_ref) } -> std::same_as<TryParseStatus>;
+    { mutable_reader.template read_number<int>(int_ref) } -> std::same_as<TryParseStatus>;
+    { mutable_reader.template read_number<double>(double_ref) } -> std::same_as<TryParseStatus>;
     
     // String parsing (chunked, for streaming)
     { mutable_reader.read_string_chunk(char_ptr, size) } -> std::same_as<StringChunkResult>;
     
+    // Key as index parsing
+    { mutable_reader.read_key_as_index(sizeRef) } -> std::same_as<bool>;
+
+
     // ========== Utility Operations ==========
     // Skip to end, ensuring only whitespace remains
     { mutable_reader.skip_whitespaces_till_the_end() } -> std::same_as<bool>;

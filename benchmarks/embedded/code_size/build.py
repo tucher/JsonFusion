@@ -132,6 +132,11 @@ LIBRARIES = [
             "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
         ],
     ),
+    Library(
+        name="JsonFusion CBOR",
+        source_file="parse_config_cbor.cpp",
+        description="JsonFusion CBOR parser",
+    ),
 ]
 if not AVR_ATMEGA_2560_TEST:
     LIBRARIES += [
@@ -327,14 +332,25 @@ class EmbeddedBenchmark:
         
         # Top symbols
         print()
-        # print("=== Top 10 Symbols by Size ===")
+        top_count = 100
+        # print(f"=== Top {top_count} Symbols by Size ===")
         nm_result = subprocess.run(
             [f"{compiler_prefix}gcc-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
             capture_output=True, text=True
         )
         # Filter out BSS symbols and take top 10
         lines = [line for line in nm_result.stdout.split('\n') if ' B ' not in line and ' b ' not in line]
-        top_symbols = '\n'.join(lines[:10])
+
+        total_bytes = 0
+        for s in lines:
+            if "__" in s:
+                continue
+            parts = s.split()
+            if parts and parts[0].isdigit():
+                count = int(parts[0])
+                total_bytes += count
+
+        top_symbols = '\n'.join(lines[:top_count])
         
         # Demangle
         demangle_result = subprocess.run(
@@ -342,6 +358,7 @@ class EmbeddedBenchmark:
             input=top_symbols, capture_output=True, text=True
         )
         # print(demangle_result.stdout)
+        # print(f"\n\tTotal top {top_count} size: {total_bytes}\n")
         
         # Extract .text size
         result = subprocess.run(

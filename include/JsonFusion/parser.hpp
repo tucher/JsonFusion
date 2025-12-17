@@ -112,7 +112,7 @@ constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserC
 template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if (json_reader::TryParseStatus st = reader.template read_number<ObjT, Opts::template has_option<options::detail::skip_materializing_tag>>(obj);
+    if (json_reader::TryParseStatus st = reader.template read_number<ObjT>(obj);
                 st == json_reader::TryParseStatus::error) {
         ctx.setError(reader.getError(), reader.current());
         return false;
@@ -356,7 +356,8 @@ template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, 
     requires static_schema::JsonParsableArray<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if(!reader.read_array_begin()) {
+    typename Tokenizer::ArrayFrame fr;
+    if(!reader.read_array_begin(fr)) {
         ctx.setError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader.current());
         return false;
     }
@@ -382,7 +383,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
     while(true) {
-        if(json_reader::TryParseStatus st = reader.read_array_end(); st == json_reader::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_array_end(fr); st == json_reader::TryParseStatus::error) {
             cursor.finalize(false);
             ctx.setError(reader.getError(), reader.current());
             return false;
@@ -447,7 +448,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             return false;
         }
 
-        if (!reader.consume_value_separator(has_trailing_comma)) {
+        if (!reader.consume_value_separator(fr, has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
@@ -461,7 +462,9 @@ template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, 
     requires static_schema::JsonParsableMap<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if(!reader.read_object_begin()) {
+    typename Tokenizer::ObjectFrame obFrame;
+
+    if(!reader.read_object_begin(obFrame)) {
         ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
         return false;
     }
@@ -487,7 +490,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     while(true) {
-        if(json_reader::TryParseStatus st = reader.read_object_end(); st == json_reader::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_object_end(obFrame); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
@@ -508,6 +511,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 cursor.finalize(false);
                 return false;
             }
+            cursor.finalize(true);
             return true;
         }
         
@@ -525,41 +529,57 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         
         // Parse key as string with incremental validation
         typename FH::key_type& key = cursor.key_ref();
-        
-        // Custom string parsing with incremental key validation
-        std::size_t parsedSize = 0;
+        std::string_view key_sv;
+        if constexpr(!std::integral<typename FH::key_type>) {
+            // Custom string parsing with incremental key validation
+            std::size_t parsedSize = 0;
 
-        //TODO extract MAX_SIZE from validators here
-        constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
+            //TODO extract MAX_SIZE from validators here
+            constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
 
-        ParseError err{ParseError::NO_ERROR};
-        if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-            char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
-            if(!read_json_string_into(reader, b, std::min(
-                                                      static_schema::static_string_traits<typename FH::key_type>::max_size(key),
+            ParseError err{ParseError::NO_ERROR};
+            if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
+                char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
+                if(!read_json_string_into(reader, b, std::min(
+                                                          static_schema::static_string_traits<typename FH::key_type>::max_size(key),
 
-                MAX_SIZE), err, parsedSize)) {
-                ctx.setError(err, reader.current());
+                    MAX_SIZE), err, parsedSize)) {
+                    ctx.setError(err, reader.current());
+                    return false;
+                }
+                b[parsedSize] = 0;
+            } else {
+                if(!read_json_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
+                    ctx.setError(err, reader.current());
+                    return false;
+                }
+            }
+
+
+            // Emit key finished event
+            key_sv = std::string_view(key.data(), key.data() + parsedSize);
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
                 return false;
             }
-            b[parsedSize] = 0;
+
         } else {
-            if(!read_json_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
-                ctx.setError(err, reader.current());
+            if(!reader.read_key_as_index(key)) {
+                ctx.setError(reader.getError(), reader.current());
+                cursor.finalize(false);
                 return false;
             }
+
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key)) {
+                ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+                cursor.finalize(false);
+                return false;
+            }
+            key_sv = std::string_view(reinterpret_cast<char*>(&key), sizeof(key)); // TODO
         }
 
-        
-        // Emit key finished event
 
-        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), std::string_view (key.data(), key.data() + parsedSize))) {
-            ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
-            return false;
-        }
-
-
-        if (!reader.consume_kv_separator()) {
+        if (!reader.consume_kv_separator(obFrame)) {
             ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
@@ -580,7 +600,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         // Parse value
         typename FH::mapped_type& value = cursor.value_ref();
 
-        typename CTX::PathGuard guard = ctx.getMapItemGuard(std::string_view(key.data(), key.data() + parsedSize), false);
+        typename CTX::PathGuard guard = ctx.getMapItemGuard(key_sv, false);
 
         using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(value), reader, ctx, userCtx)) {
@@ -608,9 +628,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count)) {
             ctx.setError(ParseError::SCHEMA_VALIDATION_ERROR, reader.current());
+            cursor.finalize(false);
             return false;
         }
-        if (!reader.consume_value_separator(has_trailing_comma)) {
+        if (!reader.consume_value_separator(obFrame, has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
             cursor.finalize(false);
             return false;
@@ -656,7 +677,7 @@ struct FieldsHelper {
         }
     }
 
-    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesSortedByFieldName =
+    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesToFieldNames =
         []<std::size_t... I>(std::index_sequence<I...>) consteval {
             std::array<FieldDescr, fieldsCount> arr;
             std::size_t index = 0;
@@ -667,18 +688,18 @@ struct FieldsHelper {
                 }
             };
             (add_one(std::integral_constant<std::size_t, I>{}), ...);
-            std::ranges::sort(arr, {}, &FieldDescr::name);
+            // std::ranges::sort(arr, {}, &FieldDescr::name);
 
             return arr;
         }(std::make_index_sequence<rawFieldsCount>{});
 
     static constexpr bool fieldsAreUnique = [](std::array<FieldDescr, fieldsCount> sortedArr) consteval{
         return std::ranges::adjacent_find(sortedArr, {}, &FieldDescr::name) == sortedArr.end();
-    }(fieldIndexesSortedByFieldName);
+    }(fieldIndexesToFieldNames);
 
     static constexpr std::size_t maxFieldNameLength = []() consteval {
         std::size_t maxLen = 0;
-        for (const auto& field : fieldIndexesSortedByFieldName) {
+        for (const auto& field : fieldIndexesToFieldNames) {
             if (field.name.size() > maxLen) {
                 maxLen = field.name.size();
             }
@@ -688,7 +709,7 @@ struct FieldsHelper {
 
     static consteval std::size_t indexInSortedByName(std::string_view name) {
         for(std::size_t i = 0; i < fieldsCount; i++) {
-            if(fieldIndexesSortedByFieldName[i].name == name) {
+            if(fieldIndexesToFieldNames[i].name == name) {
                 return i;
             }
         }
@@ -697,7 +718,7 @@ struct FieldsHelper {
 
 
     // static constexpr string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength> dfa = []() consteval {
-    //     return string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength>(fieldIndexesSortedByFieldName);
+    //     return string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength>(fieldIndexesToFieldNames);
     // }();
 };
 
@@ -750,7 +771,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     using FH = FieldsHelper<ObjT>;
     static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
 
-    if(!reader.read_object_begin()) {
+    typename Tokenizer::ObjectFrame obFrame;
+    if(!reader.read_object_begin(obFrame)) {
         ctx.setError(ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE, reader.current());
         return false;
     }
@@ -761,27 +783,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     std::bitset<FH::fieldsCount> parsedFieldsByIndex{};
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
-    string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
-        FH::fieldIndexesSortedByFieldName.data(), FH::fieldIndexesSortedByFieldName.data() + FH::fieldIndexesSortedByFieldName.size()
-    };
-
-    // using Fn = bool(*)(ObjT&, Tokenizer&, CTX&, UserCtx*);
-
-    // static constexpr auto make_table = []<std::size_t... I>(std::index_sequence<I...>) {
-    //     return std::array<Fn, sizeof...(I)>{
-    //         [](ObjT&o, Tokenizer&t, CTX&c, UserCtx*uc) -> bool {
-    //             return parse_struct_field_one<I, ObjT, Tokenizer, CTX, UserCtx>(o, t, c, uc);
-    //         }...
-    //     };
-    // };
-
-    // static constexpr auto table =
-    //     make_table(std::make_index_sequence<FH::rawFieldsCount>{});
-
-    char * b = searcher.buffer();
 
     while(true) {
-        if(json_reader::TryParseStatus st = reader.read_object_end(); st == json_reader::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_object_end(obFrame); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else if(st == json_reader::TryParseStatus::no_match) {
@@ -802,35 +806,55 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
             return true;
         }
-        searcher.reset();
 
-        ParseError err{ParseError::NO_ERROR};
-        if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, err, searcher.current_length(), true)) {
-            if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
-                ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
-            } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                ctx.setError(ParseError::NO_ERROR, reader.current());
-                searcher.set_overflow();
-            } else {
-                ctx.setError(err, reader.current());
+        std::size_t structIndex = -1;
+        std::size_t arrayIndex = -1;
+        std::string_view key_sv;
+
+        if constexpr(Opts::template has_option<options::detail::indexes_as_keys_tag>) {
+            if(!reader.read_key_as_index(arrayIndex)) {
+                ctx.setError(reader.getError(), reader.current());
                 return false;
             }
+
+            key_sv = std::string_view(reinterpret_cast<char*>(&arrayIndex), sizeof(arrayIndex)); // TODO
+            if(arrayIndex >= FH::fieldIndexesToFieldNames.size()) {
+                arrayIndex = -1;
+            } else {
+                structIndex = FH::fieldIndexesToFieldNames[arrayIndex].originalIndex;
+            }
+        } else {
+            string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
+                FH::fieldIndexesToFieldNames.data(), FH::fieldIndexesToFieldNames.data() + FH::fieldIndexesToFieldNames.size()
+            };
+            char * b = searcher.buffer();
+
+            ParseError err{ParseError::NO_ERROR};
+            if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, err, searcher.current_length(), true)) {
+                if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
+                    ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
+                } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                    ctx.setError(ParseError::NO_ERROR, reader.current());
+                    searcher.set_overflow();
+                } else {
+                    ctx.setError(err, reader.current());
+                    return false;
+                }
+            }
+            auto res = searcher.result();
+            if( searcher.result() != FH::fieldIndexesToFieldNames.end()) {
+                arrayIndex = res - FH::fieldIndexesToFieldNames.begin();
+                structIndex = res->originalIndex;
+                key_sv = res->name;
+            }
+
         }
-
-        // DFARunner searcher2(FH::dfa);
-
-
-
-        auto res = searcher.result();
-        // int dfaRes = searcher2.result();
-        // auto res = dfaRes != -1 ? FH::fieldIndexesSortedByFieldName.begin() + std::size_t(dfaRes): FH::fieldIndexesSortedByFieldName.end();
-
-        if (!reader.consume_kv_separator()) {
+        if (!reader.consume_kv_separator(obFrame)) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         }
 
-        if(res == FH::fieldIndexesSortedByFieldName.end()) {
+        if(arrayIndex == std::size_t(-1)) {
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
                 using Opt = typename Opts::template get_option<options::detail::allow_excess_fields_tag>;
 
@@ -843,29 +867,26 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 return false;
             }
         } else {
-            std::size_t arrIndex = res - FH::fieldIndexesSortedByFieldName.begin();
-            if(parsedFieldsByIndex[arrIndex] == true) {
+            if(parsedFieldsByIndex[arrayIndex] == true) {
                 ctx.setError(ParseError::ILLFORMED_OBJECT, reader.current());
                 return false;
             }
-            typename CTX::PathGuard guard = ctx.getMapItemGuard(res->name);
-            std::size_t structIndex = res->originalIndex;
 
-            // if(!table[res->originalIndex](obj, reader, ctx, userCtx)) {
-            //     return false;
-            // } else {
-            //     parsedFieldsByIndex[arrIndex] = true;
-            // }
+
+            typename CTX::PathGuard guard = ctx.getMapItemGuard(key_sv);
+
             if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
                 return false;
             }else {
-                parsedFieldsByIndex[arrIndex] = true;
+                parsedFieldsByIndex[arrayIndex] = true;
             }
         }
 
 
+
+
         isFirst = false;
-        if (!reader.consume_value_separator(has_trailing_comma)) {
+        if (!reader.consume_value_separator(obFrame, has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         }
@@ -885,7 +906,8 @@ template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, 
              &&
              Opts::template has_option<options::detail::as_array_tag>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if(!reader.read_array_begin()) {
+    typename Tokenizer::ArrayFrame fr;
+    if(!reader.read_array_begin(fr)) {
         ctx.setError(ParseError::NON_ARRAY_IN_DESTRUCTURED_STRUCT, reader.current());
         return false;
     }
@@ -897,18 +919,6 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     constexpr std::size_t totalFieldsCount = introspection::structureElementsCount<ObjT>;
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
-    // using Fn = bool(*)(ObjT&, Tokenizer&, CTX&, UserCtx*);
-
-    // static constexpr auto make_table = []<std::size_t... I>(std::index_sequence<I...>) {
-    //     return std::array<Fn, sizeof...(I)>{
-    //         [](ObjT&o, Tokenizer&t, CTX&c, UserCtx*uc) -> bool {
-    //             return parse_struct_field_one<I, ObjT, Tokenizer, CTX, UserCtx>(o, t, c, uc);
-    //         }...
-    //     };
-    // };
-
-    // static constexpr auto table =
-    //     make_table(std::make_index_sequence<totalFieldsCount>{});
 
     static constexpr std::array<bool, totalFieldsCount> isFieldSkipped = []<std::size_t... I>(std::index_sequence<I...>) {
         return std::array<bool, sizeof...(I)>{
@@ -916,7 +926,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         };
     }(std::make_index_sequence<totalFieldsCount>{});
     while(true) {
-        if(json_reader::TryParseStatus st = reader.read_array_end(); st == json_reader::TryParseStatus::error) {
+        if(json_reader::TryParseStatus st = reader.read_array_end(fr); st == json_reader::TryParseStatus::error) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         } else if(st == json_reader::TryParseStatus::no_match) {
@@ -966,7 +976,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         requiredIndex ++;
 
 
-        if (!reader.consume_value_separator(has_trailing_comma)) {
+        if (!reader.consume_value_separator(fr, has_trailing_comma)) {
             ctx.setError(reader.getError(), reader.current());
             return false;
         }

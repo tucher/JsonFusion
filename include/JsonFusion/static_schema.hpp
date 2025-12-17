@@ -565,7 +565,7 @@ struct is_non_null_json_serializable_value {
             using U = AnnotatedValue<T>;
             if constexpr (MapReadable<U>) {
                 using Cursor = map_read_cursor<U>;
-                return JsonString<typename Cursor::key_type> &&
+                return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_serializable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -650,7 +650,7 @@ struct is_non_null_json_parsable_value {
             using U = AnnotatedValue<T>;
             if constexpr (MapWritable<U>) {
                 using Cursor = map_write_cursor<U>;
-                return JsonString<typename Cursor::key_type> &&
+                return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_parsable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -710,7 +710,7 @@ struct is_json_parsable_map {
             return false; // objects are handled separately
         } else if constexpr (MapWritable<U>) {
             using Cursor = map_write_cursor<U>;
-            return JsonString<typename Cursor::key_type> &&
+            return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_parsable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;
@@ -731,7 +731,7 @@ struct is_json_serializable_map {
             return false; // objects are handled separately
         } else if constexpr (MapReadable<U>) {
             using Cursor = map_read_cursor<U>;
-            return JsonString<typename Cursor::key_type> &&
+            return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_serializable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;

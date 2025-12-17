@@ -25,7 +25,9 @@ template<class It, class Sent>
 class JsonIteratorReader {
 public:
     using iterator_type = It;
-
+    struct StubFrame {};
+    using ArrayFrame  = StubFrame;
+    using ObjectFrame = StubFrame;
     constexpr JsonIteratorReader(It & first, const Sent & last)
         : m_error(ParseError::NO_ERROR), current_(first), end_(last) {}
 
@@ -96,7 +98,7 @@ public:
 
 
     // Array/object structural events
-    __attribute__((noinline)) constexpr  bool read_array_begin() {
+    __attribute__((noinline)) constexpr  bool read_array_begin(StubFrame&) {
         if(*current_ != '[')  {
             return false;
 
@@ -104,7 +106,7 @@ public:
         current_++;
         return skip_whitespace();
     }
-    __attribute__((noinline)) constexpr  bool read_object_begin() {
+    __attribute__((noinline)) constexpr  bool read_object_begin(StubFrame&) {
         if(*current_ != '{')  {
             return false;
 
@@ -114,7 +116,7 @@ public:
     }
 
     // Try-peek style helpers
-    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_array_end() {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_array_end(const StubFrame&) {
         if(!skip_whitespace()) {
             return json_reader::TryParseStatus::error;
         }
@@ -124,7 +126,7 @@ public:
         }
         return json_reader::TryParseStatus::no_match;
     }
-    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_object_end() {
+    __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_object_end(const StubFrame&) {
         if(!skip_whitespace()) {
             return json_reader::TryParseStatus::error;
         }
@@ -136,7 +138,7 @@ public:
     }
 
     // Comma handling
-    __attribute__((noinline)) constexpr  bool consume_value_separator(bool& had_comma) {
+    __attribute__((noinline)) constexpr  bool consume_value_separator(StubFrame&, bool& had_comma) {
         had_comma = false;
         if(!skip_whitespace())  {
             return false;
@@ -150,7 +152,7 @@ public:
         }
         return true;
     }
-    __attribute__((noinline)) constexpr  bool consume_kv_separator() {
+    __attribute__((noinline)) constexpr  bool consume_kv_separator(StubFrame&) {
         if(!skip_whitespace()) {
             return false;
         }
@@ -173,7 +175,7 @@ public:
 
 
 
-    template<class NumberT, bool skipMaterializing>
+    template<class NumberT>
     __attribute__((noinline)) constexpr  json_reader::TryParseStatus read_number(NumberT & storage) {
         char buf[fp_to_str_detail::NumberBufSize];
         std::size_t index = 0;
@@ -184,42 +186,58 @@ public:
             // setError(ParseError::WRONG_JSON_FOR_NUMBER_STORAGE, current_);
             return json_reader::TryParseStatus::error;
         }
-        if constexpr(skipMaterializing) {
-            return json_reader::TryParseStatus::ok;
-        } else {
-            if constexpr (std::is_integral_v<NumberT>) {
-                // Reject decimals/exponents for integer fields
-                if (seenDot || seenExp) {
-                    return json_reader::TryParseStatus::no_match;
-                }
 
-                NumberT value{};
-                if(!parse_decimal_integer<NumberT>(buf, value)) {
+        if constexpr (std::is_integral_v<NumberT>) {
+            // Reject decimals/exponents for integer fields
+            if (seenDot || seenExp) {
+                return json_reader::TryParseStatus::no_match;
+            }
+
+            NumberT value{};
+            if(!parse_decimal_integer<NumberT>(buf, value)) {
+                setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                return json_reader::TryParseStatus::error;
+            }
+
+            storage = value;
+            return json_reader::TryParseStatus::ok;
+        } else if constexpr (std::is_floating_point_v<NumberT>) {
+            double x;
+            if(fp_to_str_detail::parse_number_to_double(buf, x)){
+                if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
+                    || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
                     return json_reader::TryParseStatus::error;
                 }
-
-                storage = value;
+                storage = static_cast<NumberT>(x);
                 return json_reader::TryParseStatus::ok;
-            } else if constexpr (std::is_floating_point_v<NumberT>) {
-                double x;
-                if(fp_to_str_detail::parse_number_to_double(buf, x)){
-                    if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
-                        || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
-                        setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
-                        return json_reader::TryParseStatus::error;
-                    }
-                    storage = static_cast<NumberT>(x);
-                    return json_reader::TryParseStatus::ok;
-                } else {
-                    setError(ParseError::ILLFORMED_NUMBER, current_);
-                    return json_reader::TryParseStatus::error;
-                }
             } else {
-                // Should never happen if JsonNumber is correct
-                static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
-                              "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
+                setError(ParseError::ILLFORMED_NUMBER, current_);
                 return json_reader::TryParseStatus::error;
+            }
+        } else {
+            // Should never happen if JsonNumber is correct
+            static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
+                          "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
+            return json_reader::TryParseStatus::error;
+        }
+
+    }
+    template<class NumberT>
+    constexpr bool read_key_as_index(NumberT & out) {
+        constexpr std::size_t bufSize = 32;
+        static_assert(bufSize >= std::numeric_limits<NumberT>::digits10 + 3,
+                      "read_key_as_index buffer too small for NumberT");
+        char buf[bufSize];
+        if(json_reader::StringChunkResult r = read_string_chunk(buf, bufSize-1); !r.done || r.status != json_reader::StringChunkStatus::ok) {
+            return false;
+        } else {
+            buf[r.bytes_written] = 0;
+            if(!parse_decimal_integer<NumberT>(buf, out)) {
+                setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                return false;
+            } else {
+                return true;
             }
         }
     }
