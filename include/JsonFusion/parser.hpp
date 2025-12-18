@@ -19,6 +19,7 @@
 #include "tokenizer.hpp"
 #include "parse_errors.hpp"
 #include "parse_result.hpp"
+#include "struct_fields_helper.hpp"
 
 namespace JsonFusion {
 
@@ -643,102 +644,6 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 
 
-template<class T, std::size_t I>
-static consteval bool fieldIsNotJSON() {
-    using Opts    = options::detail::aggregate_field_opts_getter<T, I>;
-    if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-template<class T>
-struct FieldsHelper {
-    using FieldDescr = string_search::StringDescr;
-
-
-    static constexpr std::size_t rawFieldsCount = introspection::structureElementsCount<T>;
-
-    static constexpr std::size_t fieldsCount = []<std::size_t... I>(std::index_sequence<I...>) consteval{
-        return (std::size_t{0} + ... + (!fieldIsNotJSON<T, I>() ? 1: 0));
-    }(std::make_index_sequence<rawFieldsCount>{});
-
-
-
-    template<std::size_t I>
-    static consteval std::string_view fieldName() {
-        using Opts    = options::detail::aggregate_field_opts_getter<T, I>;
-        if constexpr (Opts::template has_option<options::detail::key_tag>) {
-            using KeyOpt = typename Opts::template get_option<options::detail::key_tag>;
-            return KeyOpt::desc.toStringView();
-        } else {
-            return introspection::structureElementNameByIndex<I, T>;
-        }
-    }
-
-    static constexpr std::array<FieldDescr, fieldsCount> fieldIndexesToFieldNames =
-        []<std::size_t... I>(std::index_sequence<I...>) consteval {
-            std::array<FieldDescr, fieldsCount> arr;
-            std::size_t index = 0;
-            auto add_one = [&](auto ic) consteval {
-                constexpr std::size_t J = decltype(ic)::value;
-                if constexpr (!fieldIsNotJSON<T, J>()) {
-                    arr[index++] = FieldDescr{ fieldName<J>(), J };
-                }
-            };
-            (add_one(std::integral_constant<std::size_t, I>{}), ...);
-            // std::ranges::sort(arr, {}, &FieldDescr::name);
-
-            return arr;
-        }(std::make_index_sequence<rawFieldsCount>{});
-
-    static constexpr std::array<std::size_t, fieldsCount> fieldIndexes =
-        []<std::size_t... I>(std::index_sequence<I...>) consteval {
-            std::array<std::size_t, fieldsCount> arr;
-            std::size_t index = 0;
-            auto add_one = [&](auto ic) consteval {
-                constexpr std::size_t J = decltype(ic)::value;
-                if constexpr (!fieldIsNotJSON<T, J>()) {
-                    arr[index++] = J;
-                }
-            };
-            (add_one(std::integral_constant<std::size_t, I>{}), ...);
-            // std::ranges::sort(arr, {}, &FieldDescr::name);
-
-            return arr;
-        }(std::make_index_sequence<rawFieldsCount>{});
-
-    static constexpr bool fieldsAreUnique = [](std::array<FieldDescr, fieldsCount> sortedArr) consteval{
-        return std::ranges::adjacent_find(sortedArr, {}, &FieldDescr::name) == sortedArr.end();
-    }(fieldIndexesToFieldNames);
-
-    static constexpr std::size_t maxFieldNameLength = []() consteval {
-        std::size_t maxLen = 0;
-        for (const auto& field : fieldIndexesToFieldNames) {
-            if (field.name.size() > maxLen) {
-                maxLen = field.name.size();
-            }
-        }
-        return maxLen;
-    }();
-
-    static consteval std::size_t indexInSortedByName(std::string_view name) {
-        for(std::size_t i = 0; i < fieldsCount; i++) {
-            if(fieldIndexesToFieldNames[i].name == name) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-
-    // static constexpr string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength> dfa = []() consteval {
-    //     return string_search::PerfectHashDFA<fieldsCount, maxFieldNameLength>(fieldIndexesToFieldNames);
-    // }();
-};
-
-
 template<class StructT, std::size_t StructIndex>
 using StructFieldMeta = options::detail::annotation_meta_getter<
     introspection::structureElementTypeByIndex<StructIndex, StructT>
@@ -784,8 +689,8 @@ constexpr bool parse_struct_field_one(
 template <class Opts, class ObjT, json_reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    using FH = FieldsHelper<ObjT>;
-    static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields are not unique");
+    using FH = struct_fields_helper::FieldsHelper<ObjT>;
+    static_assert(FH::fieldsAreUnique, "[[[ JsonFusion ]]] Fields keys or numeric keys are not unique");
 
     typename Tokenizer::ObjectFrame obFrame;
     if(!reader.read_object_begin(obFrame)) {
@@ -828,17 +733,25 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         std::string_view key_sv;
 
         if constexpr(Opts::template has_option<options::detail::indexes_as_keys_tag>) {
-            if(!reader.read_key_as_index(arrayIndex)) {
+            std::size_t index_to_find = 0;
+            if(!reader.read_key_as_index(index_to_find)) {
                 ctx.setError(reader.getError(), reader.current());
                 return false;
             }
 
-            key_sv = std::string_view(reinterpret_cast<char*>(&arrayIndex), sizeof(arrayIndex)); // TODO
-            if(arrayIndex >= FH::fieldIndexes.size()) {
-                arrayIndex = -1;
-            } else {
-                structIndex = FH::fieldIndexes[arrayIndex];
+             // TODO
+            for(arrayIndex = 0; arrayIndex < FH::fieldIndexes.size(); arrayIndex ++) {
+                auto p = FH::fieldIndexes[arrayIndex];
+                if(p.first == index_to_find) {
+                    structIndex = p.second;
+                    key_sv = std::string_view(reinterpret_cast<char*>(&arrayIndex), sizeof(arrayIndex));
+                    break;
+                }
             }
+            if(structIndex == std::size_t(-1)) {
+                arrayIndex = -1;
+            }
+
         } else {
             string_search::AdaptiveStringSearch<Opts::template has_option<options::detail::binary_fields_search_tag>, FH::maxFieldNameLength> searcher{
                 FH::fieldIndexesToFieldNames.data(), FH::fieldIndexesToFieldNames.data() + FH::fieldIndexesToFieldNames.size()
@@ -938,7 +851,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     static constexpr std::array<bool, totalFieldsCount> isFieldSkipped = []<std::size_t... I>(std::index_sequence<I...>) {
         return std::array<bool, sizeof...(I)>{
-            fieldIsNotJSON<ObjT, I>()...
+            struct_fields_helper::fieldIsNotJSON<ObjT, I>()...
         };
     }(std::make_index_sequence<totalFieldsCount>{});
     while(true) {

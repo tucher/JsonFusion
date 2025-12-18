@@ -44,8 +44,8 @@ struct EmbeddedConfig {
         bool     enabled;
     };
 
-    Network           network;
-    optional<Network> fallback_network_conf;
+    A<Network, indexes_as_keys>           network;
+    A<optional<Network>, indexes_as_keys> fallback_network_conf;
 
     struct Controller {
         MediumStr name;
@@ -64,7 +64,7 @@ struct EmbeddedConfig {
             bool inverted;
         };
 
-        A<array<Motor, kMaxMotors>, min_items<1>> motors;
+        A<array<A<Motor, indexes_as_keys>, kMaxMotors>, min_items<1>> motors;
 
         struct Sensor {
             SmallStr  type;
@@ -74,10 +74,10 @@ struct EmbeddedConfig {
             bool      active;
         };
 
-        A<array<Sensor, kMaxSensors>, min_items<1>> sensors;
+        A<array<A<Sensor, indexes_as_keys>, kMaxSensors>, min_items<1>> sensors;
     };
 
-    Controller controller;
+    A<Controller, indexes_as_keys> controller;
 
     struct Logging {
         bool     enabled;
@@ -85,7 +85,7 @@ struct EmbeddedConfig {
         uint32_t max_files;
     };
 
-    Logging logging;
+    A<Logging, indexes_as_keys> logging;
 };
 
 // RPC Command structure with validation and required/optional field specifications
@@ -104,7 +104,7 @@ struct RpcCommand_ {
         SmallStr device_id;     // Required
         SmallStr subsystem;     // Optional - defaults to whole device
     };
-    using Target = A<Target_, required<"device_id">>;
+    using Target = A<Target_, required<"device_id">, indexes_as_keys>;
     
     A<array<Target, kMaxTargets>, min_items<1>> targets;  // Required
     
@@ -118,7 +118,7 @@ struct RpcCommand_ {
         optional<bool> bool_value;
         optional<SmallStr> string_value;
     };
-    using Parameter = A<Parameter_, required<"key">>;
+    using Parameter = A<Parameter_, required<"key">, indexes_as_keys>;
     
     A<array<Parameter, kMaxParams>, min_items<1>> params;  // Required
     
@@ -129,7 +129,7 @@ struct RpcCommand_ {
         A<uint8_t, range<0, 5>> max_retries;       // Optional - defaults to 0
     };
     
-    A<optional<ExecutionOptions>, required<"timeout_ms">> execution;  // Optional section
+    A<optional<ExecutionOptions>, required<"timeout_ms">, indexes_as_keys> execution;  // Optional section
     
     // Callback/response configuration (entire section optional)
     struct ResponseConfig {
@@ -138,15 +138,15 @@ struct RpcCommand_ {
         bool     send_result;   // Required if section present
     };
     
-    A<optional<ResponseConfig>, required<"acknowledge", "send_result">> response_config;  // Optional section
+    A<optional<ResponseConfig>, required<"acknowledge", "send_result">, indexes_as_keys> response_config;  // Optional section
 };
 
-using RpcCommand = A<RpcCommand_, required<"command_id", "timestamp_us", "targets", "params">>;
+using RpcCommand = A<RpcCommand_, required<"command_id", "timestamp_us", "targets", "params">, indexes_as_keys>;
 
 }  // namespace
 
 // Global config instance (will go in .bss section)
-EmbeddedConfig g_config;
+A<EmbeddedConfig, indexes_as_keys> g_config;
 
 // Parse function - instantiates JsonFusion parser for this model
 // This is what gets measured for code size

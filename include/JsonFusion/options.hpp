@@ -19,6 +19,7 @@ namespace detail {
 
 struct not_json_tag{};
 struct key_tag{};
+struct numeric_key_tag{};
 struct allow_excess_fields_tag{};
 
 struct binary_fields_search_tag{};
@@ -69,6 +70,16 @@ struct key {
         return "key";
     }
 };
+
+template<std::size_t I>
+struct numeric_key {
+    using tag = detail::numeric_key_tag;
+    static constexpr std::size_t NumericKey = I;
+    static constexpr std::string_view to_string() {
+        return "numeric_key";
+    }
+};
+
 
 
 

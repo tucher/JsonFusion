@@ -13,6 +13,7 @@
 #include "struct_introspection.hpp"
 #include "static_schema.hpp"
 #include "fp_to_str.hpp"
+#include "struct_fields_helper.hpp"
 
 
 #include "options.hpp"
@@ -485,8 +486,9 @@ constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It 
                 *outputPos ++ = '"';
 
                 char buf[fp_to_str_detail::NumberBufSize];
+                std::size_t numeric_key = struct_fields_helper::FieldsHelper<ObjT>::template fieldIndexKey<StructIndex>();
 
-                char* p = format_decimal_integer<std::size_t>(count, buf, buf + sizeof(buf));
+                char* p = format_decimal_integer<std::size_t>(numeric_key, buf, buf + sizeof(buf));
                 for (char* it = buf; it != p; ++it) {
                     if (outputPos == end) {
                         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
