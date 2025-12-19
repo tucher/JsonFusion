@@ -45,6 +45,9 @@ public:
     constexpr SerializeError error() const {
         return m_error;
     }
+    constexpr WriterError writerError() const {
+        return m_writerError;
+    }
 };
 
 

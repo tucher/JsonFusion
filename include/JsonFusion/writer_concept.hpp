@@ -1,7 +1,6 @@
 #pragma once
 
 #include <concepts>
-#include <limits>
 
 namespace JsonFusion {
 
