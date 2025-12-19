@@ -5,9 +5,10 @@
 #include <cstring>
 #include <limits>
 #include <cmath>
+#include <type_traits>
 
-#include "reader_concept.hpp"   // TryParseStatus, StringChunkResult
-
+#include "reader_concept.hpp"
+#include "writer_concept.hpp"
 namespace JsonFusion {
 
 class CborReader {
@@ -808,6 +809,370 @@ private:
 
         setError(ParseError::SKIP_ERROR);
         return false;
+    }
+};
+
+template<class It, class Sent>
+class CborWriter {
+public:
+    enum class CborWriterError {
+        none,
+        not_implemented,
+        invalid_argument,
+        sink_error
+    };
+    using iterator_type = It;
+    using error_type    = CborWriterError;
+
+    struct ArrayFrame {
+        std::size_t expected_size = 0;  // number of elements
+        std::size_t written       = 0;  // number of elements actually written
+    };
+
+    struct MapFrame {
+        std::size_t expected_pairs   = 0; // number of key/value pairs
+        std::size_t written_pairs    = 0; // completed pairs
+        bool        expecting_key    = true; // for sanity checking
+    };
+
+    constexpr It & current() {
+        return m_current;
+    }
+
+    explicit CborWriter(It & first, const Sent & last) noexcept
+        : m_errorPos(first), m_current(first), end_(last)
+        , err_(CborWriterError::none)
+    {}
+
+    // ========= Introspection =========
+
+    error_type getError() const noexcept { return err_; }
+
+    // ========= Containers =========
+
+    bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
+        if (size == std::numeric_limits<std::size_t>::max()) {
+            // Indefinite-length arrays not implemented in this version
+            setError(CborWriterError::not_implemented);
+            return false;
+        }
+
+        if (!write_major_type_with_length(/*major=*/4, size)) {
+            return false;
+        }
+
+        frame.expected_size = size;
+        frame.written       = 0;
+        return true;
+    }
+
+    bool write_array_end(ArrayFrame& frame) {
+        // For definite-length arrays there is no terminator byte in CBOR.
+        // Optionally enforce that we wrote exactly expected_size elements.
+        if (frame.written != frame.expected_size) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        return true;
+    }
+
+    bool write_map_begin(const std::size_t& size, MapFrame& frame) {
+        if (size == std::numeric_limits<std::size_t>::max()) {
+            // Indefinite-length maps not implemented either
+            setError(CborWriterError::not_implemented);
+            return false;
+        }
+
+        if (!write_major_type_with_length(/*major=*/5, size)) {
+            return false;
+        }
+
+        frame.expected_pairs = size;
+        frame.written_pairs  = 0;
+        frame.expecting_key  = true;
+        return true;
+    }
+
+    bool write_map_end(MapFrame& frame) {
+        if (frame.written_pairs != frame.expected_pairs) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        return true;
+    }
+
+    // After finishing an array element / a map value
+    bool advance_after_value(ArrayFrame& frame) {
+        if (frame.written >= frame.expected_size) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        ++frame.written;
+        return true;
+    }
+
+    bool advance_after_value(MapFrame& frame) {
+        // We should have just written a *value*, not a key
+        if (frame.expecting_key) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        if (frame.written_pairs >= frame.expected_pairs) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        ++frame.written_pairs;
+        frame.expecting_key = true;
+        return true;
+    }
+
+    // Move from key → value within a map
+    bool move_to_value(MapFrame& frame) {
+        if (!frame.expecting_key) {
+            // We were already at value; misused API
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        frame.expecting_key = false;
+        // For CBOR, keys and values are just sequential; nothing to encode here.
+        return true;
+    }
+
+    // For indexes_as_keys: write `index` as a CBOR integer key.
+    bool write_key_as_index(const std::size_t& idx) {
+        return write_number(idx);
+    }
+
+    // ========= Primitive values =========
+
+    bool write_null() {
+        // CBOR simple value "null" is major 7, additional info 22 => 0xF6
+        return write_byte(0xF6);
+    }
+
+    bool write_bool(const bool& b) {
+        // false: 0xF4, true: 0xF5
+        return write_byte(b ? 0xF5 : 0xF4);
+    }
+
+    template<class NumberT>
+    bool write_number(const NumberT& n) {
+        if constexpr (std::is_integral_v<NumberT>) {
+            return write_integral(n);
+        }  else if constexpr (std::is_floating_point_v<NumberT>) {
+            if constexpr (std::is_same_v<NumberT, float>) {
+                return write_float32(n);
+            } else {
+                // double / long double → 64-bit for now
+                return write_float64(static_cast<double>(n));
+            }
+        } else {
+            static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
+                          "CborWriter::write_number only supports integral or floating point types");
+        }
+    }
+
+    bool write_string(const char* data, std::size_t size) {
+        // Major type 3 = text string, argument = length in bytes
+        if (!write_major_type_with_length(/*major=*/3, size)) {
+            return false;
+        }
+        return write_bytes(reinterpret_cast<const std::uint8_t*>(data), size);
+    }
+
+    // ========= Finalization =========
+
+    bool finish() {
+        // Nothing to flush for this simple writer.
+        return (err_ == CborWriterError::none);
+    }
+
+private:
+    It & m_errorPos;
+    It & m_current;
+    const Sent & end_;
+    error_type       err_ = CborWriterError::none;
+
+    void setError(error_type e) noexcept {
+        if (err_ == CborWriterError::none) {
+            err_ = e;
+            m_errorPos = m_current;
+        }
+    }
+
+    bool write_byte(std::uint8_t b) {
+        if(m_current == end_) {
+            setError(CborWriterError::sink_error);
+            return false;
+        }
+        *m_current ++ = b;
+        return true;
+
+    }
+
+    bool write_bytes(const std::uint8_t* data, std::size_t len) {
+        // Minimal, generic implementation: push_back in a loop.
+        // If OutputContainer supports insert, you can specialize later.
+
+        for (std::size_t i = 0; i < len; ++i) {
+            if(m_current == end_) {
+                setError(CborWriterError::sink_error);
+                return false;
+            }
+            *m_current ++ = data[i];
+
+        }
+        return true;
+
+    }
+
+    // ======== CBOR helpers ========
+
+    bool write_major_type_with_length(std::uint8_t major, std::uint64_t length) {
+        // Encode "major type N, argument = length" as per RFC 8949.
+        if (length <= 23) {
+            // Small argument in low 5 bits.
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | static_cast<std::uint8_t>(length));
+            return write_byte(ib);
+        } else if (length <= 0xFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 24u);
+            if (!write_byte(ib)) return false;
+            std::uint8_t b = static_cast<std::uint8_t>(length);
+            return write_byte(b);
+        } else if (length <= 0xFFFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 25u);
+            if (!write_byte(ib)) return false;
+            std::uint16_t v = static_cast<std::uint16_t>(length);
+            std::uint8_t buf[2] = {
+                static_cast<std::uint8_t>((v >> 8) & 0xFFu),
+                static_cast<std::uint8_t>(v & 0xFFu)
+            };
+            return write_bytes(buf, 2);
+        } else if (length <= 0xFFFFFFFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 26u);
+            if (!write_byte(ib)) return false;
+            std::uint32_t v = static_cast<std::uint32_t>(length);
+            std::uint8_t buf[4] = {
+                static_cast<std::uint8_t>((v >> 24) & 0xFFu),
+                static_cast<std::uint8_t>((v >> 16) & 0xFFu),
+                static_cast<std::uint8_t>((v >> 8)  & 0xFFu),
+                static_cast<std::uint8_t>(v & 0xFFu)
+            };
+            return write_bytes(buf, 4);
+        } else {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 27u);
+            if (!write_byte(ib)) return false;
+            std::uint64_t v = length;
+            std::uint8_t buf[8];
+            for (int i = 0; i < 8; ++i) {
+                buf[7 - i] = static_cast<std::uint8_t>((v >> (8 * i)) & 0xFFu);
+            }
+            return write_bytes(buf, 8);
+        }
+    }
+
+    template<class Int>
+    bool write_integral(Int value) {
+        static_assert(std::is_integral_v<Int>, "write_integral requires integral type");
+
+        using Signed   = std::conditional_t<std::is_signed_v<Int>, Int, std::int64_t>;
+        using Unsigned = std::conditional_t<std::is_unsigned_v<Int>, Int, std::uint64_t>;
+
+        if constexpr (std::is_signed_v<Int>) {
+            if (value >= 0) {
+                return write_unsigned(static_cast<std::uint64_t>(value));
+            } else {
+                // CBOR negative integers: -1 - n encoded in major type 1.
+                std::int64_t v = static_cast<Signed>(value);
+                std::uint64_t n = static_cast<std::uint64_t>(-1 - v);
+                return write_negative(n);
+            }
+        } else {
+            return write_unsigned(static_cast<std::uint64_t>(value));
+        }
+    }
+
+    bool write_unsigned(std::uint64_t v) {
+        // major type 0
+        return write_major_type_with_uint(/*major=*/0, v);
+    }
+
+    bool write_negative(std::uint64_t n) {
+        // major type 1, n encodes -1 - n
+        return write_major_type_with_uint(/*major=*/1, n);
+    }
+
+    bool write_major_type_with_uint(std::uint8_t major, std::uint64_t v) {
+        if (v <= 23u) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | static_cast<std::uint8_t>(v));
+            return write_byte(ib);
+        } else if (v <= 0xFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 24u);
+            if (!write_byte(ib)) return false;
+            std::uint8_t b = static_cast<std::uint8_t>(v);
+            return write_byte(b);
+        } else if (v <= 0xFFFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 25u);
+            if (!write_byte(ib)) return false;
+            std::uint16_t s = static_cast<std::uint16_t>(v);
+            std::uint8_t buf[2] = {
+                static_cast<std::uint8_t>((s >> 8) & 0xFFu),
+                static_cast<std::uint8_t>(s & 0xFFu)
+            };
+            return write_bytes(buf, 2);
+        } else if (v <= 0xFFFFFFFFu) {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 26u);
+            if (!write_byte(ib)) return false;
+            std::uint32_t w = static_cast<std::uint32_t>(v);
+            std::uint8_t buf[4] = {
+                static_cast<std::uint8_t>((w >> 24) & 0xFFu),
+                static_cast<std::uint8_t>((w >> 16) & 0xFFu),
+                static_cast<std::uint8_t>((w >> 8)  & 0xFFu),
+                static_cast<std::uint8_t>(w & 0xFFu)
+            };
+            return write_bytes(buf, 4);
+        } else {
+            std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | 27u);
+            if (!write_byte(ib)) return false;
+            std::uint64_t x = v;
+            std::uint8_t buf[8];
+            for (int i = 0; i < 8; ++i) {
+                buf[7 - i] = static_cast<std::uint8_t>((x >> (8 * i)) & 0xFFu);
+            }
+            return write_bytes(buf, 8);
+        }
+    }
+
+    bool write_float32(float f) {
+        std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 26u); // 0xFA
+        if (!write_byte(ib)) return false;
+
+        static_assert(sizeof(float) == 4);
+        std::uint32_t bits;
+        std::memcpy(&bits, &f, sizeof(float));
+
+        std::uint8_t buf[4] = {
+            static_cast<std::uint8_t>((bits >> 24) & 0xFFu),
+            static_cast<std::uint8_t>((bits >> 16) & 0xFFu),
+            static_cast<std::uint8_t>((bits >> 8)  & 0xFFu),
+            static_cast<std::uint8_t>(bits & 0xFFu)
+        };
+        return write_bytes(buf, 4);
+    }
+
+    bool write_float64(double d) {
+        std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 27u); // 0xFB
+        if (!write_byte(ib)) return false;
+
+        static_assert(sizeof(double) == 8);
+        std::uint64_t bits;
+        std::memcpy(&bits, &d, sizeof(double));
+
+        std::uint8_t buf[8];
+        for (int i = 0; i < 8; ++i) {
+            buf[7 - i] = static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFFu);
+        }
+        return write_bytes(buf, 8);
     }
 };
 

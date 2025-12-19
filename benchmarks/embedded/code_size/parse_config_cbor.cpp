@@ -1,6 +1,6 @@
 
 #include <JsonFusion/parser.hpp>
-#include <JsonFusion/cbor_reader.hpp>
+#include <JsonFusion/cbor.hpp>
 #include <JsonFusion/validators.hpp>
 #include <string_view>
 

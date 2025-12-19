@@ -20,7 +20,7 @@ concept WriterLike = requires(R writer,
                               ) {
     
     // ========== Type Requirements ==========
-    // Reader must expose its iterator type
+    // Writer must expose its iterator type
     typename R::iterator_type;
     typename R::ArrayFrame;
     typename R::MapFrame;
@@ -30,7 +30,7 @@ concept WriterLike = requires(R writer,
     // Provides access to current position
     { writer.current() } -> std::same_as<typename R::iterator_type &>;
     
-    // Returns the current parse error state
+    // Returns the current writing error state
     { writer.getError() } -> std::same_as<typename R::error_type>;
     
     { mutable_writer.write_array_begin(sizeRef, arrFrameRef) } -> std::same_as<bool>;

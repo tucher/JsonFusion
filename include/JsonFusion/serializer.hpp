@@ -341,6 +341,37 @@ template <bool AsArray, bool indexesAsKeys, bool skipNulls, class Frame, class O
 constexpr bool SerializeStructFields(Frame &fr, const ObjT& structObj, Writer & writer, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
     std::size_t count = 0;
     std::size_t jfIndex = 0;
+
+    std::size_t actualCount = 0;
+    auto checkNull = [&](auto ic){
+        constexpr std::size_t J = ic.value;
+        using Field   = introspection::structureElementTypeByIndex<J, ObjT>;
+        using FieldOpts = options::detail::aggregate_field_opts_getter<ObjT, J>;
+        if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+            if constexpr (!skipNulls || AsArray) {
+                actualCount ++;
+            } else {
+                if constexpr(static_schema::JsonNullableSerializableValue<Field>){
+                    if(!static_schema::isNull(introspection::getStructElementByIndex<J>(structObj))) {
+                        actualCount ++;
+                    }
+                } else {
+                    actualCount ++;
+                }
+            }
+        }
+    };
+    (checkNull(std::integral_constant<std::size_t, StructIndex>{}),...);
+    if constexpr(std::is_same_v<Frame, typename Writer::MapFrame>) {
+        if(!writer.write_map_begin( actualCount, fr)) {
+            return ctx.withWriterError(writer);
+        }
+    } else {
+        if(!writer.write_array_begin( actualCount, fr)) {
+            return ctx.withWriterError(writer);
+        }
+    }
+
     return (
         SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, jfIndex, fr, structObj, writer, ctx, userCtx)
         && ...
@@ -352,9 +383,7 @@ template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class Us
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     typename Writer::MapFrame fr;
-    if(!writer.write_map_begin( struct_fields_helper::FieldsHelper<ObjT>::fieldsCount, fr)) {
-        return ctx.withWriterError(writer);
-    }
+
 
 
 
@@ -375,9 +404,7 @@ template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class Us
         && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     typename Writer::ArrayFrame fr;
-    if(!writer.write_array_begin( struct_fields_helper::FieldsHelper<ObjT>::fieldsCount, fr)) {
-        return ctx.withWriterError(writer);
-    }
+
     if(!SerializeStructFields<true, false, false>(fr, obj, writer, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 
