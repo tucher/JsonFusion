@@ -91,6 +91,8 @@ concept ArrayReadable = requires(C& c) {
     { array_read_cursor<C>{c}.read_more() } -> std::same_as<stream_read_result>;
     { array_read_cursor<C>{c}.get() } -> std::same_as<const typename array_read_cursor<C>::element_type&>;
     array_read_cursor<C>{c}.reset();
+    { array_read_cursor<C>{c}.size() } -> std::same_as<std::size_t>;
+
 };
 
 
@@ -120,6 +122,10 @@ struct array_read_cursor<C> {
         it = b;
         first = true;
     }
+
+    constexpr std::size_t size() {
+        return c.size();
+    }
 };
 
 // fixed-size std::array
@@ -147,6 +153,9 @@ struct array_read_cursor<std::array<T, N>> {
         index = 0;
         first = true;
     }
+    constexpr std::size_t size() {
+        return N;
+    }
 };
 
 // fixed-size plain array
@@ -173,6 +182,9 @@ struct array_read_cursor<T[N]> {
     constexpr void reset() const {
         index = 0;
         first = true;
+    }
+    constexpr std::size_t size() {
+        return N;
     }
 };
 
@@ -206,7 +218,6 @@ concept MapWritable = requires(C& c) {
     { map_write_cursor<C>{c}.value_ref() } -> std::same_as<typename map_write_cursor<C>::mapped_type&>;
     { map_write_cursor<C>{c}.finalize_pair(std::declval<bool>()) } -> std::same_as<stream_write_result>;
     { map_write_cursor<C>{c}.finalize(std::declval<bool>()) } -> std::same_as<stream_write_result>;
-
     map_write_cursor<C>{c}.reset();
 };
 
@@ -222,6 +233,8 @@ concept MapReadable = requires(C& c) {
     { map_read_cursor<C>{c}.get_key() } -> std::same_as<const typename map_read_cursor<C>::key_type&>;
     { map_read_cursor<C>{c}.get_value() } -> std::same_as<const typename map_read_cursor<C>::mapped_type&>;
     map_read_cursor<C>{c}.reset();
+    { map_read_cursor<C>{c}.size() } -> std::same_as<std::size_t>;
+
 };
 
 template<class C>
@@ -248,6 +261,7 @@ struct array_write_cursor<C> {
     constexpr void reset(){
         c.clear();
     }
+
 };
 
 // fixed-size std::array
@@ -413,6 +427,9 @@ struct map_read_cursor<M> {
     constexpr void reset() {
         it = b;
         first = true;
+    }
+    constexpr std::size_t size() {
+        return m.size();
     }
 };
 
@@ -984,6 +1001,9 @@ struct array_read_cursor<Streamer> {
     constexpr void reset() const {
         streamer.reset();
     }
+    constexpr std::size_t size() {
+        return -1;
+    }
 };
 
 
@@ -1137,6 +1157,9 @@ struct map_read_cursor<Streamer> {
     constexpr void reset() const {
         streamer.reset();
         first = true;
+    }
+    constexpr std::size_t size() {
+        return -1;
     }
 };
 

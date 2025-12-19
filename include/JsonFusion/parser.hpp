@@ -16,7 +16,7 @@
 #include "struct_introspection.hpp"
 #include "json_path.hpp"
 #include "string_search.hpp"
-#include "json_reader.hpp"
+#include "json.hpp"
 #include "errors.hpp"
 #include "parse_result.hpp"
 #include "struct_fields_helper.hpp"

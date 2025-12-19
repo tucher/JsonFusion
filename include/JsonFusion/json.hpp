@@ -4,6 +4,9 @@
 
 #include "fp_to_str.hpp"
 #include "reader_concept.hpp"
+#include "writer_concept.hpp"
+#include <cmath>
+#include <cstring>
 
 namespace JsonFusion {
 
@@ -53,7 +56,7 @@ public:
             ++current_;
         }
         if(atEnd())  {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return reader::TryParseStatus::error;
         }
 
@@ -62,7 +65,7 @@ public:
         }
         current_ ++;
         if (!match_literal("ull")) {
-            setError(JsonIteratorReaderError::ILLFORMED_NULL, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_NULL);
             return reader::TryParseStatus::error;
         }
         return reader::TryParseStatus::ok;
@@ -70,7 +73,7 @@ public:
 
     __attribute__((noinline)) constexpr  reader::TryParseStatus read_bool(bool & b) {
         if(atEnd())  {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return reader::TryParseStatus::error;
         }
         switch(*current_) {
@@ -82,7 +85,7 @@ public:
                     return reader::TryParseStatus::ok;
                 }
             }
-            setError(JsonIteratorReaderError::ILLFORMED_BOOL, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_BOOL);
             return reader::TryParseStatus::error;
         }
         case 'f': {
@@ -93,7 +96,7 @@ public:
                     return reader::TryParseStatus::ok;
                 }
             }
-            setError(JsonIteratorReaderError::ILLFORMED_BOOL, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_BOOL);
             return reader::TryParseStatus::error;
         }
         default:
@@ -105,7 +108,7 @@ public:
             ++current_;
         }
         if (current_ != end_) {
-            setError(JsonIteratorReaderError::EXCESS_CHARACTERS, current_);
+            setError(JsonIteratorReaderError::EXCESS_CHARACTERS);
             return false;
         }
         return true;
@@ -125,19 +128,19 @@ public:
             return ret;
         }
         if(atEnd())  {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
         if(*current_ == ',') {
-            setError(JsonIteratorReaderError::ILLFORMED_ARRAY, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_ARRAY);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
         if(*current_ != ']') {
             ret.has_value = true;
             if(atEnd())  {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 ret.status = reader::TryParseStatus::error;
                 return ret;
             }
@@ -164,19 +167,19 @@ public:
             return ret;
         }
         if(atEnd())  {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
         if(*current_ == ',') {
-            setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
         if(*current_ != '}') {
             ret.has_value = true;
             if(atEnd())  {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 ret.status = reader::TryParseStatus::error;
                 return ret;
             }
@@ -209,7 +212,7 @@ public:
         if(*current_ == ',')  {
             current_ ++;
         } else {
-            setError(JsonIteratorReaderError::ILLFORMED_ARRAY, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_ARRAY);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
@@ -218,7 +221,7 @@ public:
             return ret;
         }
         if(*current_==',' || *current_ == ']') {
-            setError(JsonIteratorReaderError::ILLFORMED_ARRAY, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_ARRAY);
             ret.status = reader::TryParseStatus::error;
         } else {
             ret.has_value = true;
@@ -242,7 +245,7 @@ public:
         if(*current_ == ',')  {
             current_ ++;
         }else {
-            setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
@@ -251,7 +254,7 @@ public:
             return ret;
         }
         if(*current_==',' || *current_ == '}') {
-            setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             ret.status = reader::TryParseStatus::error;
         } else {
             ret.has_value = true;
@@ -264,7 +267,7 @@ public:
             return false;
         }
         if(*current_ != ':') {
-            setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             return false;
         }
         current_ ++;
@@ -290,7 +293,7 @@ public:
         bool seenExp = false;
 
         if (!read_number_token(buf, index, seenDot, seenExp)) {
-            // setError(JsonIteratorReaderError::WRONG_JSON_FOR_NUMBER_STORAGE, current_);
+            // setError(JsonIteratorReaderError::WRONG_JSON_FOR_NUMBER_STORAGE);
             return reader::TryParseStatus::error;
         }
 
@@ -302,7 +305,7 @@ public:
 
             NumberT value{};
             if(!parse_decimal_integer<NumberT>(buf, value)) {
-                setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
                 return reader::TryParseStatus::error;
             }
 
@@ -313,13 +316,13 @@ public:
             if(fp_to_str_detail::parse_number_to_double(buf, x)){
                 if(static_cast<double>(std::numeric_limits<NumberT>::lowest()) > x
                     || static_cast<double>(std::numeric_limits<NumberT>::max()) < x){
-                    setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                    setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
                     return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(x);
                 return reader::TryParseStatus::ok;
             } else {
-                setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                 return reader::TryParseStatus::error;
             }
         } else {
@@ -341,7 +344,7 @@ public:
         } else {
             buf[r.bytes_written] = 0;
             if(!parse_decimal_integer<NumberT>(buf, out)) {
-                setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE, current_);
+                setError(JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
                 return false;
             } else {
                 return true;
@@ -355,7 +358,7 @@ public:
         // If we're not currently inside a string, expect an opening quote
         if (!in_string_) {
             if (atEnd()) {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 return {reader::StringChunkStatus::error, 0, false};
             }
             if (*current_ != '"') {
@@ -386,7 +389,7 @@ public:
 
             // No buffered bytes left, read next raw char
             if (atEnd()) {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 in_string_      = false;
                 string_buf_len_ = 0;
                 string_buf_pos_ = 0;
@@ -409,7 +412,7 @@ public:
                 // Escape sequence
                 ++current_;
                 if (atEnd()) {
-                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                     in_string_ = false;
                     return {reader::StringChunkStatus::error, written, false};
                 }
@@ -430,7 +433,7 @@ public:
                 case 't':  simple = '\t'; break;
                 case 'u':  break; // handled below
                 default:
-                    setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_STRING);
                     in_string_ = false;
                     return {reader::StringChunkStatus::error, written, false};
                 }
@@ -461,23 +464,23 @@ public:
                 if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
                     // High surrogate, expect a second \uXXXX
                     if (atEnd()) {
-                        setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                        setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                         in_string_ = false;
                         return {reader::StringChunkStatus::error, written, false};
                     }
                     if (*current_ != '\\') {
-                        setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                        setError(JsonIteratorReaderError::ILLFORMED_STRING);
                         in_string_ = false;
                         return {reader::StringChunkStatus::error, written, false};
                     }
                     ++current_;
                     if (atEnd()) {
-                        setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                        setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                         in_string_ = false;
                         return {reader::StringChunkStatus::error, written, false};
                     }
                     if (*current_ != 'u') {
-                        setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                        setError(JsonIteratorReaderError::ILLFORMED_STRING);
                         in_string_ = false;
                         return {reader::StringChunkStatus::error, written, false};
                     }
@@ -489,7 +492,7 @@ public:
                         return {reader::StringChunkStatus::error, written, false};
                     }
                     if (u2 < 0xDC00u || u2 > 0xDFFFu) {
-                        setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                        setError(JsonIteratorReaderError::ILLFORMED_STRING);
                         in_string_ = false;
                         return {reader::StringChunkStatus::error, written, false};
                     }
@@ -499,7 +502,7 @@ public:
                                 + (static_cast<std::uint32_t>(u2) - 0xDC00u);
                 } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
                     // Lone low surrogate → invalid
-                    setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_STRING);
                     in_string_ = false;
                     return {reader::StringChunkStatus::error, written, false};
                 } else {
@@ -533,7 +536,7 @@ public:
             default:
                 // RFC 8259 §7: Control chars U+0000–U+001F must be escaped
                 if (static_cast<unsigned char>(c) <= 0x1F) {
-                    setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_STRING);
                     in_string_ = false;
                     return {reader::StringChunkStatus::error, written, false};
                 }
@@ -586,7 +589,7 @@ private:
         bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
 
         if (atEnd())   {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return false;
         }
 
@@ -595,7 +598,7 @@ private:
             char c = *current_;
             if (c == '-') {
                 if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                     return false;
                 }
                 buf[index++] = c;
@@ -604,13 +607,13 @@ private:
         }
 
         if (atEnd())   {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return false;
         }
 
         auto push_char = [&](char c) -> bool {
             if (index >= fp_to_str_detail::NumberBufSize - 1) {
-                setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                 return false;
             }
             buf[index++] = c;
@@ -632,7 +635,7 @@ private:
                     auto peek = current_;
                     ++peek;
                     if (peek != end_ && *peek >= '0' && *peek <= '9') {
-                        setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                        setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                         return false;
                     }
                 }
@@ -652,7 +655,7 @@ private:
                 // RFC 8259: Decimal point requires digits before AND after
                 if (!seenDigitBeforeExp) {
                     // Leading dot like ".42" is invalid
-                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                     return false;
                 }
                 
@@ -663,7 +666,7 @@ private:
                 // Ensure at least one digit follows the decimal point
                 if (atEnd() || !(*current_ >= '0' && *current_ <= '9')) {
                     // Trailing dot like "42." is invalid
-                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
                     return false;
                 }
                 continue;
@@ -685,7 +688,7 @@ private:
 
             // '+' or '-' is only allowed immediately after 'e'/'E', which we handled above
             // Anything else is invalid inside a JSON number
-            setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
             return false;
         }
 
@@ -694,7 +697,7 @@ private:
         // Basic sanity: must have at least one digit before exponent,
         // and if exponent present, at least one digit after it.
         if (!seenDigitBeforeExp || (seenExp && !seenDigitAfterExp && inExp)) {
-            setError(JsonIteratorReaderError::ILLFORMED_NUMBER, current_);
+            setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
             return false;
         }
 
@@ -714,16 +717,16 @@ private:
         {
             for (std::size_t i = 0; i < len; ++i) {
                 if (atEnd())  {
-                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                     return false;
                 }
 
                 if (*current_ != lit[i]) {
-                    setError(err, current_);
+                    setError(err);
                     return false;
                 }
                 if (!filler(*current_)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -739,7 +742,7 @@ private:
                 }
 
                 if (!filler(*current_)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -783,7 +786,7 @@ private:
 
         auto push_close = [&](char open) -> bool {
             if (depth >= static_cast<int>(MAX_SKIP_NESTING)) {
-                setError(JsonIteratorReaderError::SKIPPING_STACK_OVERFLOW, current_);
+                setError(JsonIteratorReaderError::SKIPPING_STACK_OVERFLOW);
                 return false;
             }
             stack[depth++] = (open == '{') ? '}' : ']';
@@ -792,11 +795,11 @@ private:
 
         auto pop_close = [&](char close) -> bool {
             if (depth == 0)  {
-                setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
                 return false;
             }
             if (stack[depth - 1] != close) {
-                setError(JsonIteratorReaderError::ILLFORMED_OBJECT, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
                 return false;
             }
             --depth;
@@ -809,7 +812,7 @@ private:
         }
         // mirror the opening delimiter
         if (!filler(c)) {
-            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
             return false;
         }
         ++current_; // skip first '{' or '['
@@ -837,7 +840,7 @@ private:
                     return false;
                 }
                 if (!filler(ch))  {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -849,7 +852,7 @@ private:
                     return false;
                 }
                 if(!filler(ch)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -882,7 +885,7 @@ private:
                 } else {
                     // punctuation: mirror and advance
                     if (!filler(ch))  {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -893,7 +896,7 @@ private:
         }
 
         if (depth != 0)  {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return false;
         }
 
@@ -914,9 +917,9 @@ private:
     int    string_buf_pos_  = 0;
     bool   in_string_       = false;
 
-    constexpr void setError(JsonIteratorReaderError e, It pos) {
+    constexpr void setError(JsonIteratorReaderError e) {
         m_error = e;
-        m_errorPos = pos;
+        m_errorPos = current_;
     }
 
 
@@ -953,7 +956,7 @@ private:
     constexpr  bool skip_whitespace() {
         while(isSpace(*current_)) {
             if (atEnd())  {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 return false;
             }
             ++current_;
@@ -966,7 +969,7 @@ private:
     constexpr  bool match_literal(const std::string_view & lit) {
         for (char c : lit) {
             if (atEnd())  {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 return false;
             }
             if (*current_ != c)  {
@@ -1053,7 +1056,7 @@ private:
         out = 0;
         for (int i = 0; i < 4; ++i) {
             if (atEnd()) {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 return false;
             }
             char currChar = *current_;
@@ -1065,7 +1068,7 @@ private:
             } else if (currChar >= 'a' && currChar <= 'f') {
                 v = static_cast<std::uint8_t>(currChar - 'a' + 10);
             } else  {
-                setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_STRING);
                 return false;
             }
             out = static_cast<std::uint16_t>((out << 4) | v);
@@ -1127,11 +1130,11 @@ private:
         
         // Expect opening quote
         if (atEnd() || *current_ != '"') {
-            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             return false;
         }
         if (!f('"')) {
-            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
             return false;
         }
         ++current_;
@@ -1139,7 +1142,7 @@ private:
         // Read until closing quote
         while (true) {
             if (atEnd()) {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 return false;
             }
             
@@ -1148,7 +1151,7 @@ private:
             // Closing quote
             if (c == '"') {
                 if (!f('"')) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -1158,13 +1161,13 @@ private:
             // Escape sequence
             if (c == '\\') {
                 if (!f('\\')) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
                 
                 if (atEnd()) {
-                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                    setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                     return false;
                 }
                 
@@ -1181,7 +1184,7 @@ private:
                 case 'n':
                 case 't':
                     if (!f(esc)) {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -1190,7 +1193,7 @@ private:
                 case 'u': {
                     // Unicode escape: \uXXXX (and potentially surrogate pair)
                     if (!f('u')) {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -1199,17 +1202,17 @@ private:
                     char hex[4];
                     for (int i = 0; i < 4; ++i) {
                         if (atEnd()) {
-                            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                             return false;
                         }
                         char h = *current_;
                         if (!((h >= '0' && h <= '9') || (h >= 'A' && h <= 'F') || (h >= 'a' && h <= 'f'))) {
-                            setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                            setError(JsonIteratorReaderError::ILLFORMED_STRING);
                             return false;
                         }
                         hex[i] = h;
                         if (!f(h)) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
@@ -1233,21 +1236,21 @@ private:
                     // High surrogate: expect \uXXXX for low surrogate
                     if (u1 >= 0xD800u && u1 <= 0xDBFFu) {
                         if (atEnd() || *current_ != '\\') {
-                            setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                            setError(JsonIteratorReaderError::ILLFORMED_STRING);
                             return false;
                         }
                         if (!f('\\')) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
                         
                         if (atEnd() || *current_ != 'u') {
-                            setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                            setError(JsonIteratorReaderError::ILLFORMED_STRING);
                             return false;
                         }
                         if (!f('u')) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
@@ -1256,12 +1259,12 @@ private:
                         std::uint16_t u2 = 0;
                         for (int i = 0; i < 4; ++i) {
                             if (atEnd()) {
-                                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA, current_);
+                                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                                 return false;
                             }
                             char h = *current_;
                             if (!((h >= '0' && h <= '9') || (h >= 'A' && h <= 'F') || (h >= 'a' && h <= 'f'))) {
-                                setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                                setError(JsonIteratorReaderError::ILLFORMED_STRING);
                                 return false;
                             }
                             std::uint8_t v;
@@ -1275,7 +1278,7 @@ private:
                             u2 = static_cast<std::uint16_t>((u2 << 4) | v);
                             
                             if (!f(h)) {
-                                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                                 return false;
                             }
                             ++current_;
@@ -1283,19 +1286,19 @@ private:
                         
                         // Validate low surrogate range
                         if (u2 < 0xDC00u || u2 > 0xDFFFu) {
-                            setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                            setError(JsonIteratorReaderError::ILLFORMED_STRING);
                             return false;
                         }
                     } else if (u1 >= 0xDC00u && u1 <= 0xDFFFu) {
                         // Lone low surrogate
-                        setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                        setError(JsonIteratorReaderError::ILLFORMED_STRING);
                         return false;
                     }
                     break;
                 }
                     
                 default:
-                    setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                    setError(JsonIteratorReaderError::ILLFORMED_STRING);
                     return false;
                 }
                 continue;
@@ -1303,13 +1306,13 @@ private:
             
             // Control characters must be escaped (RFC 8259 §7)
             if (static_cast<unsigned char>(c) <= 0x1F) {
-                setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+                setError(JsonIteratorReaderError::ILLFORMED_STRING);
                 return false;
             }
             
             // Normal character - just copy
             if (!f(c)) {
-                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                 return false;
             }
             ++current_;
@@ -1352,7 +1355,7 @@ private:
             std::size_t remaining = max_len - total;
             if (remaining == 0) {
                 // Overflow: we hit the max_len but reader still has string data
-                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW, current_);
+                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
                 return false;
             }
 
@@ -1394,12 +1397,352 @@ private:
         }
 
         // Shouldn’t be reachable
-        setError(JsonIteratorReaderError::ILLFORMED_STRING, current_);
+        setError(JsonIteratorReaderError::ILLFORMED_STRING);
         return false;
     }
 
 
 };
+static_assert(JsonFusion::reader::ReaderLike<JsonIteratorReader<char*, char*>>);
 
+enum class JsonIteratorWriterError {
+    NO_ERROR,
+    OUTPUT_OVERFLOW
+};
+
+template<class It, class Sent>
+class JsonIteratorWriter {
+public:
+    using iterator_type = It;
+    struct ArrayFrame {
+
+    };
+    struct MapFrame {
+
+    };
+
+    using error_type = JsonIteratorWriterError;
+
+    JsonIteratorWriterError m_error;
+    constexpr JsonIteratorWriterError getError() {
+        return m_error;
+    }
+
+    constexpr void setError(JsonIteratorWriterError e) {
+        m_error = e;
+        m_errorPos = m_current;
+    }
+    It & m_errorPos;
+    It & m_current;
+    const Sent & end_;
+    constexpr It & current() {
+        return m_current;
+    }
+
+    constexpr JsonIteratorWriter(It & first, const Sent & last)
+        : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last) {}
+
+    constexpr bool write_array_begin(const std::size_t &, ArrayFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = '[';
+        return true;
+    }
+    constexpr bool write_map_begin(const std::size_t &, MapFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current++ = '{';
+        return true;
+    }
+
+    constexpr bool advance_after_value(ArrayFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = ',';
+        return true;
+    }
+    constexpr bool advance_after_value(MapFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = ',';
+        return true;
+    }
+    constexpr bool move_to_value(MapFrame&) {
+
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current++ = ':';
+
+        return true;
+    }
+
+    constexpr bool write_key_as_index(const std::int64_t &int_key) {
+        char buf[fp_to_str_detail::NumberBufSize];
+
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = '"';
+
+
+        char* p = format_decimal_integer<std::int64_t>(int_key, buf, buf + sizeof(buf));
+        for (char* it = buf; it != p; ++it) {
+            if (m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            *m_current++ = *it;
+        }
+
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = '"';
+
+        return true;
+    }
+
+    constexpr bool write_array_end(ArrayFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = ']';
+        return true;
+    }
+    constexpr bool write_map_end(MapFrame&) {
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current++ = '}';
+        return true;
+    }
+
+    constexpr bool write_null() {
+        return serialize_literal("null");
+    }
+    constexpr bool write_bool(const bool & obj) {
+        if(obj) {
+            return serialize_literal("true");
+        } else {
+            return serialize_literal("false");
+        }
+    }
+
+    template<class NumberT, std::size_t decimals_value=8>
+    constexpr bool write_number(const NumberT & v){
+        char buf[fp_to_str_detail::NumberBufSize];
+        if constexpr (std::is_integral_v<NumberT>) {
+            char* p = format_decimal_integer<NumberT>(v, buf, buf + sizeof(buf));
+            for (char* it = buf; it != p; ++it) {
+                if (m_current == end_) {
+                    setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                    return false;
+                }
+                *m_current++ = *it;
+            }
+            return true;
+        } else {
+
+            double content = v;
+
+            if(std::isnan(content) || std::isinf(content)) {
+                if(!serialize_literal("0")) {
+                    setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                    return false;
+                }
+                return true;
+            } else {
+
+                char * endChar = fp_to_str_detail::format_double_to_chars(buf, content, decimals_value);
+                auto s = endChar-buf;
+                if(endChar-buf == sizeof (buf)) {
+                    return false;
+                }
+
+                for(int i = 0; i < s; i ++) {
+                    if(m_current == end_) {
+                        setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                        return false;
+                    }
+                    *m_current ++ = buf[i];
+                }
+                return true;
+
+            }
+        }
+    }
+    constexpr bool output_serialized_value(const char * data, std::size_t size, bool null_ended = false) {
+        for(std::size_t i = 0; i < size; i ++) {
+            if(m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            if(data[i] == 0) {
+                break;
+            }
+            *m_current ++ = data[i];
+        }
+        return true;
+
+    }
+    constexpr bool write_string(const char * data, std::size_t size, bool null_ended = false) {
+
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = '"';
+        std::size_t segSize = 0;
+        std::size_t counter = 0;
+        char toOutEscaped [6] = {0, 0, 0, 0, 0, 0};  // Increased to fit \uXXXX
+        char toOutSize = 0;
+        bool is_null_end = false;
+        while(counter < size) {
+            char c = data[counter];
+            switch(c) {
+            case '"': toOutEscaped[0] = '\\'; toOutEscaped[1] = '"'; toOutSize = 2; break;
+            case '\\':toOutEscaped[0] = '\\'; toOutEscaped[1] = '\\';toOutSize = 2; break;
+            case '\b':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'b'; toOutSize = 2; break;
+            case '\f':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'f'; toOutSize = 2; break;
+            case '\r':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'r'; toOutSize = 2; break;
+            case '\n':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'n'; toOutSize = 2; break;
+            case '\t':toOutEscaped[0] = '\\'; toOutEscaped[1] = 't'; toOutSize = 2; break;
+            default:
+                if(null_ended && c == 0) {
+                    is_null_end = true;
+                }
+                else if(static_cast<unsigned char>(c) < 32) {
+                    // Control character (0x00-0x1F): escape as \uXXXX per RFC 8259
+                    toOutEscaped[0] = '\\';
+                    toOutEscaped[1] = 'u';
+                    toOutEscaped[2] = '0';
+                    toOutEscaped[3] = '0';
+                    unsigned char uc = static_cast<unsigned char>(c);
+                    toOutEscaped[4] = "0123456789abcdef"[(uc >> 4) & 0xF];
+                    toOutEscaped[5] = "0123456789abcdef"[uc & 0xF];
+                    toOutSize = 6;
+                } else {
+                    toOutEscaped[0] = c;
+                    toOutSize = 1;
+                }
+            }
+            if(is_null_end) {
+                break;
+            }
+            for(int i = 0; i < toOutSize; i++) {
+                if(m_current == end_) {
+                    setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                    return false;
+                }
+                *m_current++ = toOutEscaped[i];
+            }
+            counter ++;
+        }
+
+        if(m_current == end_) {
+            setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+            return false;
+        }
+        *m_current ++ = '"';
+        return true;
+    }
+
+    constexpr bool finish() {
+        return m_current != end_;
+    }
+
+    constexpr bool serialize_literal(const std::string_view & lit) {
+        for (char c : lit) {
+            if (m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            *m_current++ = c;
+        }
+        return true;
+    }
+
+
+    // -------------------------
+    //  Format decimal integer
+    // -------------------------
+    // Writes base-10 representation of value into [first, last).
+    // Returns pointer one past last written char.
+    // Caller guarantees buffer is large enough (e.g. NumberBufSize).
+    template <class Int>
+    constexpr char* format_decimal_integer(Int value,
+                                           char* first,
+                                           char* last) noexcept {
+        static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
+
+        // We'll generate digits into the end of the buffer, then memmove forward.
+        char* p = last;
+
+        using Unsigned = std::make_unsigned_t<Int>;
+        Unsigned u;
+        bool negative = false;
+
+        if constexpr (std::is_signed_v<Int>) {
+            if (value < 0) {
+                negative = true;
+                // Compute absolute value safely:
+                // for min() this avoids UB by doing it in unsigned domain.
+                u = Unsigned(-(value + 1)) + 1u;
+            } else {
+                u = static_cast<Unsigned>(value);
+            }
+        } else {
+            u = static_cast<Unsigned>(value);
+        }
+
+        // Generate digits in reverse order
+        do {
+            if (p == first) {
+                // Not enough space; best-effort: just stop
+                break;
+            }
+            unsigned digit = static_cast<unsigned>(u % 10u);
+            u /= 10u;
+            *--p = static_cast<char>('0' + digit);
+        } while (u != 0);
+
+        if (negative) {
+            if (p != first) {
+                *--p = '-';
+            } else {
+                // No room for '-', we just overwrite first char
+                *p = '-';
+            }
+        }
+
+        // Now we have the result in [p, last). Move it to start at 'first'.
+        std::size_t len = static_cast<std::size_t>(last - p);
+        // Assume caller provided a big enough buffer (e.g. NumberBufSize),
+        // but clamp just in case.
+        if (static_cast<std::size_t>(last - first) < len) {
+            len = static_cast<std::size_t>(last - first);
+        }
+        for (std::size_t i = 0; i < len; ++i)
+            first[i] = p[i];
+        // std::memmove(first, p, len);
+        return first + len;
+    }
+};
+
+static_assert(JsonFusion::writer::WriterLike<JsonIteratorWriter<char*, char*>>);
 
 } // namespace JsonFusion

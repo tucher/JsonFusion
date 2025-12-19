@@ -8,38 +8,33 @@
 #include <ranges>
 #include <type_traits>
 #include <limits>
-#include <cmath>
-#include <cstring>
 #include "struct_introspection.hpp"
 #include "static_schema.hpp"
-#include "fp_to_str.hpp"
 #include "struct_fields_helper.hpp"
 
 
 #include "options.hpp"
 #include "io.hpp"
 
+#include "json.hpp"
+
 namespace JsonFusion {
 
 enum class SerializeError {
     NO_ERROR,
-    FIXED_SIZE_CONTAINER_OVERFLOW,
-    ILLFORMED_NUMBER,
-    STRING_CONTENT_ERROR,
     INPUT_STREAM_ERROR,
-    TRANSFORMER_ERROR
+    TRANSFORMER_ERROR,
+    WRITER_ERROR
 };
 
-
-
-
-template <CharOutputIterator OutIter>
+template <CharOutputIterator OutIter, class WriterError>
 class SerializeResult {
     SerializeError m_error = SerializeError::NO_ERROR;
+    WriterError m_writerError{};
     OutIter m_pos;
 public:
-    constexpr SerializeResult(SerializeError err, OutIter pos):
-        m_error(err), m_pos(pos)
+    constexpr SerializeResult(SerializeError err, WriterError werr, OutIter pos):
+        m_error(err), m_writerError(werr), m_pos(pos)
     {}
     constexpr operator bool() const {
         return m_error == SerializeError::NO_ERROR;
@@ -56,256 +51,88 @@ public:
 namespace  serializer_details {
 
 
-template <CharOutputIterator OutIter>
+template <CharOutputIterator OutIter, class WriterError>
 class SerializationContext {
 
     SerializeError error = SerializeError::NO_ERROR;
-    OutIter m_pos;
+    WriterError writerError{};
+    OutIter & m_pos;
 
 public:
-    constexpr SerializationContext(OutIter b): m_pos(b) {
-
+    constexpr SerializationContext(OutIter & it): m_pos(it){}
+    template<class Writer>
+    constexpr bool withWriterError(Writer & writer) {
+        writerError = writer.getError();
+        m_pos = writer.current();
+        return false;
     }
-    constexpr void setError(SerializeError err, OutIter pos) {
-        error = err;
-        m_pos = pos;
+
+    template<class Writer>
+    constexpr bool withError(SerializeError err, Writer & writer) {
+        if(err == SerializeError::NO_ERROR) {
+            error = SerializeError::WRITER_ERROR;
+        }
+        writerError = writer.getError();
+        m_pos = writer.current();
+        return false;
     }
 
-    constexpr SerializeResult<OutIter> result(OutIter current) const {
-        return error == SerializeError::NO_ERROR
-                   ? SerializeResult<OutIter>(SerializeError::NO_ERROR, current)
-                   : SerializeResult<OutIter>(error, m_pos);
+    constexpr SerializeResult<OutIter, WriterError> result() const {
+        return SerializeResult<OutIter, WriterError>(error, writerError, m_pos);
     }
 };
 
-constexpr bool serialize_literal(auto& it, const auto& end, const std::string_view & lit) {
-    for (char c : lit) {
-        if (it == end) {
-            return false;
-        }
-        *it++ = c;
-    }
-    return true;
-}
 
-template <CharOutputIterator It, CharSentinelForOut<It> Sent>
-constexpr SerializeError outputEscapedString(It & outputPos, const Sent &end, const char *data, std::size_t size, bool null_ended = false) {
-    if(outputPos == end) return SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW;
-    *outputPos ++ = '"';
-    std::size_t segSize = 0;
-    std::size_t counter = 0;
-    char toOutEscaped [6] = {0, 0, 0, 0, 0, 0};  // Increased to fit \uXXXX
-    char toOutSize = 0;
-    bool is_null_end = false;
-    while(counter < size) {
-        char c = data[counter];
-        switch(c) {
-        case '"': toOutEscaped[0] = '\\'; toOutEscaped[1] = '"'; toOutSize = 2; break;
-        case '\\':toOutEscaped[0] = '\\'; toOutEscaped[1] = '\\';toOutSize = 2; break;
-        case '\b':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'b'; toOutSize = 2; break;
-        case '\f':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'f'; toOutSize = 2; break;
-        case '\r':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'r'; toOutSize = 2; break;
-        case '\n':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'n'; toOutSize = 2; break;
-        case '\t':toOutEscaped[0] = '\\'; toOutEscaped[1] = 't'; toOutSize = 2; break;
-        default:
-            if(null_ended && c == 0) {
-                is_null_end = true;
-            }
-            else if(static_cast<unsigned char>(c) < 32) {
-                // Control character (0x00-0x1F): escape as \uXXXX per RFC 8259
-                toOutEscaped[0] = '\\';
-                toOutEscaped[1] = 'u';
-                toOutEscaped[2] = '0';
-                toOutEscaped[3] = '0';
-                unsigned char uc = static_cast<unsigned char>(c);
-                toOutEscaped[4] = "0123456789abcdef"[(uc >> 4) & 0xF];
-                toOutEscaped[5] = "0123456789abcdef"[uc & 0xF];
-                toOutSize = 6;
-            } else {
-                toOutEscaped[0] = c;
-                toOutSize = 1;
-            }
-        }
-        if(is_null_end) {
-            break;
-        }
-        for(int i = 0; i < toOutSize; i++) {
-            if(outputPos == end) {
-                return SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW;
-            }
-            *outputPos++ = toOutEscaped[i];
-        }
-        counter ++;
-    }
-
-    if(outputPos == end) return SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW;
-    *outputPos ++ = '"';
-    return SerializeError::NO_ERROR;
-}
-
-
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if(obj) {
-        if(!serialize_literal(currentPos, end, "true")) {
-            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-            return false;
+constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+    if(!writer.write_bool(obj)) {
+        return ctx.withWriterError(writer);
+    }
+    return true;
+}
+
+
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
+    requires static_schema::JsonNumber<ObjT>
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+    if constexpr (Opts::template has_option<options::detail::float_decimals_tag>) {
+        using decimals = typename Opts::template get_option<options::detail::float_decimals_tag>;
+        if(!writer.template write_number<ObjT, decimals::value>(obj)) {
+            return ctx.withWriterError(writer);
         }
     } else {
-        if(!serialize_literal(currentPos, end, "false")) {
-            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-            return false;
+        if(!writer.write_number(obj)) {
+            return ctx.withWriterError(writer);
         }
     }
     return true;
 }
 
-// -------------------------
-//  Format decimal integer
-// -------------------------
-// Writes base-10 representation of value into [first, last).
-// Returns pointer one past last written char.
-// Caller guarantees buffer is large enough (e.g. NumberBufSize).
-template <class Int>
-constexpr char* format_decimal_integer(Int value,
-                                    char* first,
-                                    char* last) noexcept {
-    static_assert(std::is_integral_v<Int>, "[[[ JsonFusion ]]] Int must be an integral type");
 
-    // We'll generate digits into the end of the buffer, then memmove forward.
-    char* p = last;
-
-    using Unsigned = std::make_unsigned_t<Int>;
-    Unsigned u;
-    bool negative = false;
-
-    if constexpr (std::is_signed_v<Int>) {
-        if (value < 0) {
-            negative = true;
-            // Compute absolute value safely:
-            // for min() this avoids UB by doing it in unsigned domain.
-            u = Unsigned(-(value + 1)) + 1u;
-        } else {
-            u = static_cast<Unsigned>(value);
-        }
-    } else {
-        u = static_cast<Unsigned>(value);
-    }
-
-    // Generate digits in reverse order
-    do {
-        if (p == first) {
-            // Not enough space; best-effort: just stop
-            break;
-        }
-        unsigned digit = static_cast<unsigned>(u % 10u);
-        u /= 10u;
-        *--p = static_cast<char>('0' + digit);
-    } while (u != 0);
-
-    if (negative) {
-        if (p != first) {
-            *--p = '-';
-        } else {
-            // No room for '-', we just overwrite first char
-            *p = '-';
-        }
-    }
-
-    // Now we have the result in [p, last). Move it to start at 'first'.
-    std::size_t len = static_cast<std::size_t>(last - p);
-    // Assume caller provided a big enough buffer (e.g. NumberBufSize),
-    // but clamp just in case.
-    if (static_cast<std::size_t>(last - first) < len) {
-        len = static_cast<std::size_t>(last - first);
-    }
-    for (std::size_t i = 0; i < len; ++i)
-        first[i] = p[i];
-    // std::memmove(first, p, len);
-    return first + len;
-}
-
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
-    requires static_schema::JsonNumber<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
-    char buf[fp_to_str_detail::NumberBufSize];
-    if constexpr (std::is_integral_v<ObjT>) {
-        char* p = format_decimal_integer<ObjT>(obj, buf, buf + sizeof(buf));
-        for (char* it = buf; it != p; ++it) {
-            if (currentPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                return false;
-            }
-            *currentPos++ = *it;
-        }
-        return true;
-    } else {
-
-        double content = obj;
-
-        if(std::isnan(content) || std::isinf(content)) {
-            if(!serialize_literal(currentPos, end, "0")) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                return false;
-
-            }
-            return true;
-        } else {
-            std::size_t decimals_value = 8;
-            if constexpr (Opts::template has_option<options::detail::float_decimals_tag>) {
-                using decimals = typename Opts::template get_option<options::detail::float_decimals_tag>;
-                decimals_value = decimals::value;
-            }
-            char * endChar = fp_to_str_detail::format_double_to_chars(buf, content, decimals_value);
-            auto s = endChar-buf;
-            if(endChar-buf == sizeof (buf)) {
-                return false;
-            }
-
-            for(int i = 0; i < s; i ++) {
-                if(currentPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
-                }
-                *currentPos ++ = buf[i];
-            }
-            return true;
-
-        }
-    }
-}
-
-
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonString<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr(static_schema::DynamicContainerTypeConcept<ObjT>) {
-        if(auto err = outputEscapedString(currentPos, end, obj.data(), obj.size(), false); err != SerializeError::NO_ERROR) {
-            ctx.setError(err, currentPos);
-            return false;
+        if(!writer.write_string(obj.data(), obj.size())) {
+            return ctx.withWriterError(writer);
         }
-        return true;
-    } else {
-        if(auto err = outputEscapedString(currentPos, end, static_schema::static_string_traits<ObjT>::data(obj),
-                                           static_schema::static_string_traits<ObjT>::max_size(obj), true); err != SerializeError::NO_ERROR) {
-            ctx.setError(err, currentPos);
-            return false;
-        }
-        return true;
-    }
 
+    } else {
+        if(!writer.write_string(static_schema::static_string_traits<ObjT>::data(obj),
+                                 static_schema::static_string_traits<ObjT>::max_size(obj), true)) {
+            return ctx.withWriterError(writer);
+        }
+    }
+    return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonSerializableArray<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
-    }
-    *outputPos ++ = '[';
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+
+
     bool first = true;
 
     using FH   = static_schema::array_read_cursor<ObjT>;
@@ -320,49 +147,47 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             return FH{ obj };
         }
     }();
+    typename Writer::ArrayFrame fr;
+    if(!writer.write_array_begin(cursor.size(), fr)) {
+        return ctx.withWriterError(writer);
+    }
+
     cursor.reset();
-    while(true) {
-        stream_read_result res = cursor.read_more();
-        if(res == stream_read_result::end) {
-            break;
-        } else if(res == stream_read_result::error) {
-            ctx.setError(SerializeError::INPUT_STREAM_ERROR, outputPos);
-            return false;
+    stream_read_result res;
+    res = cursor.read_more();
+
+    while(res != stream_read_result::end) {
+
+        if(res == stream_read_result::error) {
+            return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
         }
 
         const auto &ch = cursor.get();
-        if(first) {
-            first = false;
-        } else {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
-            }
-            *outputPos ++ = ',';
-        }
+
         using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
-        if(!SerializeValue<typename Meta::options>(Meta::getRef(ch), outputPos, end, ctx, userCtx)) {
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(ch), writer, ctx, userCtx)) {
             return false;
         }
+        res = cursor.read_more();
+        if(res == stream_read_result::error) {
+            return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+        }
+        if(res != stream_read_result::end) {
+            if(!writer.advance_after_value(fr)) {
+                return ctx.withWriterError(writer);
+            }
+        }
+    }
+    if(!writer.write_array_end(fr)) {
+        return ctx.withWriterError(writer);
     }
 
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
-    }
-    *outputPos ++ = ']';
     return true;
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonSerializableMap<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
-    }
-    *outputPos++ = '{';
-    bool first = true;
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     using FH = static_schema::map_read_cursor<ObjT>;
     FH cursor = [&]() {
@@ -376,15 +201,18 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
             return FH{ obj };
         }
     }();
+
+    typename Writer::MapFrame fr;
+    if(!writer.write_map_begin(cursor.size(), fr)) {
+        return ctx.withWriterError(writer);
+    }
+
     cursor.reset();
-    
-    while(true) {
-        stream_read_result res = cursor.read_more();
-        if(res == stream_read_result::end) {
-            break;
-        } else if(res == stream_read_result::error) {
-            ctx.setError(SerializeError::INPUT_STREAM_ERROR, outputPos);
-            return false;
+    stream_read_result res = cursor.read_more();
+    while(res != stream_read_result::end) {
+
+        if(res == stream_read_result::error) {
+            return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
         }
         const auto& key = cursor.get_key();
         const auto& value = cursor.get_value();
@@ -393,66 +221,60 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
         if constexpr(static_schema::JsonNullableSerializableValue<typename FH::mapped_type> &&
                       Opts::template has_option<options::detail::skip_nulls_tag>) {
             if(static_schema::isNull(value)) {
+                res = cursor.read_more();
                 continue;
             }
         }
 
-        
-        if(first) {
-            first = false;
+        if constexpr(std::integral<typename FH::key_type>) {
+            if(!writer.write_key_as_index(key)) {
+                return ctx.withWriterError(writer);
+            }
         } else {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
+            if constexpr(static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
+                if(!writer.write_string(key.data(), key.size())) {
+                    return ctx.withWriterError(writer);
+                }
+
+            } else {
+                if(!writer.write_string(static_schema::static_string_traits<typename FH::key_type>::data(key),
+                                         static_schema::static_string_traits<typename FH::key_type>::max_size(key), true)) {
+                    return ctx.withWriterError(writer);
+                }
             }
-            *outputPos++ = ',';
-        }
-        
-        // Serialize key as string
-        if constexpr(std::integral<typename FH::key_type>) {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
-            }
-            *outputPos ++ = '"';
         }
 
-        if(!SerializeValue<options::detail::no_options>(key, outputPos, end, ctx, userCtx)) {
-            return false;
+        if(!writer.move_to_value(fr)) {
+            return ctx.withWriterError(writer);
         }
-        if constexpr(std::integral<typename FH::key_type>) {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
-            }
-            *outputPos ++ = '"';
-        }
-
-        
-        if(outputPos == end) {
-            ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-            return false;
-        }
-        *outputPos++ = ':';
         
         // Serialize value
 
-        if(!SerializeValue<typename Meta::options>(Meta::getRef(value), outputPos, end, ctx, userCtx)) {
+        if(!SerializeValue<typename Meta::options>(Meta::getRef(value), writer, ctx, userCtx)) {
             return false;
+        }
+        res = cursor.read_more();
+        if(res == stream_read_result::error) {
+            return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+        }
+        if(res != stream_read_result::end) {
+            if(!writer.advance_after_value(fr)) {
+                return ctx.withWriterError(writer);
+            }
         }
     }
 
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+    if(!writer.write_map_end(fr)) {
+        return ctx.withWriterError(writer);
     }
-    *outputPos++ = '}';
+
+
     return true;
 }
 
 
-template <bool AsArray, bool indexesAsKeys, bool SkipNulls, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
-constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfIndex, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+template <bool AsArray, bool indexesAsKeys, bool SkipNulls, std::size_t StructIndex, class Frame, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx>
+constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfIndex, Frame & fr, ObjT& structObj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
     using Meta =  options::detail::annotation_meta_getter<Field>;
     // using FieldOpts    = typename Meta::options;
@@ -466,184 +288,147 @@ constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfInde
                 return true;
             }
         }
-
-        if(count != 0) {
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
+        if(count > 0) {
+            if(!writer.advance_after_value(fr)) {
+                return ctx.withWriterError(writer);
             }
-            *outputPos ++ = ',';
         }
-
-
-
         if constexpr(!AsArray) {
             if constexpr(indexesAsKeys) {
-                if(outputPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                    return false;
-                }
-                *outputPos ++ = '"';
-
-                char buf[fp_to_str_detail::NumberBufSize];
                 std::size_t int_key = struct_fields_helper::FieldsHelper<ObjT>::fieldIndexes[jfIndex].first;
 
-                char* p = format_decimal_integer<std::size_t>(int_key, buf, buf + sizeof(buf));
-                for (char* it = buf; it != p; ++it) {
-                    if (outputPos == end) {
-                        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                        return false;
-                    }
-                    *outputPos++ = *it;
+                if(!writer.write_key_as_index(int_key)) {
+                    return ctx.withWriterError(writer);
                 }
 
-                if(outputPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                    return false;
-                }
-                *outputPos ++ = '"';
+
             } else {
                 if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
                     using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
                     const auto & f =  KeyOpt::desc.toStringView();
-                    if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                        ctx.setError(err, outputPos);
-                        return false;
+                    if(!writer.write_string(f.data(), f.size())) {
+                        return ctx.withWriterError(writer);
                     }
                 } else {
                     const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
-                    if(auto err = outputEscapedString(outputPos, end, f.data(), f.size()); err != SerializeError::NO_ERROR) {
-                        ctx.setError(err, outputPos);
-                        return false;
+                    if(!writer.write_string(f.data(), f.size())) {
+                        return ctx.withWriterError(writer);
                     }
                 }
             }
 
-            if(outputPos == end) {
-                ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-                return false;
+            if(!writer.move_to_value(fr)) {
+                return ctx.withWriterError(writer);
             }
-            *outputPos ++ = ':';
         }
 
         count ++;
         jfIndex ++;
-        return SerializeValue<FieldOpts>(Meta::getRef(
+        if(!SerializeValue<FieldOpts>(Meta::getRef(
                                              introspection::getStructElementByIndex<StructIndex>(structObj)
-                                             ), outputPos, end, ctx, userCtx);
+                                           ), writer, ctx, userCtx)) {
+            return false;
+        }
 
+
+        return true;
     }
-
-
 }
-template <bool AsArray, bool indexesAsKeys, bool skipNulls, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
-constexpr bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
+template <bool AsArray, bool indexesAsKeys, bool skipNulls, class Frame, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx, std::size_t... StructIndex>
+constexpr bool SerializeStructFields(Frame &fr, const ObjT& structObj, Writer & writer, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
     std::size_t count = 0;
     std::size_t jfIndex = 0;
     return (
-        SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, jfIndex, structObj, outputPos, end, ctx, userCtx)
+        SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, jfIndex, fr, structObj, writer, ctx, userCtx)
         && ...
         );
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+    typename Writer::MapFrame fr;
+    if(!writer.write_map_begin( struct_fields_helper::FieldsHelper<ObjT>::fieldsCount, fr)) {
+        return ctx.withWriterError(writer);
     }
-    *outputPos ++ = '{';
+
+
 
     if(!SerializeStructFields<false,
                                Opts::template has_option<options::detail::indexes_as_keys_tag> ||  struct_fields_helper::FieldsHelper<ObjT>::hasIntegerKeys,
-                               Opts::template  has_option<options::detail::skip_nulls_tag>>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+                               Opts::template  has_option<options::detail::skip_nulls_tag>>(fr, obj, writer, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+    if(!writer.write_map_end(fr)) {
+        return ctx.withWriterError(writer);
     }
-    *outputPos ++ = '}';
     return true;
+
 }
 
-template <class Opts, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonObject<ObjT>
         && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
-constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+    typename Writer::ArrayFrame fr;
+    if(!writer.write_array_begin( struct_fields_helper::FieldsHelper<ObjT>::fieldsCount, fr)) {
+        return ctx.withWriterError(writer);
     }
-    *outputPos ++ = '[';
-    bool first = true;
-
-
-
-    if(!SerializeStructFields<true, false, false>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
+    if(!SerializeStructFields<true, false, false>(fr, obj, writer, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 
-
-    if(outputPos == end) {
-        ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
-        return false;
+    if(!writer.write_array_end(fr)) {
+        return ctx.withWriterError(writer);
     }
-    *outputPos ++ = ']';
+
     return true;
 }
 
-template <class FieldOptions, static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::JsonSerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires (!static_schema::SerializeTransformer<Field>)
-constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
         return true;
     } else if constexpr(FieldOptions::template has_option<options::detail::json_sink_tag>) {
-        if constexpr(static_schema::DynamicContainerTypeConcept<Field>) {
-            for(char ch: obj) {
-                if(currentPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
-                }
-                *currentPos ++ = ch;
-            }
 
+        if constexpr(static_schema::DynamicContainerTypeConcept<Field>) {
+            if(!writer.output_serialized_value(obj.data(), obj.size())) {
+                return ctx.withWriterError(writer);
+            }
 
         } else {
-            char *d = static_schema::static_string_traits<Field>::data(obj);
-            for(std::size_t i = 0; i < static_schema::static_string_traits<Field>::max_size(obj); i ++) {
-                if(currentPos == end) {
-                    ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, currentPos);
-                    return false;
-                }
-                *currentPos ++ = d[i];
+            if(!writer.output_serialized_value(static_schema::static_string_traits<Field>::data(obj),
+                                     static_schema::static_string_traits<Field>::max_size(obj), true)) {
+                return ctx.withWriterError(writer);
             }
-
-            return true;
         }
+
         return true;
     }else if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
 
         if(static_schema::isNull(obj)) {
-            return serialize_literal(currentPos, end, "null");
+            if(!writer.write_null()) {
+                return ctx.withWriterError(writer);
+            } else {
+                return true;
+            }
         }
     }
-    return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), currentPos, end, ctx, userCtx);
+    return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), writer, ctx, userCtx);
 }
 
-template <class FieldOptions, static_schema::JsonSerializableValue Field, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::JsonSerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::SerializeTransformer<Field>
-constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     using ObT = static_schema::serialize_transform_traits<Field>::wire_type;
     ObT ob;
     using Meta = options::detail::annotation_meta_getter<ObT>;
     if(!obj.transform_to(ob)) {
-        ctx.setError(SerializeError::TRANSFORMER_ERROR, currentPos);
-        return false;
+        return ctx.withError(SerializeError::TRANSFORMER_ERROR, writer);
     } else {
-        return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), currentPos, end, ctx, userCtx);
+        return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), writer, ctx, userCtx);
     }
 
 }
@@ -652,14 +437,19 @@ constexpr  bool SerializeValue(const Field & obj, It &currentPos, const Sent & e
 
 
 
-
-template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void>
-constexpr SerializeResult<It> Serialize(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx = nullptr) {
-    serializer_details::SerializationContext<It> ctx(begin);
+template <static_schema::JsonSerializableValue InputObjectT, class UserCtx = void, writer::WriterLike Writer>
+constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, UserCtx * userCtx = nullptr) {
+    serializer_details::SerializationContext<typename Writer::iterator_type, typename Writer::error_type> ctx(writer.current());
     using Meta = options::detail::annotation_meta_getter<InputObjectT>;
 
-    serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), begin, end, ctx, userCtx);
-    return ctx.result(begin);
+    serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), writer, ctx, userCtx);
+    return ctx.result();
+}
+
+template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void, class Writer = JsonIteratorWriter<It, Sent>>
+constexpr SerializeResult<It, typename Writer::error_type> Serialize(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx = nullptr) {
+    Writer writer(begin, end);
+    return SerializeWithWriter(obj, writer, userCtx);
 }
 
 
