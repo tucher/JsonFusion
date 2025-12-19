@@ -21,7 +21,7 @@ constexpr T constexpr_abs(T value) {
 } // namespace validators
 } // namespace JsonFusion
 #include "string_search.hpp"
-#include "parse_errors.hpp"
+#include "errors.hpp"
 
 namespace JsonFusion {
 

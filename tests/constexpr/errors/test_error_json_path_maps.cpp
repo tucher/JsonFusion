@@ -51,7 +51,7 @@ struct WithMap {
 static_assert(
     TestParseErrorWithJsonPath<WithMap>(
         R"({"id": 1, "data": {"key1": "bad", "key2": 20}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "key1"  // Expected path: $.data."key1"
     ),
     "Map path: error in first entry value"
@@ -71,7 +71,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithMap>(
         R"({"id": 1, "data": {"key-with-dash": "bad"}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "key-with-dash"  // Expected path: $.data."key-with-dash"
     ),
     "Map path: error with special chars in key"
@@ -93,7 +93,7 @@ struct WithNestedMap {
 static_assert(
     TestParseErrorWithJsonPath<WithNestedMap>(
         R"({"data": {"item1": {"x": "bad"}}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "item1", "x"  // Expected path: $.data."item1".x
     ),
     "Nested map: error in value struct field"
@@ -116,7 +116,7 @@ struct OuterWithMap {
 static_assert(
     TestParseErrorWithJsonPath<OuterWithMap>(
         R"({"id": 1, "inner": {"values": {"a": 1, "b": false}}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "values", "b"  // Expected path: $.inner.values."b"
     ),
     "Map in nested struct: error path"
@@ -134,7 +134,7 @@ struct WithMapOfArrays {
 static_assert(
     TestParseErrorWithJsonPath<WithMapOfArrays>(
         R"({"data": {"key1": [1, 2], "key2": [3, "bad"]}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "key2", 1  // Expected path: $.data."key2"[1]
     ),
     "Map of arrays: error in array element"
@@ -148,7 +148,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithMap>(
         R"({"id": 1, "data": {"alpha": "bad"}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "alpha"  // Field name + dynamic map key
     ),
     "Generic path: map key error"
@@ -168,7 +168,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<OuterWithMap>(
         R"({"id": 1, "inner": {"values": {"key": "bad"}}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "values", "key"  // struct field -> map field -> map key
     ),
     "Generic path: map in nested struct"
@@ -193,7 +193,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithMap>(
         R"({"id": 1, "data": {"ключ": "bad", "key": 10}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "ключ"  // Expected path: $.data."ключ" (Unicode key)
     ),
     "Map path: Unicode key name"
@@ -207,7 +207,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithMap>(
         R"({"id": 1, "data": {"testkey": false}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "testkey"  // Expected path: $.data."testkey" (key stored in inline buffer)
     ),
     "Map path: verify key stored in path element"
@@ -221,7 +221,7 @@ static_assert(
 static_assert(
     TestParseErrorWithPathDepth<WithMap>(
         R"({"id": 1, "data": {"key": "bad"}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         2  // "data" + "key"
     ),
     "Map path depth: correct for simple map"

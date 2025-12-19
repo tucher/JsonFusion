@@ -21,7 +21,7 @@ struct Flat {
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"x": "bad", "flag": true, "y": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "x"  // Expected path: $.x
     ),
     "Path tracking: error in first primitive field"
@@ -41,7 +41,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"x": 42, "flag": true, "y": [1,2,3]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "y"  // Expected path: $.y
     ),
     "Path tracking: error in last primitive field"
@@ -66,7 +66,7 @@ struct Outer {
 static_assert(
     TestParseErrorWithJsonPath<Outer>(
         R"({"id": 1, "inner": {"value": "bad", "enabled": true}, "count": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "value"  // Expected path: $.inner.value
     ),
     "Path tracking: error in nested struct field ($.inner.value)"
@@ -116,7 +116,7 @@ static_assert(
 static_assert(
     TestParseErrorWithPathDepth<Flat>(
         R"({"x": "bad", "flag": true, "y": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         1  // Expected path depth
     ),
     "Helper: TestParseErrorWithPathDepth for primitive field"
@@ -126,7 +126,7 @@ static_assert(
 static_assert(
     TestParseErrorWithPath<Outer>(
         R"({"id": 1, "inner": {"value": "bad", "enabled": true}, "count": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "value"  // Expected path: $.inner.value
     ),
     "Helper: TestParseErrorWithPath for nested field"
@@ -136,7 +136,7 @@ static_assert(
 static_assert(
     TestParseErrorWithPath<Level1>(
         R"({"middle": {"deep": {"data": "bad"}}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "middle", "deep", "data"  // Expected path: $.middle.deep.data
     ),
     "Helper: TestParseErrorWithPath for deep nesting"
@@ -151,7 +151,7 @@ static_assert([]() constexpr {
     Flat obj{};
     auto result = Parse(obj, std::string_view(R"({"x": 42)"));
     return !result 
-        && result.error() == ParseError::ILLFORMED_OBJECT;
+        && result.readerError() == JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT;
         // Path depth could be 0 or 1 depending on how far parsing got
 }(), "Root-level error: unclosed object");
 
@@ -221,7 +221,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"x": "bad", "flag": true, "y": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "x"  // Expected path: $.x
     ),
     "Generic path comparison: simple field"
@@ -231,7 +231,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Outer>(
         R"({"id": 1, "inner": {"value": "bad", "enabled": true}, "count": 10})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "value"  // Expected path: $.inner.value
     ),
     "Generic path comparison: nested field"
@@ -241,7 +241,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Level1>(
         R"({"middle": {"deep": {"data": "bad"}}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "middle", "deep", "data"  // Expected path: $.middle.deep.data
     ),
     "Generic path comparison: deep nesting"

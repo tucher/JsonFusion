@@ -20,7 +20,7 @@ struct WithArray {
 static_assert(
     TestParseErrorWithJsonPath<WithArray>(
         R"({"id": 1, "values": ["bad", 2, 3], "flag": true})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "values", 0  // Expected path: $.middle.deep.data
     ),
    "Array path: error in first element ($.values[0])"
@@ -31,7 +31,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithArray>(
         R"({"id": 1, "values": [1, "bad", 3], "flag": true})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "values", 1  // Expected path: $.values[1]
     ),
     "Array path: error in middle element ($.values[1])"
@@ -59,7 +59,7 @@ struct With2DArray {
 static_assert(
     TestParseErrorWithJsonPath<With2DArray>(
         R"({"matrix": [[1, 2, 3], [4, "bad", 6]]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "matrix", 1, 1  // Expected path: $.matrix[1][1]
     ),
     "2D Array path: error at [1][1] ($.matrix[1][1])"
@@ -92,7 +92,7 @@ struct WithStructArray {
 static_assert(
     TestParseErrorWithJsonPath<WithStructArray>(
         R"({"points": [{"x": 1, "y": 2}, {"x": "bad", "y": 4}, {"x": 5, "y": 6}]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "points", 1, "x"  // Expected path: $.points[1].x
     ),
     "Array of structs: error in field ($.points[1].x)"
@@ -102,7 +102,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithStructArray>(
         R"({"points": [{"x": 1, "y": 2}, {"x": 3, "y": 4}, {"x": 5, "y": true}]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "points", 2, "y"  // Expected path: $.points[2].y
     ),
     "Array of structs: error in different element ($.points[2].y)"
@@ -123,7 +123,7 @@ struct Outer {
 static_assert(
     TestParseErrorWithJsonPath<Outer>(
         R"({"id": 1, "inner": {"data": [10, "bad"]}})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "inner", "data", 1  // Expected path: $.inner.data[1]
     ),
     "Nested struct with array: error path ($.inner.data[1])"
@@ -137,7 +137,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithArray>(
         R"({"id": 1, "values": [1, "bad", 3], "flag": true})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "values", 1  // $.values[1]
     ),
     "Helper: Array element path with TestParseErrorWithJsonPath"
@@ -147,7 +147,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<With2DArray>(
         R"({"matrix": [[1, 2, 3], [4, "bad", 6]]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "matrix", 1, 1  // $.matrix[1][1]
     ),
     "Helper: 2D array path"
@@ -157,7 +157,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithStructArray>(
         R"({"points": [{"x": 1, "y": 2}, {"x": "bad", "y": 4}, {"x": 5, "y": 6}]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "points", 1, "x"  // $.points[1].x
     ),
     "Helper: Array of structs path"
@@ -167,7 +167,7 @@ static_assert(
 static_assert(
     TestParseErrorWithPathDepth<WithArray>(
         R"({"id": 1, "values": [1, "bad", 3], "flag": true})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         2  // Path depth: "values", index 1
     ),
     "Helper: Verify path depth for array error"
@@ -211,7 +211,7 @@ struct MultiArray {
 static_assert(
     TestParseErrorWithJsonPath<MultiArray>(
         R"({"first": [1, 2], "second": [3, "bad"], "third": [5, 6]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "second", 1  // Expected path: $.second[1]
     ),
     "Multiple arrays: correct field and index ($.second[1])"
@@ -225,7 +225,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithArray>(
         R"({"id": 1, "values": [1, "bad", 3], "flag": true})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "values", 1  // Expected path: $.values[1]
     ),
     "Generic path: array element error"
@@ -235,7 +235,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<With2DArray>(
         R"({"matrix": [[1, 2, 3], [4, "bad", 6]]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "matrix", 1, 1  // Expected path: $.matrix[1][1]
     ),
     "Generic path: 2D array error"
@@ -245,7 +245,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<WithStructArray>(
         R"({"points": [{"x": 1, "y": 2}, {"x": "bad", "y": 4}, {"x": 5, "y": 6}]})",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "points", 1, "x"  // Expected path: $.points[1].x
     ),
     "Generic path: array of structs error"

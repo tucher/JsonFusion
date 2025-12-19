@@ -2,7 +2,6 @@
 
 #include <concepts>
 #include <limits>
-#include "parse_errors.hpp"
 
 namespace JsonFusion {
 
@@ -52,13 +51,14 @@ concept ReaderLike = requires(R reader,
     typename R::iterator_type;
     typename R::ArrayFrame;
     typename R::MapFrame;
+    typename R::error_type;
     
     // ========== Iterator Access ==========
     // Provides access to current position
     { reader.current() } -> std::same_as<typename R::iterator_type>;
     
     // Returns the current parse error state
-    { reader.getError() } -> std::same_as<ParseError>;
+    { reader.getError() } -> std::same_as<typename R::error_type>;
     
     { mutable_reader.read_array_begin(arrFrameRef) } -> std::same_as<IterationStatus>;
     { mutable_reader.read_map_begin(mapFrameRef) } -> std::same_as<IterationStatus>;

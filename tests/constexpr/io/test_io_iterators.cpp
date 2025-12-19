@@ -277,7 +277,7 @@ static_assert([]() constexpr {
     auto result = JsonFusion::Parse(obj, begin, end);
     
     // Should fail with parse error
-    return !result && result.error() == JsonFusion::ParseError::ILLFORMED_NUMBER;
+    return !result && result.readerError() == JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER;
 }());
 
 // Test: Whitespace handling with byte-by-byte parsing

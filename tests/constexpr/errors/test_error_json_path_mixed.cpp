@@ -141,7 +141,7 @@ static_assert(
                 {"id": 3, "metadata": {"key3": 30}}
             ]
         })",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "items", 1, "metadata", "key2"  // Expected path: $.items[1].metadata."key2"
     ),
     "Generic path: array element error"
@@ -174,7 +174,7 @@ static_assert(
                 "second": [3, "bad"]
             }
         })",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "data", "second", 1  // Expected path: $.data."second"[1]
     ),
     "Mixed: map -> array -> element"
@@ -227,7 +227,7 @@ static_assert(
                 "handlers": []
             }
         })",
-        ParseError::ILLFORMED_NUMBER,
+        JsonIteratorReaderError::ILLFORMED_NUMBER,
         "database", "pool", "max_connections"  // Expected path: $.database.pool.max_connections
     ),
     "Complex config: nested struct path"

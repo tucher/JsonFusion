@@ -51,19 +51,19 @@ struct ConfigIntArray {
 // Trailing comma - invalid JSON
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[1,2,]})",
-    JsonFusion::ParseError::ILLFORMED_ARRAY
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY
 ));
 
 // Leading comma - invalid JSON (parser sees ',1' as malformed number)
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[,1,2]})",
-    JsonFusion::ParseError::ILLFORMED_ARRAY
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY
 ));
 
 // Double comma - invalid JSON (parser sees ',2' as malformed number)
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[1,,2]})",
-    JsonFusion::ParseError::ILLFORMED_ARRAY
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY
 ));
 
 // ============================================================================
@@ -90,7 +90,7 @@ static_assert(TestParse(R"({"values":[1,2,3]})", ConfigIntArray{{1, 2, 3}}));
 // One invalid element (string in int array) - should FAIL
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[1,"bad",3]})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER
 ));
 
 // ============================================================================

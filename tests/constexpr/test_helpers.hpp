@@ -31,29 +31,47 @@ constexpr bool ParseFails(T& obj, const Container& json) {
 }
 
 /// Check that parsing fails with specific error code
-template<typename T, typename Container>
-constexpr bool ParseFailsWith(T& obj, const Container& json, JsonFusion::ParseError expected_error) {
+template<typename T, class ErrorT, typename Container>
+constexpr bool ParseFailsWith(T& obj, const Container& json, ErrorT expected_error) {
     auto result = JsonFusion::Parse(obj, json);
-    return !result && result.error() == expected_error;
+    if constexpr(std::is_same_v<ErrorT, JsonFusion::ParseError>) {
+        return !result && result.error() == expected_error;
+    }else {
+        return !result && result.readerError() == expected_error;
+    }
 }
 
 /// Check that parsing fails with specific error code (string_view)
-template<typename T>
-constexpr bool ParseFailsWith(T& obj, std::string_view json, JsonFusion::ParseError expected_error) {
+template<typename T, class ErrorT>
+constexpr bool ParseFailsWith(T& obj, std::string_view json, ErrorT expected_error) {
     auto result = JsonFusion::Parse(obj, json);
-    return !result && result.error() == expected_error;
+    if constexpr(std::is_same_v<ErrorT, JsonFusion::ParseError>) {
+        return !result && result.error() == expected_error;
+    } else {
+        return !result && result.readerError() == expected_error;
+    }
+}
+
+template<typename T>
+constexpr bool ParseFailsWithReaderError(T& obj, std::string_view json, JsonFusion::JsonIteratorReaderError expected_error) {
+    auto result = JsonFusion::Parse(obj, json);
+    return !result && result.readerError() == expected_error;
 }
 
 /// Check that parsing fails with specific error code at approximate position
 /// Allows tolerance of +/- 2 characters for position
-template<typename T>
+template<typename T, class ErrorT>
 constexpr bool ParseFailsAt(T& obj, std::string_view json, 
-                            JsonFusion::ParseError expected_error, 
+                            ErrorT expected_error, 
                             std::size_t expected_pos_approx,
                             std::size_t tolerance = 2) {
     auto result = JsonFusion::Parse(obj, json);
     if (result) return false;  // Expected failure
-    if (result.error() != expected_error) return false;  // Wrong error code
+    if constexpr(std::is_same_v<JsonFusion::ParseError, ErrorT>) {
+        if (result.error() != expected_error) return false;  // Wrong error code
+    } else {
+        if (result.readerError() != expected_error) return false;
+    }
     
     std::size_t actual_pos = result.pos() - json.data();
     return actual_pos >= (expected_pos_approx - tolerance) 
@@ -270,10 +288,14 @@ constexpr bool TestParse(const char* json_str, Verifier&& verify) {
 }
 
 /// One-line error test: TestParseError<Type>(json, error_code)
-template<typename T>
-constexpr bool TestParseError(const char* json_str, JsonFusion::ParseError expected_error) {
+template<typename T, class ErrorClass>
+constexpr bool TestParseError(const char* json_str, ErrorClass expected_error) {
     T obj{};
-    return ParseFailsWith(obj, std::string_view(json_str), expected_error);
+    if constexpr (std::is_same_v<ErrorClass, JsonFusion::ParseError>) {
+        return ParseFailsWith(obj, std::string_view(json_str), expected_error);
+    } else {
+        return ParseFailsWithReaderError(obj, std::string_view(json_str), expected_error);
+    }
 }
 
 /// One-line serialize test: TestSerialize(obj, expected_json)
@@ -408,17 +430,23 @@ constexpr bool PathElementMatches(
 
 /// Test parsing fails with specific error and JSON path depth
 /// Example: TestParseErrorWithPathDepth<Config>(json, ParseError::..., 3)
-template<typename T>
+template<typename T, class ErrorT>
 constexpr bool TestParseErrorWithPathDepth(
     const char* json_str, 
-    JsonFusion::ParseError expected_error,
+    ErrorT expected_error,
     std::size_t expected_depth) 
 {
     T obj{};
     auto result = JsonFusion::Parse(obj, std::string_view(json_str));
-    return !result 
-        && result.error() == expected_error
-        && result.errorJsonPath().currentLength == expected_depth;
+    if constexpr(std::is_same_v<ErrorT, JsonFusion::ParseError>) {
+        return !result 
+            && result.error() == expected_error
+            && result.errorJsonPath().currentLength == expected_depth;
+    } else {
+        return !result 
+            && result.readerError() == expected_error
+            && result.errorJsonPath().currentLength == expected_depth;
+    }
 }
 
 /// Test parsing fails with specific error and verify path element at given index
@@ -448,16 +476,22 @@ constexpr bool TestParseErrorWithPathElement(
 /// Test parsing fails and verify entire path chain
 /// Usage: TestParseErrorWithPath<T>(json, error, "field1", 3, "field2")
 /// This builds a path like $.field1[3].field2 and verifies it
-template<typename T, typename... PathComponents>
+template<typename T, class ErrorT, typename... PathComponents>
 constexpr bool TestParseErrorWithPath(
     const char* json_str,
-    JsonFusion::ParseError expected_error,
+    ErrorT expected_error,
     PathComponents... expected_path)
 {
     T obj{};
     auto result = JsonFusion::Parse(obj, std::string_view(json_str));
-    if (result || result.error() != expected_error) {
-        return false;
+    if constexpr(std::is_same_v<JsonFusion::ParseError, ErrorT>) {
+        if (result || result.error() != expected_error) {
+            return false;
+        }
+    } else {
+        if (result || result.readerError() != expected_error) {
+            return false;
+        }
     }
     
     const auto& path = result.errorJsonPath();
@@ -531,17 +565,22 @@ constexpr bool JsonPathsEqual(
 /// Test parsing fails with specific error and expected JSON path
 /// Uses type-driven JsonPath construction for compile-time verification
 /// Example: TestParseErrorWithJsonPath<Config>(json, ParseError::..., "field", 3, "nested")
-template<typename T, typename... PathComponents>
+template<typename T, class ErrorClass, typename... PathComponents>
 constexpr bool TestParseErrorWithJsonPath(
     const char* json_str,
-    JsonFusion::ParseError expected_error,
+    ErrorClass expected_error,
     PathComponents... expected_path_components)
 {
     T obj{};
     auto result = JsonFusion::Parse(obj, std::string_view(json_str));
-    
-    if (result || result.error() != expected_error) {
-        return false;
+    if constexpr(std::is_same_v<ErrorClass, JsonFusion::ParseError>) {
+        if (result || result.error() != expected_error) {
+            return false;
+        }
+    } else {
+        if (result || result.readerError() != expected_error) {
+            return false;
+        }
     }
     
     // Calculate SchemaDepth and SchemaHasMaps for T (same as parser does)

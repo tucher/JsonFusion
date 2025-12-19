@@ -19,12 +19,12 @@ struct TwoFields {
 
 // Test 1: Missing closing brace
 static_assert(
-    TestParseError<Simple>(R"({"value": 1)", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 1)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace"
 );
 
 static_assert(
-    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", ParseError::ILLFORMED_OBJECT),
+    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace (multiple fields)"
 );
 
@@ -34,18 +34,18 @@ struct WithArray {
 };
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2, 3)", ParseError::ILLFORMED_ARRAY),
+    TestParseError<WithArray>(R"({"values": [1, 2, 3)", JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY),
     "Invalid: missing closing bracket"
 );
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2)", ParseError::ILLFORMED_ARRAY),
+    TestParseError<WithArray>(R"({"values": [1, 2)", JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY),
     "Invalid: missing closing bracket (incomplete array)"
 );
 
 // Test 3: Missing comma
 static_assert(
-    TestParseError<TwoFields>(R"({"x": 1 "y": 2})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<TwoFields>(R"({"x": 1 "y": 2})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing comma between fields"
 );
 
@@ -56,73 +56,73 @@ struct ThreeFields {
 };
 
 static_assert(
-    TestParseError<ThreeFields>(R"({"a": 1, "b": 2 "c": 3})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<ThreeFields>(R"({"a": 1, "b": 2 "c": 3})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing comma (middle field)"
 );
 
 // Test 4: Extra comma (trailing comma) - RFC 8259 does NOT allow this
 static_assert(
-    TestParseError<Simple>(R"({"value": 1,})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 1,})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: trailing comma in object"
 );
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2, 3,]})", ParseError::ILLFORMED_ARRAY),
+    TestParseError<WithArray>(R"({"values": [1, 2, 3,]})", JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY),
     "Invalid: trailing comma in array"
 );
 
 // Test 5: Missing colon
 static_assert(
-    TestParseError<TwoFields>(R"({"x" 1, "y": 2})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<TwoFields>(R"({"x" 1, "y": 2})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing colon"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value" 42})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value" 42})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing colon (single field)"
 );
 
 // Test 6: Double colon
 static_assert(
-    TestParseError<Simple>(R"({"value":: 42})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<Simple>(R"({"value":: 42})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: double colon"
 );
 
 // Test 7: Unquoted keys (not valid JSON)
 static_assert(
-    TestParseError<Simple>(R"({value: 42})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({value: 42})", JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE),
     "Invalid: unquoted key"
 );
 
 static_assert(
-    TestParseError<TwoFields>(R"({x: 1, y: 2})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<TwoFields>(R"({x: 1, y: 2})", JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE),
     "Invalid: unquoted keys"
 );
 
 // Test 8: Single quotes (not valid JSON)
 static_assert(
-    TestParseError<Simple>(R"({'value': 42})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({'value': 42})", JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE),
     "Invalid: single quotes for key"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 'test'})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<Simple>(R"({"value": 'test'})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: single quotes for string value"
 );
 
 // Test 9: Truncated JSON
 static_assert(
-    TestParseError<Simple>(R"({"value":)", ParseError::UNEXPECTED_END_OF_DATA),
+    TestParseError<Simple>(R"({"value":)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA),
     "Invalid: truncated after colon"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 4)", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 4)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: truncated number"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": "test)", ParseError::ILLFORMED_NUMBER),
+    TestParseError<Simple>(R"({"value": "test)", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: unclosed string"
 );
 
@@ -132,23 +132,23 @@ struct WithString {
 };
 
 static_assert(
-    TestParseError<WithString>(R"({"text": "test\x"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "test\x"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Invalid: incomplete escape sequence \\x"
 );
 
 static_assert(
-    TestParseError<WithString>(R"({"text": "test\u12"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "test\u12"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Invalid: incomplete Unicode escape \\u12"
 );
 
 // Test 11: Invalid number formats (for constexpr, integer-only)
 static_assert(
-    TestParseError<Simple>(R"({"value": 01})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<Simple>(R"({"value": 01})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: leading zero (01)"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 00})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<Simple>(R"({"value": 00})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: leading zero (00)"
 );
 
@@ -168,12 +168,12 @@ static_assert(
 );
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": truee})", ParseError::ILLFORMED_BOOL),
+    TestParseError<WithBool>(R"({"flag": truee})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL),
     "Invalid: typo in true (truee)"
 );
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": fals})", ParseError::ILLFORMED_BOOL),
+    TestParseError<WithBool>(R"({"flag": fals})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL),
     "Invalid: incomplete false (fals)"
 );
 
@@ -183,28 +183,28 @@ struct WithOptional {
 };
 
 static_assert(
-    TestParseError<WithOptional>(R"({"value": Null})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<WithOptional>(R"({"value": Null})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: capitalized Null"
 );
 
 static_assert(
-    TestParseError<WithOptional>(R"({"value": NULL})", ParseError::ILLFORMED_NUMBER),
+    TestParseError<WithOptional>(R"({"value": NULL})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: uppercase NULL"
 );
 
 static_assert(
-    TestParseError<WithOptional>(R"({"value": nul})", ParseError::ILLFORMED_NULL),
+    TestParseError<WithOptional>(R"({"value": nul})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NULL),
     "Invalid: incomplete null"
 );
 
 // Test 14: Mismatched brackets/braces
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2, 3})", ParseError::ILLFORMED_ARRAY),
+    TestParseError<WithArray>(R"({"values": [1, 2, 3})", JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY),
     "Invalid: array closed with brace"
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 42])", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 42])", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: object closed with bracket"
 );
 
@@ -216,24 +216,24 @@ struct Nested {
 };
 
 static_assert(
-    TestParseError<Nested>(R"({"inner": {"x": 1)", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Nested>(R"({"inner": {"x": 1)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: missing closing brace in nested object"
 );
 
 static_assert(
-    TestParseError<Nested>(R"({"inner": {"x": 1,})", ParseError::ILLFORMED_OBJECT),
+    TestParseError<Nested>(R"({"inner": {"x": 1,})", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
     "Invalid: trailing comma in nested object"
 );
 
 // Test 16: Array errors
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1, 2, })", ParseError::ILLFORMED_NUMBER),
+    TestParseError<WithArray>(R"({"values": [1, 2, })", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER),
     "Invalid: trailing comma in array"
 );
 
 static_assert(
-    TestParseError<WithArray>(R"({"values": [1 2, 3]})", ParseError::ILLFORMED_ARRAY),
+    TestParseError<WithArray>(R"({"values": [1 2, 3]})", JsonFusion::JsonIteratorReaderError::ILLFORMED_ARRAY),
     "Invalid: missing comma in array"
 );
 
@@ -244,7 +244,7 @@ static_assert(
 // Test 18: Control characters in strings (should be escaped)
 static_assert(
     TestParseError<WithString>(R"({"text": "test
-newline"})", ParseError::ILLFORMED_STRING),
+newline"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Invalid: unescaped newline in string"
 );
 

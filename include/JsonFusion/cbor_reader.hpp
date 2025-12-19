@@ -7,12 +7,24 @@
 #include <cmath>
 
 #include "reader_concept.hpp"   // TryParseStatus, StringChunkResult
-#include "parse_errors.hpp"      // ParseError enum
 
 namespace JsonFusion {
 
 class CborReader {
 public:
+    enum class ParseError {
+        NO_ERROR,
+        UNEXPECTED_END_OF_DATA,
+        EXCESS_CHARACTERS,
+        NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE,
+        SKIPPING_STACK_OVERFLOW,
+        NOT_IMPLEMENTED,
+        ILLFORMED_NUMBER,
+        ILLFORMED_VALUE,
+        SKIP_ERROR
+    };
+    using error_type = ParseError;
+
     using iterator_type = const std::uint8_t*;
 
     struct ArrayFrame {
@@ -435,7 +447,7 @@ public:
     bool finish() {
         // CBOR has no insignificant whitespace; if we aren't at the end, it's an error.
         if (cur_ != end_) {
-            setError(ParseError::ILLFORMED_OBJECT);
+            setError(ParseError::EXCESS_CHARACTERS);
             return false;
         }
         return true;
@@ -542,7 +554,7 @@ private:
         }
 
         // Indefinite length or unknown: not supported in v1
-        setError(ParseError::ILLFORMED_OBJECT);
+        setError(ParseError::NOT_IMPLEMENTED);
         return false;
     }
 
@@ -614,7 +626,7 @@ private:
             return true;
         }
 
-        setError(ParseError::ILLFORMED_OBJECT);
+        setError(ParseError::ILLFORMED_NUMBER);
         return false;
     }
 
@@ -672,7 +684,7 @@ private:
             return true;
         }
 
-        setError(ParseError::ILLFORMED_OBJECT);
+        setError(ParseError::ILLFORMED_NUMBER);
         return false;
     }
 
@@ -763,7 +775,7 @@ private:
         }
 
         case 6: // tag – not supported in v1
-            setError(ParseError::ILLFORMED_OBJECT);
+            setError(ParseError::NOT_IMPLEMENTED);
             return false;
 
         case 7: { // simple / float / break
@@ -786,15 +798,15 @@ private:
             }
             if (ai == 31) {
                 // "break" for indefinite items — unsupported here
-                setError(ParseError::ILLFORMED_OBJECT);
+                setError(ParseError::NOT_IMPLEMENTED);
                 return false;
             }
-            setError(ParseError::ILLFORMED_OBJECT);
+            setError(ParseError::ILLFORMED_VALUE);
             return false;
         }
         }
 
-        setError(ParseError::ILLFORMED_OBJECT);
+        setError(ParseError::SKIP_ERROR);
         return false;
     }
 };

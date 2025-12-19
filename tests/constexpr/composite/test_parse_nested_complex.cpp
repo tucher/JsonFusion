@@ -197,7 +197,7 @@ static_assert(TestParseError<ValidatedOuter>(
 // Invalid: type error at deep level propagates up
 static_assert(TestParseError<ValidatedOuter>(
     R"({"middle":{"deep":{"validated_value":"not a number"}}})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER
 ));
 
 // ============================================================================

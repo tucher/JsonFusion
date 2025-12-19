@@ -114,47 +114,47 @@ static_assert(
 
 // Test 7: Error cases - Invalid Unicode escapes
 static_assert(
-    TestParseError<WithString>(R"({"text": "\u"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\u"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: incomplete escape (no hex digits)"
 );
 
 static_assert(
-    TestParseError<WithString>(R"({"text": "\u123"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\u123"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: incomplete escape (3 hex digits)"
 );
 
 static_assert(
-    TestParseError<WithString>(R"({"text": "\u12"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\u12"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: incomplete escape (2 hex digits)"
 );
 
 static_assert(
-    TestParseError<WithString>(R"({"text": "\u1"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\u1"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: incomplete escape (1 hex digit)"
 );
 
 // Test 8: Error cases - Invalid surrogate pairs
 // Lone low surrogate (invalid)
 static_assert(
-    TestParseError<WithString>(R"({"text": "\uDC00"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\uDC00"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: lone low surrogate DC00"
 );
 
 // High surrogate without low surrogate
 static_assert(
-    TestParseError<WithString>(R"({"text": "\uD83D"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\uD83D"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: high surrogate without low surrogate"
 );
 
 // High surrogate followed by non-surrogate
 static_assert(
-    TestParseError<WithString>(R"({"text": "\uD83D\u0041"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\uD83D\u0041"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: high surrogate followed by non-surrogate"
 );
 
 // High surrogate not followed by backslash-u
 static_assert(
-    TestParseError<WithString>(R"({"text": "\uD83Dx"})", ParseError::ILLFORMED_STRING),
+    TestParseError<WithString>(R"({"text": "\uD83Dx"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
     "Unicode error: high surrogate not followed by escape sequence"
 );
 
@@ -219,7 +219,7 @@ static_assert(
 // U+0000 (null) - testing behavior
 // Note: JsonFusion may handle this differently, testing actual behavior
 // static_assert(
-//     TestParseError<WithString>(R"({"text": "\u0000"})", ParseError::ILLFORMED_STRING),
+//     TestParseError<WithString>(R"({"text": "\u0000"})", JsonFusion::JsonIteratorReaderError::ILLFORMED_STRING),
 //     "Unicode: U+0000 (null) should be rejected"
 // );
 

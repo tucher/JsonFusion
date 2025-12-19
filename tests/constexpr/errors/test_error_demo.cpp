@@ -39,7 +39,7 @@ static_assert([]() constexpr {
     // String where int expected -> ILLFORMED_NUMBER
     return ParseFailsWith(c, 
         std::string_view(R"({"value": "not_a_number", "flag": true})"),
-        JsonFusion::ParseError::ILLFORMED_NUMBER);
+        JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER);
 }(), "Should fail with ILLFORMED_NUMBER error");
 
 static_assert([]() constexpr {
@@ -47,7 +47,7 @@ static_assert([]() constexpr {
     // Unclosed object
     return ParseFailsWith(c, 
         std::string_view(R"({"value": 42, "flag": true)"),
-        JsonFusion::ParseError::ILLFORMED_OBJECT);
+        JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT);
 }(), "Should fail with ILLFORMED_OBJECT error");
 
 // ============================================================================
@@ -60,7 +60,7 @@ static_assert([]() constexpr {
     //                    0123456789012345678
     return ParseFailsAt(c,
         std::string_view(R"({"value": "not_a_number"})"),
-        JsonFusion::ParseError::ILLFORMED_NUMBER,
+        JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER,
         10);  // Approximate position of the error
 }(), "Should fail at correct position");
 
@@ -70,5 +70,5 @@ static_assert([]() constexpr {
 
 static_assert(TestParseError<Config>(
     R"({"value": "string"})", 
-    JsonFusion::ParseError::ILLFORMED_NUMBER));
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
 

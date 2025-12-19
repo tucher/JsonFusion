@@ -30,9 +30,9 @@ static_assert(TestParseError<Config>(R"({"flag": [true]})", JsonFusion::ParseErr
 static_assert(TestParseError<Config>(R"({"flag": {"x": true}})", JsonFusion::ParseError::NON_BOOL_JSON_IN_BOOL_VALUE));
 
 // ===== Error: Typos in boolean =====
-static_assert(TestParseError<Config>(R"({"flag": tru})", JsonFusion::ParseError::ILLFORMED_BOOL));
-static_assert(TestParseError<Config>(R"({"flag": fals})", JsonFusion::ParseError::ILLFORMED_BOOL));
+static_assert(TestParseError<Config>(R"({"flag": tru})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL));
+static_assert(TestParseError<Config>(R"({"flag": fals})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL));
 
-static_assert(TestParseError<Config>(R"({"flag": truee})", JsonFusion::ParseError::ILLFORMED_BOOL));
-static_assert(TestParseError<Config>(R"({"flag": falsee})", JsonFusion::ParseError::ILLFORMED_BOOL));
+static_assert(TestParseError<Config>(R"({"flag": truee})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL));
+static_assert(TestParseError<Config>(R"({"flag": falsee})", JsonFusion::JsonIteratorReaderError::ILLFORMED_BOOL));
 

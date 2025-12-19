@@ -493,21 +493,21 @@ static_assert(test_map_whitespace());
 constexpr bool test_map_missing_colon() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
     std::string_view json = R"({"key" 123})";
-    return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
+    return TestHelpers::ParseFailsWithReaderError(consumer, std::string_view(json), JsonIteratorReaderError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_missing_colon());
 
 constexpr bool test_map_missing_comma() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
     std::string_view json = R"({"a": 1 "b": 2})";
-    return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
+    return TestHelpers::ParseFailsWithReaderError(consumer, std::string_view(json), JsonIteratorReaderError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_missing_comma());
 
 constexpr bool test_map_trailing_comma() {
     MapConsumer<std::array<char, 16>, int, 3> consumer;
     std::string_view json = R"({"a": 1, "b": 2,})";
-    return TestHelpers::ParseFailsWith(consumer, std::string_view(json), ParseError::ILLFORMED_OBJECT);
+    return TestHelpers::ParseFailsWithReaderError(consumer, std::string_view(json), JsonIteratorReaderError::ILLFORMED_OBJECT);
 }
 static_assert(test_map_trailing_comma());
 

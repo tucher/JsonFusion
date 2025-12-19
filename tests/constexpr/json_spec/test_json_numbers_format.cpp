@@ -32,19 +32,19 @@ static_assert(TestParse(R"({"value":-2147483648})", Config_int{-2147483648})); /
 // ============================================================================
 
 // Leading zeros (invalid per RFC 8259)
-static_assert(TestParseError<Config_int>(R"({"value":00})", JsonFusion::ParseError::ILLFORMED_NUMBER));
-static_assert(TestParseError<Config_int>(R"({"value":01})", JsonFusion::ParseError::ILLFORMED_NUMBER));
-static_assert(TestParseError<Config_int>(R"({"value":0123})", JsonFusion::ParseError::ILLFORMED_NUMBER));
-static_assert(TestParseError<Config_int>(R"({"value":007})", JsonFusion::ParseError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":00})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":01})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":0123})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":007})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
 
 // Positive sign (invalid in JSON)
-static_assert(TestParseError<Config_int>(R"({"value":+42})", JsonFusion::ParseError::ILLFORMED_NUMBER));
-static_assert(TestParseError<Config_int>(R"({"value":+0})", JsonFusion::ParseError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":+42})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
+static_assert(TestParseError<Config_int>(R"({"value":+0})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));
 
 // Invalid number formats (non-JSON)
-static_assert(TestParseError<Config_int>(R"({"value":0x123})", JsonFusion::ParseError::ILLFORMED_NUMBER));  // Hex
-static_assert(TestParseError<Config_int>(R"({"value":0b101})", JsonFusion::ParseError::ILLFORMED_NUMBER));  // Binary
-static_assert(TestParseError<Config_int>(R"({"value":1_000})", JsonFusion::ParseError::ILLFORMED_NUMBER));  // Underscore separator
+static_assert(TestParseError<Config_int>(R"({"value":0x123})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));  // Hex
+static_assert(TestParseError<Config_int>(R"({"value":0b101})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));  // Binary
+static_assert(TestParseError<Config_int>(R"({"value":1_000})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));  // Underscore separator
 
 // ============================================================================
 // Integer Type Ranges
@@ -93,17 +93,17 @@ static_assert(TestParse(R"({"value":0})", Config_uint64{0}));
 // ============================================================================
 
 // Overflow for int32 (value too large)
-static_assert(TestParseError<Config_int>(R"({"value":9999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<Config_int>(R"({"value":9999999999999999})", JsonFusion::JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 
 // Underflow for int32 (value too small)
-static_assert(TestParseError<Config_int>(R"({"value":-9999999999999999})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<Config_int>(R"({"value":-9999999999999999})", JsonFusion::JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 
 // Overflow for uint8 (256 > UINT8_MAX)
-static_assert(TestParseError<Config_uint8>(R"({"value":256})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<Config_uint8>(R"({"value":256})", JsonFusion::JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 
 // Negative for unsigned type
-static_assert(TestParseError<Config_uint8>(R"({"value":-1})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
-static_assert(TestParseError<Config_uint32>(R"({"value":-1})", JsonFusion::ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<Config_uint8>(R"({"value":-1})", JsonFusion::JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
+static_assert(TestParseError<Config_uint32>(R"({"value":-1})", JsonFusion::JsonIteratorReaderError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE));
 
 // ============================================================================
 // Floating-Point Formats (Basic - Full tests in dedicated FP test file)
@@ -126,10 +126,10 @@ static_assert(TestParse(R"({"value":1.5e-5})", Config_double{1.5e-5}));
 static_assert(TestParse(R"({"value":2E+3})", Config_double{2E+3}));
 
 // Invalid floating-point formats
-static_assert(TestParseError<Config_double>(R"({"value":42.})", JsonFusion::ParseError::ILLFORMED_NUMBER));   // Trailing dot
-static_assert(TestParseError<Config_double>(R"({"value":.42})", JsonFusion::ParseError::ILLFORMED_NUMBER));   // Leading dot
-static_assert(TestParseError<Config_double>(R"({"value":1e})", JsonFusion::ParseError::ILLFORMED_NUMBER));     // Incomplete exponent
-static_assert(TestParseError<Config_double>(R"({"value":00.5})", JsonFusion::ParseError::ILLFORMED_NUMBER));  // Leading zeros
+static_assert(TestParseError<Config_double>(R"({"value":42.})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));   // Trailing dot
+static_assert(TestParseError<Config_double>(R"({"value":.42})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));   // Leading dot
+static_assert(TestParseError<Config_double>(R"({"value":1e})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));     // Incomplete exponent
+static_assert(TestParseError<Config_double>(R"({"value":00.5})", JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER));  // Leading zeros
 
 // ============================================================================
 // Edge Cases

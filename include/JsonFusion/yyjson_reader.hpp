@@ -9,6 +9,15 @@ namespace JsonFusion {
 
 class YyjsonReader {
 public:
+    enum class ParseError {
+        NO_ERROR,
+        UNEXPECTED_END_OF_DATA,
+        ILLFORMED_OBJECT,
+        ILLFORMED_ARRAY,
+        NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE
+    };
+    using error_type = ParseError;
+
     using iterator_type = yyjson_val*; // to satisfy Parser's current() API
 
     // Per-container state lives here, not in the reader.

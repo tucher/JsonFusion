@@ -50,8 +50,8 @@ std::string& trim(std::string& s, const char* t = ws)
 
 }
 
-template <class C, class InpIter, std::size_t MaxSchemaDepth, bool HasMaps, class DataIter = char*>
-std::string ParseResultToString(const ParseResult<InpIter, MaxSchemaDepth, HasMaps> & res, DataIter inp = {}, const DataIter end = {}, std::size_t window = 40) {
+template <class C, class InpIter, class ReaderError, std::size_t MaxSchemaDepth, bool HasMaps, class DataIter = char*>
+std::string ParseResultToString(const ParseResult<InpIter, ReaderError, MaxSchemaDepth, HasMaps> & res, DataIter inp = {}, const DataIter end = {}, std::size_t window = 40) {
     std::string jsonPath = "$";
     const auto & jp = res.errorJsonPath();
     for(int i = 0; i < jp.currentLength; i ++) {

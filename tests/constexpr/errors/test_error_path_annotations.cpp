@@ -30,7 +30,7 @@ static_assert([]() constexpr {
 static_assert([]() constexpr {
     SimpleConfig cfg{};
     auto result = Parse(cfg, std::string_view(R"({"id": "bad"})"));
-    return !result && result.error() == ParseError::ILLFORMED_NUMBER;
+    return !result && result.readerError() == JsonIteratorReaderError::ILLFORMED_NUMBER;
 }(), "Test 2: key<> annotation - error detection");
 
 // ============================================================================

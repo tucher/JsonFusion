@@ -32,8 +32,8 @@ static_assert(TestParse(R"({"text": "This is a longer string to test"})", Config
 static_assert(TestParse(R"({"text": "test123!@#"})", Config{{'t','e','s','t','1','2','3','!','@','#','\0'}}));
 
 // ===== Error: Unclosed string =====
-static_assert(TestParseError<Config>(R"({"text": "unclosed})", JsonFusion::ParseError::UNEXPECTED_END_OF_DATA));
-static_assert(TestParseError<Config>(R"({"text": "unclosed)", JsonFusion::ParseError::UNEXPECTED_END_OF_DATA));
+static_assert(TestParseError<Config>(R"({"text": "unclosed})", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA));
+static_assert(TestParseError<Config>(R"({"text": "unclosed)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA));
 
 // ===== Error: Missing quotes =====
 static_assert(TestParseError<Config>(R"({"text": hello})", JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE));

@@ -35,19 +35,19 @@ struct ConfigOptionalInt {
 // String instead of int → should FAIL
 static_assert(TestParseError<ConfigOptionalInt>(
     R"({"opt_int":"string"})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER
 ));
 
 // Array instead of int → should FAIL
 static_assert(TestParseError<ConfigOptionalInt>(
     R"({"opt_int":[]})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER
 ));
 
 // Object instead of int → should FAIL
 static_assert(TestParseError<ConfigOptionalInt>(
     R"({"opt_int":{}})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::JsonIteratorReaderError::ILLFORMED_NUMBER
 ));
 
 // ============================================================================
