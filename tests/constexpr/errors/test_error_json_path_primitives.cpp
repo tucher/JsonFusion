@@ -160,7 +160,7 @@ static_assert([]() constexpr {
     Flat obj{};
     auto result = Parse(obj, std::string_view(R"([1, 2, 3])"));
     return !result 
-        && result.error() == ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE;
+        && result.error() == ParseError::NON_MAP_IN_MAP_LIKE_VALUE;
 }(), "Root-level error: wrong container type");
 
 // ============================================================================

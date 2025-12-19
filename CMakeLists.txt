@@ -98,6 +98,8 @@ add_executable(canada_json_parsing
     benchmarks/canada_json/canada_json_parsing.cpp
     benchmarks/canada_json/canada_json_parsing.hpp
     benchmarks/canada_json/canada_json_parsing_rapidjson.cpp
+    benchmarks/canada_json/canada_json_parsing_glaze.cpp
+
     include/yyjson/yyjson.c
 
     ${JSON_FUSION}
@@ -132,6 +134,7 @@ target_include_directories(canada_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
+target_link_libraries(canada_json_parsing PRIVATE glaze::glaze)
 
 
 

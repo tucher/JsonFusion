@@ -125,7 +125,8 @@ double benchmark(const std::string& label, int iterations, Func&& func) {
     return avg_us;
 }
 
-void rj_parse_populate(int iterations, std::string json_data);
-void rj_parse_only(int iterations, std::string json_data);
-void rj_sax_counting(int iterations, std::string json_data);
-void rj_sax_counting_insitu(int iterations, std::string json_data);
+void rj_parse_populate(int iterations, std::string & json_data);
+void rj_parse_only(int iterations, std::string & json_data);
+void rj_sax_counting(int iterations, std::string & json_data);
+void rj_sax_counting_insitu(int iterations, std::string & json_data);
+void glaze_parse_populate(int iterations, std::string &json_data);

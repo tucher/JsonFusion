@@ -72,11 +72,11 @@ struct key {
 };
 
 template<std::size_t I>
-struct numeric_key {
+struct int_key {
     using tag = detail::numeric_key_tag;
     static constexpr std::size_t NumericKey = I;
     static constexpr std::string_view to_string() {
-        return "numeric_key";
+        return "int_key";
     }
 };
 

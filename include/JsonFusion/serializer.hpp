@@ -452,7 +452,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
 
 
 template <bool AsArray, bool indexesAsKeys, bool SkipNulls, std::size_t StructIndex, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx>
-constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfIndex, ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, UserCtx * userCtx = nullptr) {
     using Field   = introspection::structureElementTypeByIndex<StructIndex, ObjT>;
     using Meta =  options::detail::annotation_meta_getter<Field>;
     // using FieldOpts    = typename Meta::options;
@@ -462,7 +462,7 @@ constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It 
     } else {
         if constexpr(static_schema::JsonNullableSerializableValue<Field> && SkipNulls){
             if(static_schema::isNull(introspection::getStructElementByIndex<StructIndex>(structObj))) {
-                count ++;
+                jfIndex ++;
                 return true;
             }
         }
@@ -486,9 +486,9 @@ constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It 
                 *outputPos ++ = '"';
 
                 char buf[fp_to_str_detail::NumberBufSize];
-                std::size_t numeric_key = struct_fields_helper::FieldsHelper<ObjT>::template fieldIndexKey<StructIndex>();
+                std::size_t int_key = struct_fields_helper::FieldsHelper<ObjT>::fieldIndexes[jfIndex].first;
 
-                char* p = format_decimal_integer<std::size_t>(numeric_key, buf, buf + sizeof(buf));
+                char* p = format_decimal_integer<std::size_t>(int_key, buf, buf + sizeof(buf));
                 for (char* it = buf; it != p; ++it) {
                     if (outputPos == end) {
                         ctx.setError(SerializeError::FIXED_SIZE_CONTAINER_OVERFLOW, outputPos);
@@ -527,6 +527,7 @@ constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It 
         }
 
         count ++;
+        jfIndex ++;
         return SerializeValue<FieldOpts>(Meta::getRef(
                                              introspection::getStructElementByIndex<StructIndex>(structObj)
                                              ), outputPos, end, ctx, userCtx);
@@ -538,8 +539,9 @@ constexpr bool SerializeOneStructField(std::size_t & count, ObjT& structObj, It 
 template <bool AsArray, bool indexesAsKeys, bool skipNulls, class ObjT, CharOutputIterator It, CharSentinelForOut<It> Sent, class CTX, class UserCtx, std::size_t... StructIndex>
 constexpr bool SerializeStructFields(const ObjT& structObj, It &outputPos, const Sent & end, CTX &ctx, std::index_sequence<StructIndex...>, UserCtx * userCtx = nullptr) {
     std::size_t count = 0;
+    std::size_t jfIndex = 0;
     return (
-        SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, structObj, outputPos, end, ctx, userCtx)
+        SerializeOneStructField<AsArray, indexesAsKeys, skipNulls, StructIndex>(count, jfIndex, structObj, outputPos, end, ctx, userCtx)
         && ...
         );
 }
@@ -555,7 +557,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, It &outputPos, const Sent 
     *outputPos ++ = '{';
 
     if(!SerializeStructFields<false,
-                               Opts::template has_option<options::detail::indexes_as_keys_tag>,
+                               Opts::template has_option<options::detail::indexes_as_keys_tag> ||  struct_fields_helper::FieldsHelper<ObjT>::hasIntegerKeys,
                                Opts::template  has_option<options::detail::skip_nulls_tag>>(obj, outputPos, end, ctx, std::make_index_sequence<introspection::structureElementsCount<ObjT>>{}, userCtx))
         return false;
 

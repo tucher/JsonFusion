@@ -53,42 +53,54 @@ struct FieldsHelper {
             return arr;
         }(std::make_index_sequence<rawFieldsCount>{});
 
-    template<std::size_t StructIndex>
-    static consteval std::size_t fieldIndexKey() {
+    static constexpr bool hasIntegerKeys =  []<std::size_t... I>(std::index_sequence<I...>) consteval {
+        return ((
+                    !fieldIsNotJSON<T, I>() &&
+                    options::detail::aggregate_field_opts_getter<T, I>::template has_option<options::detail::numeric_key_tag>
+                    )||...);
+    }(std::make_index_sequence<rawFieldsCount>{});
 
 
 
-        std::size_t ret = 0;
+    template<std::size_t JFIndex>
+    static consteval std::pair<std::size_t, std::size_t> fieldIndexKey() {
+        std::size_t currentJFIndex = std::size_t(-1);
+        std::size_t currentNumericIndex = 0;
+        std::size_t retNumI = std::size_t(-1);
+        std::size_t retStructI = std::size_t(-1);
         [&]<std::size_t... I>(std::index_sequence<I...>) consteval {
 
-            std::size_t i = 0;
             auto get_one = [&](auto ic)  consteval  {
                 constexpr std::size_t J = decltype(ic)::value;
                 using Opts    = options::detail::aggregate_field_opts_getter<T, J>;
-                if constexpr (J == StructIndex) {
-                    if constexpr (Opts::template has_option<options::detail::numeric_key_tag>) {
-                        using KeyOpt = typename Opts::template get_option<options::detail::numeric_key_tag>;
-                        ret = KeyOpt::NumericKey;
-                    } else {
-                        ret = i;
-                    }
-                }
+
                 if constexpr (!fieldIsNotJSON<T, J>()) {
-                    i ++;
+                    currentJFIndex++;
+
+                    if constexpr (Opts::template has_option<options::detail::numeric_key_tag>) {
+                        currentNumericIndex = Opts::template get_option<options::detail::numeric_key_tag>::NumericKey;
+                    }
+
+
+                    if (currentJFIndex == JFIndex) {
+                        retNumI =  currentNumericIndex;
+                        retStructI = J;
+                    }
+                    currentNumericIndex ++;
                 }
+
             };
-
             (get_one(std::integral_constant<std::size_t, I>{}),...);
-
-        }(std::make_index_sequence<StructIndex+1>{});
-        return ret;
+        }(std::make_index_sequence<rawFieldsCount>{});
+        return {retNumI, retStructI};
     }
+
     static constexpr std::size_t maxIndexKeyVal = []<std::size_t... I>(std::index_sequence<I...>) consteval {
         if constexpr(sizeof...(I) == 0) {
             return 0;
         } else
-            return std::max({fieldIndexKey<I>()...});
-    }(std::make_index_sequence<rawFieldsCount>{});
+            return std::max({fieldIndexKey<I>().first...});
+    }(std::make_index_sequence<fieldsCount>{});
 
     using field_index_t =
         std::conditional_t<(maxIndexKeyVal <= 255), std::uint8_t,
@@ -102,27 +114,10 @@ struct FieldsHelper {
 
     static constexpr std::array<std::pair<field_index_t, field_raw_index_t>, fieldsCount> fieldIndexes =
         []<std::size_t... I>(std::index_sequence<I...>) consteval {
-            std::array<std::pair<field_index_t, field_raw_index_t>, fieldsCount> arr;
-
-            std::size_t i = 0;
-            auto get_one = [&](auto ic)  consteval  {
-                constexpr std::size_t J = decltype(ic)::value;
-                if constexpr (fieldIsNotJSON<T, J>()) {
-                    return;
-                } else {
-                    arr[i] = std::pair<field_index_t, field_raw_index_t>{fieldIndexKey<J>(), J};
-                    i ++;
-                }
-
-
-            };
-
-            (get_one(std::integral_constant<std::size_t, I>{}),...);
-
-
-
+            std::array<std::pair<field_index_t, field_raw_index_t>, fieldsCount> arr
+                = {std::pair<field_index_t, field_raw_index_t>{fieldIndexKey<I>().first, fieldIndexKey<I>().second}...};
             return arr;
-        }(std::make_index_sequence<rawFieldsCount>{});
+        }(std::make_index_sequence<fieldsCount>{});
 
     static constexpr bool fieldsAreUnique = [](std::array<FieldDescr, fieldsCount> inputArr) consteval{
         auto sortedArr = inputArr;

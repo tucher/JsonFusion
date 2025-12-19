@@ -19,7 +19,7 @@ public:
         std::uint64_t remaining = 0;  // elements left in this array
     };
 
-    struct ObjectFrame {
+    struct MapFrame {
         std::uint64_t remaining_pairs = 0; // key/value pairs left
         // (we don't need any other state; parser drives key/value phases)
     };
@@ -45,10 +45,10 @@ public:
     // ========== Primitive Value Parsing ==========
 
     // CBOR has no whitespace; this just checks for null (simple value 22).
-    constexpr json_reader::TryParseStatus skip_ws_and_read_null() {
+    constexpr reader::TryParseStatus start_value_and_try_read_null() {
         if (!ensure_bytes(1)) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
 
         std::uint8_t ib = *cur_;
@@ -57,16 +57,16 @@ public:
 
         if (major == 7 && ai == 22) { // null
             ++cur_;
-            return json_reader::TryParseStatus::ok;
+            return reader::TryParseStatus::ok;
         }
 
-        return json_reader::TryParseStatus::no_match;
+        return reader::TryParseStatus::no_match;
     }
 
-    constexpr json_reader::TryParseStatus read_bool(bool& b) {
+    constexpr reader::TryParseStatus read_bool(bool& b) {
         if (!ensure_bytes(1)) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
 
         std::uint8_t ib = *cur_;
@@ -74,30 +74,30 @@ public:
         std::uint8_t ai    = ib & 0x1F;
 
         if (major != 7) {
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
 
         if (ai == 20) {        // false
             b = false;
             ++cur_;
-            return json_reader::TryParseStatus::ok;
+            return reader::TryParseStatus::ok;
         } else if (ai == 21) { // true
             b = true;
             ++cur_;
-            return json_reader::TryParseStatus::ok;
+            return reader::TryParseStatus::ok;
         }
 
-        return json_reader::TryParseStatus::no_match;
+        return reader::TryParseStatus::no_match;
     }
 
     template<class NumberT>
-    constexpr json_reader::TryParseStatus read_number(NumberT& storage) {
+    constexpr reader::TryParseStatus read_number(NumberT& storage) {
         static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
                       "CborReader::read_number requires integral or floating type");
 
         if (!ensure_bytes(1)) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
 
         const std::uint8_t ib = *cur_;
@@ -109,33 +109,33 @@ public:
             if (major == 0) { // unsigned
                 std::uint64_t uval;
                 if (!decode_uint(ai, uval)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
 
                 if (uval > static_cast<std::uint64_t>(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(uval);
-                return json_reader::TryParseStatus::ok;
+                return reader::TryParseStatus::ok;
             } else if (major == 1) { // negative: value = -1 - n
                 std::uint64_t n;
                 if (!decode_uint(ai, n)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 std::int64_t sval = -static_cast<std::int64_t>(n) - 1;
 
                 if constexpr (std::is_unsigned_v<NumberT>) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 } else {
                     if (sval < std::numeric_limits<NumberT>::lowest() ||
                         sval > std::numeric_limits<NumberT>::max()) {
                         setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                        return json_reader::TryParseStatus::error;
+                        return reader::TryParseStatus::error;
                     }
                     storage = static_cast<NumberT>(sval);
-                    return json_reader::TryParseStatus::ok;
+                    return reader::TryParseStatus::ok;
                 }
             }
 
@@ -143,18 +143,18 @@ public:
             if (major == 7 && (ai == 25 || ai == 26 || ai == 27)) {
                 double dv{};
                 if (!decode_float(ai, dv)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 if (dv < static_cast<double>(std::numeric_limits<NumberT>::lowest()) ||
                     dv > static_cast<double>(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(dv);
-                return json_reader::TryParseStatus::ok;
+                return reader::TryParseStatus::ok;
             }
 
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
 
         // ----- Floating storage -----
@@ -162,47 +162,47 @@ public:
             if (major == 7 && (ai == 25 || ai == 26 || ai == 27)) {
                 double dv{};
                 if (!decode_float(ai, dv)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 if (dv < static_cast<double>(std::numeric_limits<NumberT>::lowest()) ||
                     dv > static_cast<double>(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(dv);
-                return json_reader::TryParseStatus::ok;
+                return reader::TryParseStatus::ok;
             }
 
             // int → float is allowed
             if (major == 0) {
                 std::uint64_t uval;
                 if (!decode_uint(ai, uval)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 double dv = static_cast<double>(uval);
                 if (dv < static_cast<double>(std::numeric_limits<NumberT>::lowest()) ||
                     dv > static_cast<double>(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(dv);
-                return json_reader::TryParseStatus::ok;
+                return reader::TryParseStatus::ok;
             } else if (major == 1) {
                 std::uint64_t n;
                 if (!decode_uint(ai, n)) {
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 double dv = -static_cast<double>(n) - 1.0;
                 if (dv < static_cast<double>(std::numeric_limits<NumberT>::lowest()) ||
                     dv > static_cast<double>(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(dv);
-                return json_reader::TryParseStatus::ok;
+                return reader::TryParseStatus::ok;
             }
 
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
     }
 
@@ -211,10 +211,10 @@ public:
     // Parser calls this for:
     //   - JSON-like "string values",
     //   - JSON-like "object keys" (for struct field lookup / maps).
-    constexpr json_reader::StringChunkResult read_string_chunk(char* out,
+    constexpr reader::StringChunkResult read_string_chunk(char* out,
                                                                std::size_t capacity) {
-        json_reader::StringChunkResult res{};
-        res.status        = json_reader::StringChunkStatus::error;
+        reader::StringChunkResult res{};
+        res.status        = reader::StringChunkStatus::error;
         res.bytes_written = 0;
         res.done          = false;
 
@@ -236,7 +236,7 @@ public:
 
             // Treat both text (major 3) and byte string (major 2) as "string-like".
             if (major != 2 && major != 3) {
-                res.status = json_reader::StringChunkStatus::no_match;
+                res.status = reader::StringChunkStatus::no_match;
                 return res;
             }
 
@@ -263,7 +263,7 @@ public:
         std::memcpy(out, value_str_data_ + value_str_offset_, n);
         value_str_offset_ += n;
 
-        res.status        = json_reader::StringChunkStatus::ok;
+        res.status        = reader::StringChunkStatus::ok;
         res.bytes_written = n;
         res.done          = (value_str_offset_ >= value_str_len_);
 
@@ -309,12 +309,14 @@ public:
 
     // ========== Arrays ==========
 
-    constexpr bool read_array_begin(ArrayFrame& frame) {
+    constexpr reader::IterationStatus read_array_begin(ArrayFrame& frame) {
+        reader::IterationStatus ret;
         reset_value_string_state();
 
         if (!ensure_bytes(1)) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return false;
+            ret.status = reader::TryParseStatus::error;
+            return ret;
         }
 
         const std::uint8_t ib = *cur_;
@@ -322,49 +324,54 @@ public:
         const std::uint8_t ai    = ib & 0x1F;
 
         if (major != 4) {
-            return false;  // not an array here
+            ret.status = reader::TryParseStatus::no_match;
+            return ret;
         }
 
         std::uint64_t len;
         if (!decode_length(ai, len)) {
-            return false;  // error already set
+            ret.status = reader::TryParseStatus::error;
+            return ret;
         }
 
         frame.remaining = len;
+        ret.has_value = len != 0;
+        ret.status = reader::TryParseStatus::ok;
         // cur_ now points to the first element (if len > 0) or to the first byte after
         // the array data (if len == 0 and no elements will be read).
-        return true;
-    }
-
-    constexpr json_reader::TryParseStatus read_array_end(const ArrayFrame& frame) {
-        if (frame.remaining > 0) {
-            return json_reader::TryParseStatus::no_match;
-        }
-        return json_reader::TryParseStatus::ok;
+        return ret;
     }
 
     // After each element:
     //   - element has been fully parsed (cur_ is at next element or after array)
     //   - we just decrement remaining, no cursor work needed.
-    constexpr bool consume_value_separator(ArrayFrame& frame, bool& had_comma) {
+    constexpr reader::IterationStatus advance_after_value(ArrayFrame& frame) {
         reset_value_string_state();
-        if (frame.remaining == 0) {
-            had_comma = false;
-            return true;
-        }
+
+        reader::IterationStatus ret;
+        ret.status = reader::TryParseStatus::ok;
+
         --frame.remaining;
-        had_comma = (frame.remaining > 0);
-        return true;
+        if (frame.remaining == 0) {
+            ret.has_value = false;
+            return ret;
+        } else
+            ret.has_value = true;
+
+
+        return ret;
     }
 
     // ========== Objects (maps) ==========
 
-    constexpr bool read_object_begin(ObjectFrame& frame) {
+    constexpr reader::IterationStatus read_map_begin(MapFrame& frame) {
+        reader::IterationStatus ret;
         reset_value_string_state();
 
         if (!ensure_bytes(1)) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return false;
+            ret.status = reader::TryParseStatus::error;
+            return ret;
         }
 
         const std::uint8_t ib = *cur_;
@@ -372,30 +379,27 @@ public:
         const std::uint8_t ai    = ib & 0x1F;
 
         if (major != 5) {
-            return false;  // not a map here
+            ret.status = reader::TryParseStatus::no_match;
+            return ret;
         }
 
         std::uint64_t len;
         if (!decode_length(ai, len)) {
-            return false;  // error already set
+            ret.status = reader::TryParseStatus::error;
+            return ret;
         }
 
         frame.remaining_pairs = len;
-        // cur_ now points at the first key (if len > 0) or at first byte after the map.
-        return true;
+        ret.has_value = len > 0;
+        ret.status = reader::TryParseStatus::ok;
+        return ret;
     }
 
-    constexpr json_reader::TryParseStatus read_object_end(const ObjectFrame& frame) {
-        if (frame.remaining_pairs > 0) {
-            return json_reader::TryParseStatus::no_match;
-        }
-        return json_reader::TryParseStatus::ok;
-    }
 
     // After key is fully read (via read_string_chunk or read_key_as_index)
     // parser calls consume_kv_separator() to switch to the value.
     // In CBOR, we already advanced cur_ past the key, so it's now at the value.
-    constexpr bool consume_kv_separator(ObjectFrame& frame) {
+    constexpr bool move_to_value(MapFrame& frame) {
         (void)frame;
         reset_value_string_state();
         // Nothing to do: cur_ already at value.
@@ -403,29 +407,32 @@ public:
     }
 
     // After value is parsed, parser calls this to advance to next key.
-    constexpr bool consume_value_separator(ObjectFrame& frame, bool& had_comma) {
+    constexpr reader::IterationStatus advance_after_value(MapFrame& frame) {
+        reader::IterationStatus ret;
         reset_value_string_state();
-        if (frame.remaining_pairs == 0) {
-            had_comma = false;
-            return true;
-        }
-
+        ret.status = reader::TryParseStatus::ok;
         --frame.remaining_pairs;
-        had_comma = (frame.remaining_pairs > 0);
+        if (frame.remaining_pairs == 0) {
+            ret.has_value = false;
+            return ret;
+        }else
+            ret.has_value = true;
+
+
         // cur_ already sits at next key (because value parsing consumed its bytes).
-        return true;
+        return ret;
     }
 
     // ========== Utility Operations ==========
 
     template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    constexpr bool skip_json_value(OutputSinkContainer* = nullptr,
+    constexpr bool skip_value(OutputSinkContainer* = nullptr,
                                    std::size_t          = std::numeric_limits<std::size_t>::max())
     {
         return skip_one<MAX_SKIP_NESTING>(0);
     }
 
-    bool skip_whitespaces_till_the_end() {
+    bool finish() {
         // CBOR has no insignificant whitespace; if we aren't at the end, it's an error.
         if (cur_ != end_) {
             setError(ParseError::ILLFORMED_OBJECT);

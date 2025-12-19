@@ -67,9 +67,11 @@ int main(int argc, char* argv[]) {
         std::cout << "=== Canada.json Parsing Benchmark ===\n\n";
 
         // RapidJSON DOM parsing + population
-
+        glaze_parse_populate(iterations, json_data);
         rj_parse_only(iterations, json_data);
         rj_parse_populate(iterations, json_data);
+        rj_sax_counting(iterations, json_data);
+
         // rj_sax_counting_insitu(iterations, json_data);
 
         // JsonFusion typed parsing
@@ -87,7 +89,6 @@ int main(int argc, char* argv[]) {
                 }
             });
         }
-        rj_sax_counting(iterations, json_data);
 
 
         CanadaStatsCounter<Point> canada;

@@ -6,7 +6,7 @@
 #include <iostream>
 
 // RapidJSON DOM parsing + population
-void rj_parse_populate(int iterations, std::string json_data)
+void rj_parse_populate(int iterations, std::string &json_data)
 {
     rapidjson::Document doc;
     Canada canada;
@@ -102,7 +102,7 @@ void rj_parse_populate(int iterations, std::string json_data)
 }
 
 // RapidJSON DOM parsing only (no population)
-void rj_parse_only(int iterations, std::string json_data)
+void rj_parse_only(int iterations, std::string & json_data)
 {
     rapidjson::Document doc;
 
@@ -260,7 +260,7 @@ struct CanadaSAXHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>,
     bool Null() { return true; }
 };
 
-void rj_sax_counting(int iterations, std::string json_data)
+void rj_sax_counting(int iterations, std::string &json_data)
 // RapidJSON SAX parsing + count objects (no materialization)
 {
 
@@ -282,7 +282,7 @@ void rj_sax_counting(int iterations, std::string json_data)
         }
     });
 }
-void rj_sax_counting_insitu(int iterations, std::string json_data) {
+void rj_sax_counting_insitu(int iterations, std::string &json_data) {
 
     benchmark("RapidJSON SAX + count objects + insitu", iterations, [&]() {
         std::string copy = json_data;

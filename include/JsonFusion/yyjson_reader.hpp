@@ -20,12 +20,11 @@ public:
         yyjson_val*   current  = nullptr; // current element, or nullptr if empty/done
     };
 
-    struct ObjectFrame {
+    struct MapFrame {
         yyjson_val*   obj      = nullptr;
         yyjson_obj_iter it{};
         yyjson_val*   key      = nullptr; // current key node
         yyjson_val*   value    = nullptr; // current value node
-        bool          exhausted = false;  // true when no more members
     };
 
     explicit YyjsonReader(yyjson_val* root) noexcept
@@ -45,37 +44,37 @@ public:
 
     // ---- Scalars ----
 
-    constexpr json_reader::TryParseStatus skip_ws_and_read_null() {
+    constexpr reader::TryParseStatus start_value_and_try_read_null() {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
         if (!yyjson_is_null(current_)) {
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
-        return json_reader::TryParseStatus::ok;
+        return reader::TryParseStatus::ok;
     }
 
-    constexpr json_reader::TryParseStatus read_bool(bool& b) {
+    constexpr reader::TryParseStatus read_bool(bool& b) {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
         if (!yyjson_is_bool(current_)) {
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
         b = yyjson_get_bool(current_) != 0;
-        return json_reader::TryParseStatus::ok;
+        return reader::TryParseStatus::ok;
     }
 
     template<class NumberT>
-    constexpr json_reader::TryParseStatus read_number(NumberT& storage) {
+    constexpr reader::TryParseStatus read_number(NumberT& storage) {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
+            return reader::TryParseStatus::error;
         }
         if (!yyjson_is_num(current_)) {
-            return json_reader::TryParseStatus::no_match;
+            return reader::TryParseStatus::no_match;
         }
 
 
@@ -85,7 +84,7 @@ public:
                 if (v < std::int64_t(std::numeric_limits<NumberT>::lowest()) ||
                     v > std::int64_t(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(v);
             } else if (yyjson_is_uint(current_)) {
@@ -93,7 +92,7 @@ public:
                 if (v < std::uint64_t(std::numeric_limits<NumberT>::lowest()) ||
                     v > std::uint64_t(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(v);
             } else {
@@ -101,7 +100,7 @@ public:
                 if (v < double(std::numeric_limits<NumberT>::lowest()) ||
                     v > double(std::numeric_limits<NumberT>::max())) {
                     setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                    return json_reader::TryParseStatus::error;
+                    return reader::TryParseStatus::error;
                 }
                 storage = static_cast<NumberT>(v);
             }
@@ -121,11 +120,11 @@ public:
             if (v < double(std::numeric_limits<NumberT>::lowest()) ||
                 v > double(std::numeric_limits<NumberT>::max())) {
                 setError(ParseError::NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE);
-                return json_reader::TryParseStatus::error;
+                return reader::TryParseStatus::error;
             }
             storage = static_cast<NumberT>(v);
         }
-        return json_reader::TryParseStatus::ok;
+        return reader::TryParseStatus::ok;
 
     }
 
@@ -136,9 +135,9 @@ public:
     //  - For values: current_ must point to the value node.
     //  The parser / object frame logic is responsible for setting current_.
 
-    constexpr json_reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
-        json_reader::StringChunkResult res{};
-        res.status = json_reader::StringChunkStatus::error;
+    constexpr reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+        reader::StringChunkResult res{};
+        res.status = reader::StringChunkStatus::error;
         res.bytes_written = 0;
         res.done = false;
 
@@ -149,7 +148,7 @@ public:
 
         if (!value_str_active_) {
             if (!current_ || !yyjson_is_str(current_)) {
-                res.status = json_reader::StringChunkStatus::no_match;
+                res.status = reader::StringChunkStatus::no_match;
                 return res;
             }
 
@@ -165,7 +164,7 @@ public:
         std::memcpy(out, value_str_data_ + value_str_offset_, n);
         value_str_offset_ += n;
 
-        res.status        = json_reader::StringChunkStatus::ok;
+        res.status        = reader::StringChunkStatus::ok;
         res.bytes_written = n;
         res.done          = (value_str_offset_ >= value_str_len_);
 
@@ -180,7 +179,7 @@ public:
         constexpr std::size_t bufSize = 32;
 
         char buf[bufSize];
-        if(json_reader::StringChunkResult r = read_string_chunk(buf, bufSize-1); !r.done || r.status != json_reader::StringChunkStatus::ok) {
+        if(reader::StringChunkResult r = read_string_chunk(buf, bufSize-1); !r.done || r.status != reader::StringChunkStatus::ok) {
             return false;
         } else {
             buf[r.bytes_written] = 0;
@@ -197,11 +196,19 @@ public:
     // ---- Arrays (new frame-based API) ----
 
     // Parser: creates ArrayFrame on its stack and calls this.
-    constexpr bool read_array_begin(ArrayFrame& frame) {
+    constexpr reader::IterationStatus read_array_begin(ArrayFrame& frame) {
         reset_value_string_state();
 
-        if (!current_ || !yyjson_is_arr(current_)) {
-            return false;
+        reader::IterationStatus ret;
+        if (!current_){
+            setError(ParseError::ILLFORMED_ARRAY);
+            ret.status = reader::TryParseStatus::error;
+            return ret;
+        }
+
+        if(!yyjson_is_arr(current_)) {
+            ret.status = reader::TryParseStatus::no_match;
+            return ret;
         }
 
         yyjson_val* arr = current_;
@@ -214,36 +221,25 @@ public:
             yyjson_arr_iter_init(arr, &frame.it);
             frame.current = yyjson_arr_iter_next(&frame.it);
             current_ = frame.current; // first element
+            ret.has_value = true;
         } else {
             // Empty array – keep current_ on the array node.
             current_ = frame.arr;
+            ret.has_value = false;
         }
+        ret.status = reader::TryParseStatus::ok;
 
-        return true;
+        return ret;
     }
 
-    // Parser: polls this in its loop.
-    constexpr json_reader::TryParseStatus read_array_end(const ArrayFrame& frame) {
-        // If we still have elements left, we're not "at ]" yet.
-        if (frame.index < frame.size) {
-            return json_reader::TryParseStatus::no_match;
-        }
-        // All elements consumed.
-        return json_reader::TryParseStatus::ok;
-    }
-
-    // Parser: call after finishing one element.
-    //
-    //   bool had_comma = false;
-    //   if (!reader.consume_value_separator(frame, had_comma)) error;
-    //
-    constexpr bool consume_value_separator(ArrayFrame& frame, bool& had_comma) {
+    constexpr reader::IterationStatus advance_after_value(ArrayFrame& frame) {
         reset_value_string_state();
-        had_comma = false;
+        reader::IterationStatus ret;
 
         if (!frame.arr) {
-            // Not in an array context.
-            return true;
+            setError(ParseError::ILLFORMED_ARRAY);
+            ret.status = reader::TryParseStatus::error;
+            return ret;
         }
 
         ++frame.index;
@@ -251,64 +247,57 @@ public:
             // Move to next element.
             frame.current = yyjson_arr_iter_next(&frame.it);
             current_ = frame.current;
-            had_comma = true;
+            ret.has_value = true;
         } else {
             // Last element finished; current_ becomes the array node.
             frame.current = nullptr;
             current_ = frame.arr;
-            had_comma = false;
+            ret.has_value = false;
         }
-        return true;
+        ret.status = reader::TryParseStatus::ok;
+        return ret;
     }
 
-    // ---- Objects (new frame-based API) ----
 
-    // Parser: creates ObjectFrame on its stack and calls this.
-    constexpr bool read_object_begin(ObjectFrame& frame) {
+    constexpr reader::IterationStatus read_map_begin(MapFrame& frame) {
         reset_value_string_state();
+        reader::IterationStatus ret;
 
-        if (!current_ || !yyjson_is_obj(current_)) {
-            return false;
+        if (!current_){
+            setError(ParseError::ILLFORMED_ARRAY);
+            ret.status = reader::TryParseStatus::error;
+            return ret;
+        }
+        if(!yyjson_is_obj(current_)) {
+            ret.status = reader::TryParseStatus::no_match;
+            return ret;
         }
 
         yyjson_val* obj = current_;
         frame.obj       = obj;
         frame.key       = nullptr;
         frame.value     = nullptr;
-        frame.exhausted = false;
 
         yyjson_obj_iter_init(obj, &frame.it);
 
         // Preload first member, if any.
         if (!advance_object_member(frame)) {
-            // empty object: current_ remains on object, exhausted=true
             current_ = frame.obj;
+            ret.has_value = false;
         } else {
             // we have a first key; set current_ to that key for key-string reading.
             current_ = frame.key;
+            ret.has_value = true;
         }
 
-        return true;
+        ret.status = reader::TryParseStatus::ok;
+        return ret;
     }
 
-    constexpr json_reader::TryParseStatus read_object_end(const ObjectFrame& frame) {
-        if (!frame.obj) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
-            return json_reader::TryParseStatus::error;
-        }
-
-        // If not exhausted, we're still before '}'
-        if (!frame.exhausted) {
-            return json_reader::TryParseStatus::no_match;
-        }
-
-        // exhausted == true ⇒ we've advanced past the last member.
-        return json_reader::TryParseStatus::ok;
-    }
 
     // Parser: after it finishes reading the key string, it calls this
     // to switch from key → value context.
-    constexpr bool consume_kv_separator(ObjectFrame& frame) {
+    constexpr bool move_to_value(MapFrame& frame) {
         reset_value_string_state();
 
         if (!frame.obj) return true;
@@ -322,36 +311,43 @@ public:
     }
 
     // Parser: after the value is parsed, it calls this to move to the next member.
-    constexpr bool consume_value_separator(ObjectFrame& frame, bool& had_comma) {
+    constexpr reader::IterationStatus advance_after_value(MapFrame& frame) {
         reset_value_string_state();
-        had_comma = false;
 
-        if (!frame.obj) return true;
+        reader::IterationStatus ret;
+
+        if (!frame.obj) {
+            setError(ParseError::ILLFORMED_OBJECT);
+            ret.status = reader::TryParseStatus::error;
+            return ret;
+        }
 
         // We just finished reading frame.value.
         if (!advance_object_member(frame)) {
             // No more members → we're effectively at '}'.
             current_ = frame.obj;
-            had_comma = false;
+            ret.has_value = false;
         } else {
             // Moved to next key.
             current_ = frame.key;
-            had_comma = true;
+            ret.has_value = true;
         }
-        return true;
+        ret.status = reader::TryParseStatus::ok;
+
+        return ret;
     }
 
     // ---- Skip support ----
 
     template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    constexpr bool skip_json_value(OutputSinkContainer* = nullptr,
+    constexpr bool skip_value(OutputSinkContainer* = nullptr,
                                    std::size_t = std::numeric_limits<std::size_t>::max())
     {
         // DOM is already built; for yyjson, "skip" means "don't materialize".
         return true;
     }
 
-    bool skip_whitespaces_till_the_end() {
+    bool finish() {
         return true;
     }
 
@@ -380,26 +376,22 @@ private:
     // Advance object iterator to next member.
     // On success:
     //   - frame.key / frame.value updated
-    //   - frame.exhausted = false
     //   - returns true
     // On end:
     //   - frame.key = frame.value = nullptr
-    //   - frame.exhausted = true
     //   - returns false
-    bool advance_object_member(ObjectFrame& frame) {
+    bool advance_object_member(MapFrame& frame) {
         if (!frame.obj) return false;
 
         yyjson_val* key = yyjson_obj_iter_next(&frame.it);
         if (!key) {
             frame.key       = nullptr;
             frame.value     = nullptr;
-            frame.exhausted = true;
             return false;
         }
 
         frame.key       = key;
         frame.value     = yyjson_obj_iter_get_val(key);
-        frame.exhausted = false;
         return true;
     }
 };

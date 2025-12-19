@@ -57,13 +57,13 @@ static_assert(TestParseError<ConfigIntArray>(
 // Leading comma - invalid JSON (parser sees ',1' as malformed number)
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[,1,2]})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::ParseError::ILLFORMED_ARRAY
 ));
 
 // Double comma - invalid JSON (parser sees ',2' as malformed number)
 static_assert(TestParseError<ConfigIntArray>(
     R"({"values":[1,,2]})",
-    JsonFusion::ParseError::ILLFORMED_NUMBER
+    JsonFusion::ParseError::ILLFORMED_ARRAY
 ));
 
 // ============================================================================

@@ -328,12 +328,12 @@ struct BufferedLinearFieldSearch {
 };
 
 // Adapter that selects strategy at compile time based on field count and max length
-template<bool useBinarySearch, std::size_t MaxFieldLen>
+template<std::size_t MaxFieldLen>
 struct AdaptiveStringSearch {
     using It = const StringDescr*;
 
-    static_assert(!useBinarySearch, "DOn't");
-    static constexpr bool useLinear = !useBinarySearch;
+    // static_assert(!useBinarySearch, "DOn't");
+    static constexpr bool useLinear = true;
 
     using SearchImpl = std::conditional_t<
         useLinear,

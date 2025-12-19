@@ -296,7 +296,7 @@ struct enum_values {
     
     template<class Storage>
     struct state {
-        string_search::AdaptiveStringSearch<false, maxValueLength> searcher{
+        string_search::AdaptiveStringSearch<maxValueLength> searcher{
             sortedValues.data(), 
             sortedValues.data() + sortedValues.size()
         };
@@ -600,7 +600,7 @@ struct required_keys {
     template<class Storage>
     struct state {
         std::bitset<keyCount> seen{};  // Track which required keys were parsed
-        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };
@@ -658,7 +658,7 @@ struct allowed_keys {
     
     template<class Storage>
     struct state {
-        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };
@@ -701,7 +701,7 @@ struct forbidden_keys {
     
     template<class Storage>
     struct state {
-        string_search::AdaptiveStringSearch<false, maxKeyLength> searcher{
+        string_search::AdaptiveStringSearch<maxKeyLength> searcher{
             sortedKeys.data(), 
             sortedKeys.data() + sortedKeys.size()
         };

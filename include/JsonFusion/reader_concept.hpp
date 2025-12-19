@@ -6,7 +6,7 @@
 
 namespace JsonFusion {
 
-namespace json_reader {
+namespace reader {
 enum class TryParseStatus {
     no_match,   // not our case, iterator unchanged
     ok,         // parsed and consumed
@@ -25,6 +25,10 @@ struct StringChunkResult {
     bool              done;          // true if closing '"' was consumed
 };
 
+struct IterationStatus {
+    TryParseStatus status = TryParseStatus::error;
+    bool has_value = false; 
+};
 
 
 /// ReaderLike concept defines the interface that any JSON reader implementation must satisfy
@@ -39,43 +43,35 @@ concept ReaderLike = requires(R reader,
                                char* char_ptr,
                                std::size_t size,
                                std::size_t & sizeRef,
-                               R::ArrayFrame & arrFrameRef,
-                               R::ArrayFrame & arrFrameConstRef,
-                               R::ObjectFrame & objFrameRef,
-                               R::ObjectFrame & objFrameConstRef
+                               typename R::ArrayFrame & arrFrameRef,
+                               typename R::MapFrame & mapFrameRef
                               ) {
     
     // ========== Type Requirements ==========
     // Reader must expose its iterator type
     typename R::iterator_type;
     typename R::ArrayFrame;
-    typename R::ObjectFrame;
+    typename R::MapFrame;
     
     // ========== Iterator Access ==========
     // Provides access to current position
     { reader.current() } -> std::same_as<typename R::iterator_type>;
     
-    // ========== Error Handling ==========
     // Returns the current parse error state
     { reader.getError() } -> std::same_as<ParseError>;
     
-    // ========== Structural Tokens ==========
-    // Array parsing
-    { mutable_reader.read_array_begin(arrFrameRef) } -> std::same_as<bool>;
-    { mutable_reader.read_array_end(arrFrameConstRef) } -> std::same_as<TryParseStatus>;
+    { mutable_reader.read_array_begin(arrFrameRef) } -> std::same_as<IterationStatus>;
+    { mutable_reader.read_map_begin(mapFrameRef) } -> std::same_as<IterationStatus>;
     
-    // Object parsing
-    { mutable_reader.read_object_begin(objFrameRef) } -> std::same_as<bool>;
-    { mutable_reader.read_object_end(objFrameConstRef) } -> std::same_as<TryParseStatus>;
-    
-    // Separators
-    { mutable_reader.consume_value_separator(arrFrameRef, bool_ref) } -> std::same_as<bool>;
-    { mutable_reader.consume_value_separator(objFrameRef, bool_ref) } -> std::same_as<bool>;
-    { mutable_reader.consume_kv_separator(objFrameRef) } -> std::same_as<bool>;
-    
+    // Containers
+    { mutable_reader.advance_after_value(arrFrameRef) } -> std::same_as<IterationStatus>;
+    { mutable_reader.advance_after_value(mapFrameRef) } -> std::same_as<IterationStatus>;
+    { mutable_reader.move_to_value(mapFrameRef) } -> std::same_as<bool>;
+    { mutable_reader.read_key_as_index(sizeRef) } -> std::same_as<bool>;
+
     // ========== Primitive Value Parsing ==========
-    // Null parsing (with whitespace skipping)
-    { mutable_reader.skip_ws_and_read_null() } -> std::same_as<TryParseStatus>;
+    // Null parsing
+    { mutable_reader.start_value_and_try_read_null() } -> std::same_as<TryParseStatus>;
     
     // Boolean parsing
     { mutable_reader.read_bool(bool_ref) } -> std::same_as<TryParseStatus>;
@@ -86,16 +82,14 @@ concept ReaderLike = requires(R reader,
     // String parsing (chunked, for streaming)
     { mutable_reader.read_string_chunk(char_ptr, size) } -> std::same_as<StringChunkResult>;
     
-    // Key as index parsing
-    { mutable_reader.read_key_as_index(sizeRef) } -> std::same_as<bool>;
 
 
     // ========== Utility Operations ==========
     // Skip to end, ensuring only whitespace remains
-    { mutable_reader.skip_whitespaces_till_the_end() } -> std::same_as<bool>;
+    { mutable_reader.finish() } -> std::same_as<bool>;
     
     // Skip entire JSON value (with optional output to sink)
-    { mutable_reader.template skip_json_value<2>(static_cast<void*>(nullptr), std::numeric_limits<std::size_t>::max()) } -> std::same_as<bool>;
+    { mutable_reader.template skip_value<2>(static_cast<void*>(nullptr), std::numeric_limits<std::size_t>::max()) } -> std::same_as<bool>;
 };
 
 /// Type trait to check if a type satisfies ReaderLike at compile time
@@ -103,6 +97,6 @@ template<typename R>
 constexpr bool is_reader_like_v = ReaderLike<R>;
 
 
-} // namespace JsonFusion
+} // namespace reader
 
 }

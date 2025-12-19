@@ -77,7 +77,7 @@ static_assert(TestParse(R"({"maybe_inner":null})", ConfigOptionalObject{.maybe_i
 // Invalid: wrong type (string instead of object) → should FAIL
 static_assert(TestParseError<ConfigOptionalObject>(
     R"({"maybe_inner":"not an object"})",
-    JsonFusion::ParseError::NON_OBJECT_IN_MAP_LIKE_VALUE
+    JsonFusion::ParseError::NON_MAP_IN_MAP_LIKE_VALUE
 ));
 
 // ============================================================================
