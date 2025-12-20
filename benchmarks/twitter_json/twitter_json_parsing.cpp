@@ -13,6 +13,7 @@
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/yyjson_reader.hpp>
 #include <JsonFusion/generic_streamer.hpp>
+#include <JsonFusion/cbor.hpp>
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
 
@@ -112,9 +113,9 @@ int main(int argc, char* argv[]) {
                                 json_data.size() / (1024.0 * 1024.0), 
                                 json_data.size());
         
-        const int iterations = 10000;
-        
-        std::cout << "=== twitter.json Parsing Benchmark ===\n\n";
+        const int iterations = 1000;
+
+        std::cout << std::format("=== twitter.json Benchmark ===({} iterations, µs/iter)\n\n", iterations);
         
 
         rj_parse_only(iterations, json_data);
@@ -196,13 +197,76 @@ int main(int argc, char* argv[]) {
                 }
 
             });
-            std::cout << "Statuses count: " << streamModel.statuses->counter << std::endl;
+            // std::cout << "Statuses count: " << streamModel.statuses->counter << std::endl;
+
+
+            std::string cbor_out_ref;
+            using io_details::limitless_sentinel;
+            auto it  = std::back_inserter(cbor_out_ref);
+            limitless_sentinel end{};
+            JsonFusion::CborWriter writer(it, end);
+            if(auto res = JsonFusion::SerializeWithWriter(model, writer); !res) {
+                throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
+            }
+            // std::cout << "CBOR size: " << cbor_out_ref.size() << std::endl;
+
+
+            TwitterData modelFromCBOR;
+            benchmark("JsonFusion CBOR parsing", iterations, [&]() {
+                std::string copy = cbor_out_ref;
+
+                std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
+                JsonFusion::CborReader reader(b, b + cbor_out_ref.size());
+                auto res = JsonFusion::ParseWithReader(modelFromCBOR, reader);
+                if (!res) {
+                    std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                    throw std::runtime_error(std::format("JsonFusion parse error"));
+                }
+
+            });
+            benchmark("JsonFusion CBOR streaming", iterations, [&]() {
+                std::string copy = cbor_out_ref;
+
+                std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
+                JsonFusion::CborReader reader(b, b + cbor_out_ref.size());
+
+                auto res = JsonFusion::ParseWithReader(streamModel, reader);
+                if (!res) {
+                    std::cerr << ParseResultToString<TwitterDataStream>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                    throw std::runtime_error(std::format("JsonFusion parse error"));
+                }
+
+            });
+
+            // std::cout << "Statuses count: " << modelFromCBOR.statuses->size() << std::endl;
+            std::cout << "\n--Serialization--\n";
+
+            std::string serialize_buffer;
+            serialize_buffer.resize(10000000);
+
+            benchmark("JsonFusion serializing", iterations, [&]() {
+                char *d = serialize_buffer.data();
+                if(auto res = JsonFusion::Serialize(model, d, d + serialize_buffer.size()); !res) {
+                    throw std::runtime_error(std::format("JsonFusion serialize error"));
+                }
+            });
+
+            benchmark("JsonFusion CBOR serializing", iterations, [&]() {
+                std::uint8_t * b = reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
+                JsonFusion::CborWriter writer(b, b + serialize_buffer.size());
+                if(auto res = JsonFusion::SerializeWithWriter(modelFromCBOR, writer); !res) {
+                    throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
+                }
+
+            });
+
+
 
         }
 
 
 
-        std::cout << "\nBenchmark complete.\n";
+        std::cout << "\nBenchmark complete.\n\n\n";
         
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";

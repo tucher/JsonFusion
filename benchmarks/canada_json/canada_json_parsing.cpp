@@ -16,6 +16,8 @@
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/error_formatting.hpp>
 #include <JsonFusion/yyjson_reader.hpp>
+#include <JsonFusion/cbor.hpp>
+#include <JsonFusion/serializer.hpp>
 
 #include "canada_json_parsing.hpp"
 
@@ -56,51 +58,136 @@ int main(int argc, char* argv[]) {
 
     fs::path json_path = argv[1];
 
-        std::cout << "Reading file: " << json_path << "\n";
-        std::string json_data = read_file(json_path);
-        std::cout << std::format("File size: {:.2f} MB ({} bytes)\n\n",
-                                json_data.size() / (1024.0 * 1024.0),
-                                json_data.size());
+    std::cout << "Reading file: " << json_path << "\n";
+    std::string json_data = read_file(json_path);
+    std::cout << std::format("File size: {:.2f} MB ({} bytes)\n\n",
+                            json_data.size() / (1024.0 * 1024.0),
+                            json_data.size());
 
-        const int iterations = 1000;
+    const int iterations = 100;
 
-        std::cout << "=== Canada.json Parsing Benchmark ===\n\n";
+    std::cout << std::format("=== Canada.json Benchmark ===({} iterations, µs/iter)\n\n", iterations);
 
-        // RapidJSON DOM parsing + population
-        glaze_parse_populate(iterations, json_data);
-        rj_parse_only(iterations, json_data);
-        rj_parse_populate(iterations, json_data);
-        rj_sax_counting(iterations, json_data);
+    // RapidJSON DOM parsing + population
+    glaze_parse_populate(iterations, json_data);
+    rj_parse_only(iterations, json_data);
+    rj_parse_populate(iterations, json_data);
+    rj_sax_counting(iterations, json_data);
 
-        // rj_sax_counting_insitu(iterations, json_data);
+    // rj_sax_counting_insitu(iterations, json_data);
 
-        // JsonFusion typed parsing
-        {
-            Canada canada;
-            benchmark("JsonFusion Parse + Populate", iterations, [&]() {
-                std::string copy = json_data;
+    // JsonFusion typed parsing
+    Canada canadaPopulated;
+    {
+        Canada & canada = canadaPopulated;
+        benchmark("JsonFusion Parse + Populate", iterations, [&]() {
+            std::string copy = json_data;
 
-                auto res = Parse(canada, copy.data(), copy.data() + copy.size());
-                if (!res) {
-                    std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                    return false;
-                } else {
-                    return true;
-                }
-            });
+            auto res = Parse(canada, copy.data(), copy.data() + copy.size());
+            if (!res) {
+                std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                return false;
+            } else {
+                return true;
+            }
+        });
+    }
+
+
+    std::string cbor_out;
+    using JsonFusion::io_details::limitless_sentinel;
+    cbor_out.clear();
+    auto it  = std::back_inserter(cbor_out);
+    limitless_sentinel end{};
+    JsonFusion::CborWriter writer(it, end);
+    if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer); !res) {
+        std::cerr << std::format("JsonFusion CBOR serialize error") << std::endl;
+        return 1;
+    }
+    // std::cout << "CBOR size: " << cbor_out.size() << std::endl;
+
+    CanadaStatsCounter<Point> canada;
+    Stats refStats;
+    benchmark("JsonFusion Stream + count objects", iterations, [&]() {
+        std::string copy = json_data;
+
+
+        canada.features.set_jsonfusion_context(&refStats);
+
+
+        auto res = Parse(canada, copy.data(), copy.data() + copy.size(), &refStats);
+        if (!res) {
+            std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+            return false;
+        } else {
+            return true;
         }
+    });
+
+    CanadaStatsCounter<PointSkippedXY> canadaSkip;
+
+    benchmark("JsonFusion Stream + count objects + skip unneeded parsing", iterations, [&]() {
+        std::string copy = json_data;
+
+        Stats stats;
+
+        canadaSkip.features.set_jsonfusion_context(&stats);
 
 
+        auto res = Parse(canadaSkip, copy.data(), copy.data() + copy.size(), &stats);
+        if (!res) {
+            std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+            return false;
+        } else {
+            return true;
+        }
+    });
+
+
+    {
+        Canada  canada;
+        benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
+            std::string copy = json_data;
+
+            yyjson_read_err err;
+            yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
+                                               copy.size(), 0, NULL, &err);
+            if (!doc) {
+                return false;
+            }
+            yyjson_val* root = yyjson_doc_get_root(doc);
+            YyjsonReader reader(root);
+
+            auto res = ParseWithReader(canada, reader);
+            yyjson_doc_free(doc);
+            if (!res) {
+                std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                return false;
+            } else {
+                return true;
+            }
+        });
+    }
+
+    {
         CanadaStatsCounter<Point> canada;
-        benchmark("JsonFusion Stream + count objects", iterations, [&]() {
+        benchmark("JsonFusion Stream + count objects (yyjson backend)", iterations, [&]() {
             std::string copy = json_data;
 
             Stats stats;
 
             canada.features.set_jsonfusion_context(&stats);
 
-
-            auto res = Parse(canada, copy.data(), copy.data() + copy.size(), &stats);
+            yyjson_read_err err;
+            yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
+                                               copy.size(), 0, NULL, &err);
+            if (!doc) {
+                return false;
+            }
+            yyjson_val* root = yyjson_doc_get_root(doc);
+            YyjsonReader reader(root);
+            auto res = ParseWithReader(canada, reader, &stats);
+            yyjson_doc_free(doc);
             if (!res) {
                 std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -108,18 +195,44 @@ int main(int argc, char* argv[]) {
                 return true;
             }
         });
-
-        CanadaStatsCounter<PointSkippedXY> canadaSkip;
-
-        benchmark("JsonFusion Stream + count objects + skip unneeded parsing", iterations, [&]() {
-            std::string copy = json_data;
-
-            Stats stats;
-
-            canadaSkip.features.set_jsonfusion_context(&stats);
+    }
 
 
-            auto res = Parse(canadaSkip, copy.data(), copy.data() + copy.size(), &stats);
+    {
+        Canada modelFromCBOR;
+        benchmark("JsonFusion CBOR parsing", iterations, [&]() {
+            std::string copy = cbor_out;
+
+            std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
+            JsonFusion::CborReader reader(b, b + copy.size());
+            auto res = JsonFusion::ParseWithReader(modelFromCBOR, reader);
+            if (!res) {
+                std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                return false;
+            } else {
+                return true;
+            }
+
+        });
+
+        if(canadaPopulated.features.back().geometry.coordinates.size() != modelFromCBOR.features.back().geometry.coordinates.size()) {
+            std::cout << std::format("Data mismatch") << std::endl;
+        }
+    }
+    {
+        CanadaStatsCounter<Point> canada;
+        Stats stats;
+        benchmark("JsonFusion CBOR Stream", iterations, [&]() {
+            std::string copy = cbor_out;
+
+
+
+            canada.features.set_jsonfusion_context(&stats);
+
+            std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
+            JsonFusion::CborReader reader(b, b + copy.size());
+            auto res = ParseWithReader(canada, reader, &stats);
+
             if (!res) {
                 std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -127,62 +240,49 @@ int main(int argc, char* argv[]) {
                 return true;
             }
         });
-
-        {
-            Canada canada;
-            benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
-                std::string copy = json_data;
-
-                yyjson_read_err err;
-                yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                                   copy.size(), 0, NULL, &err);
-                if (!doc) {
-                    return false;
-                }
-                yyjson_val* root = yyjson_doc_get_root(doc);
-                YyjsonReader reader(root);
-
-                auto res = ParseWithReader(canada, reader);
-                yyjson_doc_free(doc);
-                if (!res) {
-                    std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                    return false;
-                } else {
-                    return true;
-                }
-            });
+        if(stats.totalPoints != refStats.totalPoints) {
+            std::cout << std::format("error: stats.totalPoints {} refStats.totalPoints {}",stats.totalPoints, refStats.totalPoints) << std::endl;
         }
+    }
 
-        {
-            CanadaStatsCounter<Point> canada;
-            benchmark("JsonFusion Stream + count objects (yyjson backend)", iterations, [&]() {
-                std::string copy = json_data;
+    std::cout << "\n--Serialization--\n";
 
-                Stats stats;
+    std::string serialize_buffer;
+    serialize_buffer.resize(10000000);
+    {
+        std::string out;
+        benchmark("JsonFusion serializing", iterations, [&]() {
+            char *d = serialize_buffer.data();
+            if(auto res = JsonFusion::Serialize(canadaPopulated, d, d + serialize_buffer.size()); !res) {
+                std::cerr << std::format("JsonFusion serialize error") << std::endl;
+                return false;
+            } else {
+                return true;
+            }
 
-                canada.features.set_jsonfusion_context(&stats);
+        });
+    }
+    {
+        std::size_t final_sz;
+        benchmark("JsonFusion CBOR serializing", iterations, [&]() {
+            std::uint8_t * b = reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
+            JsonFusion::CborWriter writer(b, b + serialize_buffer.size());
+            if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer); !res) {
+                std::cerr << std::format("JsonFusion CBOR serialize error") << std::endl;
+                return false;
+            } else {
+                final_sz = b-reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
+                return true;
+            }
 
-                yyjson_read_err err;
-                yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                                   copy.size(), 0, NULL, &err);
-                if (!doc) {
-                    return false;
-                }
-                yyjson_val* root = yyjson_doc_get_root(doc);
-                YyjsonReader reader(root);
-                auto res = ParseWithReader(canada, reader, &stats);
-                yyjson_doc_free(doc);
-                if (!res) {
-                    std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                    return false;
-                } else {
-                    return true;
-                }
-            });
+        });
+        if(final_sz != cbor_out.size()) {
+            std::cerr << "Something is wrong" << std::endl;
         }
+    }
 
 
-        std::cout << "\nBenchmark complete.\n";
+    std::cout << "\nBenchmark complete.\n\n\n";
 
 
 

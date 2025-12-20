@@ -11,6 +11,7 @@
 #include "writer_concept.hpp"
 namespace JsonFusion {
 
+template<class It, class Sent>
 class CborReader {
 public:
     enum class ParseError {
@@ -26,7 +27,7 @@ public:
     };
     using error_type = ParseError;
 
-    using iterator_type = const std::uint8_t*;
+    using iterator_type = It;
 
     struct ArrayFrame {
         std::uint64_t remaining = 0;  // elements left in this array
@@ -37,11 +38,8 @@ public:
         // (we don't need any other state; parser drives key/value phases)
     };
 
-    CborReader(const std::uint8_t* begin,
-               const std::uint8_t* end) noexcept
-        : begin_(begin)
-        , cur_(begin)
-        , end_(end)
+    CborReader(It & first, const Sent & last) noexcept
+        : m_errorPos(first), cur_(first), end_(last)
         , err_(ParseError::NO_ERROR)
     {}
 
@@ -59,8 +57,7 @@ public:
 
     // CBOR has no whitespace; this just checks for null (simple value 22).
     constexpr reader::TryParseStatus start_value_and_try_read_null() {
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             return reader::TryParseStatus::error;
         }
 
@@ -77,8 +74,7 @@ public:
     }
 
     constexpr reader::TryParseStatus read_bool(bool& b) {
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             return reader::TryParseStatus::error;
         }
 
@@ -108,8 +104,7 @@ public:
         static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
                       "CborReader::read_number requires integral or floating type");
 
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             return reader::TryParseStatus::error;
         }
 
@@ -238,8 +233,7 @@ public:
 
         if (!value_str_active_) {
             // First call for this string.
-            if (!ensure_bytes(1)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
+            if (!ensure_bytes()) {
                 return res;
             }
 
@@ -259,10 +253,6 @@ public:
                 return res;
             }
 
-            if (!ensure_bytes(static_cast<std::size_t>(len))) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return res;
-            }
 
             value_str_data_   = cur_;
             value_str_len_    = static_cast<std::size_t>(len);
@@ -272,8 +262,13 @@ public:
 
         const std::size_t remaining = value_str_len_ - value_str_offset_;
         const std::size_t n         = remaining < capacity ? remaining : capacity;
-
-        std::memcpy(out, value_str_data_ + value_str_offset_, n);
+        if (!ensure_bytes()) {
+            return res;
+        }
+        for(std::size_t i = 0; i < n; i ++) {
+            out[i] = *cur_;
+            ++cur_;
+        }
         value_str_offset_ += n;
 
         res.status        = reader::StringChunkStatus::ok;
@@ -282,7 +277,6 @@ public:
 
         if (res.done) {
             // Advance underlying cursor past the string bytes.
-            cur_ = value_str_data_ + value_str_len_;
             reset_value_string_state();
         }
 
@@ -291,8 +285,7 @@ public:
 
     // Index-based keys (for indexes_as_keys).
     constexpr bool read_key_as_index(std::size_t& out) {
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             return false;
         }
 
@@ -326,8 +319,7 @@ public:
         reader::IterationStatus ret;
         reset_value_string_state();
 
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
@@ -381,8 +373,7 @@ public:
         reader::IterationStatus ret;
         reset_value_string_state();
 
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
@@ -455,9 +446,9 @@ public:
     }
 
 private:
-    const std::uint8_t* begin_ = nullptr;
-    const std::uint8_t* cur_   = nullptr;
-    const std::uint8_t* end_   = nullptr;
+    It & m_errorPos;
+    It & cur_;
+    const Sent & end_;
 
     ParseError err_;
 
@@ -475,8 +466,12 @@ private:
         }
     }
 
-    bool ensure_bytes(std::size_t n) const noexcept {
-        return static_cast<std::size_t>(end_ - cur_) >= n;
+    bool ensure_bytes()  noexcept {
+        if(cur_ == end_) {
+            setError(ParseError::UNEXPECTED_END_OF_DATA);
+            return false;
+        }
+        else return true;
     }
 
     void reset_value_string_state() noexcept {
@@ -495,61 +490,55 @@ private:
         }
 
         if (ai == 24) {
-            if (!ensure_bytes(2)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
+            if (!ensure_bytes()) return false;
             len = *cur_;
             ++cur_;
             return true;
         }
 
         if (ai == 25) {
-            if (!ensure_bytes(3)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint16_t v = (static_cast<std::uint16_t>(cur_[0]) << 8) |
-                              (static_cast<std::uint16_t>(cur_[1])     );
-            cur_ += 2;
+
+            std::uint16_t v = 0;
+            for(int i = 0; i < 2; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                ++ cur_;
+            }
             len = v;
             return true;
         }
 
         if (ai == 26) {
-            if (!ensure_bytes(5)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint32_t v =
-                (static_cast<std::uint32_t>(cur_[0]) << 24) |
-                (static_cast<std::uint32_t>(cur_[1]) << 16) |
-                (static_cast<std::uint32_t>(cur_[2]) << 8)  |
-                (static_cast<std::uint32_t>(cur_[3])      );
-            cur_ += 4;
+
+            std::uint32_t v = 0;
+            for(int i = 0; i < 4; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                ++ cur_;
+            }
+
             len = v;
             return true;
         }
 
         if (ai == 27) {
-            if (!ensure_bytes(9)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint64_t v =
-                (static_cast<std::uint64_t>(cur_[0]) << 56) |
-                (static_cast<std::uint64_t>(cur_[1]) << 48) |
-                (static_cast<std::uint64_t>(cur_[2]) << 40) |
-                (static_cast<std::uint64_t>(cur_[3]) << 32) |
-                (static_cast<std::uint64_t>(cur_[4]) << 24) |
-                (static_cast<std::uint64_t>(cur_[5]) << 16) |
-                (static_cast<std::uint64_t>(cur_[6]) << 8)  |
-                (static_cast<std::uint64_t>(cur_[7])      );
-            cur_ += 8;
+
+            std::uint64_t v = 0;
+            for(int i = 0; i < 8; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                ++ cur_;
+
+            }
+
             len = v;
             return true;
         }
@@ -568,61 +557,54 @@ private:
         }
 
         if (ai == 24) {
-            if (!ensure_bytes(2)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
+            if (!ensure_bytes()) return false;
             out = *cur_;
             ++cur_;
+
             return true;
         }
 
         if (ai == 25) {
-            if (!ensure_bytes(3)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint16_t v = (static_cast<std::uint16_t>(cur_[0]) << 8) |
-                              (static_cast<std::uint16_t>(cur_[1])     );
-            cur_ += 2;
+            std::uint16_t v = 0;
+            for(int i = 0; i < 2; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                ++ cur_;
+            }
             out = v;
             return true;
         }
 
         if (ai == 26) {
-            if (!ensure_bytes(5)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint32_t v =
-                (static_cast<std::uint32_t>(cur_[0]) << 24) |
-                (static_cast<std::uint32_t>(cur_[1]) << 16) |
-                (static_cast<std::uint32_t>(cur_[2]) << 8)  |
-                (static_cast<std::uint32_t>(cur_[3])      );
-            cur_ += 4;
+
+            std::uint32_t v = 0;
+            for(int i = 0; i < 4; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                ++ cur_;
+            }
+
             out = v;
             return true;
         }
 
         if (ai == 27) {
-            if (!ensure_bytes(9)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint64_t v =
-                (static_cast<std::uint64_t>(cur_[0]) << 56) |
-                (static_cast<std::uint64_t>(cur_[1]) << 48) |
-                (static_cast<std::uint64_t>(cur_[2]) << 40) |
-                (static_cast<std::uint64_t>(cur_[3]) << 32) |
-                (static_cast<std::uint64_t>(cur_[4]) << 24) |
-                (static_cast<std::uint64_t>(cur_[5]) << 16) |
-                (static_cast<std::uint64_t>(cur_[6]) << 8)  |
-                (static_cast<std::uint64_t>(cur_[7])      );
-            cur_ += 8;
+
+            std::uint64_t v = 0;
+            for(int i = 0; i < 8; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                ++ cur_;
+            }
+
             out = v;
             return true;
         }
@@ -633,54 +615,48 @@ private:
 
     bool decode_float(std::uint8_t ai, double& out) {
         if (ai == 25) { // half-precision
-            if (!ensure_bytes(3)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint16_t h = (static_cast<std::uint16_t>(cur_[0]) << 8) |
-                              (static_cast<std::uint16_t>(cur_[1])     );
-            cur_ += 2;
-            out = half_to_double(h);
+            std::uint16_t v = 0;
+            for(int i = 0; i < 2; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                ++ cur_;
+            }
+            out = half_to_double(v);
             return true;
         }
 
         if (ai == 26) { // float32
-            if (!ensure_bytes(5)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint32_t u =
-                (static_cast<std::uint32_t>(cur_[0]) << 24) |
-                (static_cast<std::uint32_t>(cur_[1]) << 16) |
-                (static_cast<std::uint32_t>(cur_[2]) << 8)  |
-                (static_cast<std::uint32_t>(cur_[3])      );
-            cur_ += 4;
+
+            std::uint32_t v = 0;
+            for(int i = 0; i < 4; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                ++ cur_;
+            }
+
             float f;
-            std::memcpy(&f, &u, sizeof(f));
+            std::memcpy(&f, &v, sizeof(f));
             out = static_cast<double>(f);
             return true;
         }
 
         if (ai == 27) { // float64
-            if (!ensure_bytes(9)) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+            if (!ensure_bytes()) return false;
             ++cur_;
-            std::uint64_t u =
-                (static_cast<std::uint64_t>(cur_[0]) << 56) |
-                (static_cast<std::uint64_t>(cur_[1]) << 48) |
-                (static_cast<std::uint64_t>(cur_[2]) << 40) |
-                (static_cast<std::uint64_t>(cur_[3]) << 32) |
-                (static_cast<std::uint64_t>(cur_[4]) << 24) |
-                (static_cast<std::uint64_t>(cur_[5]) << 16) |
-                (static_cast<std::uint64_t>(cur_[6]) << 8)  |
-                (static_cast<std::uint64_t>(cur_[7])      );
-            cur_ += 8;
+
+            std::uint64_t v = 0;
+            for(int i = 0; i < 8; i ++) {
+                if (!ensure_bytes()) return false;
+                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                ++ cur_;
+            }
+
             double d;
-            std::memcpy(&d, &u, sizeof(d));
+            std::memcpy(&d, &v, sizeof(d));
             out = d;
             return true;
         }
@@ -720,8 +696,7 @@ private:
             return false;
         }
 
-        if (!ensure_bytes(1)) {
-            setError(ParseError::UNEXPECTED_END_OF_DATA);
+        if (!ensure_bytes()) {
             return false;
         }
 
@@ -742,11 +717,11 @@ private:
             if (!decode_length(ai, len)) {
                 return false;
             }
-            if (!ensure_bytes(static_cast<std::size_t>(len))) {
-                setError(ParseError::UNEXPECTED_END_OF_DATA);
-                return false;
+            for(int i = 0; i < len; i ++) {
+                if (!ensure_bytes()) return false;
+                ++cur_;
             }
-            cur_ += len;
+
             return true;
         }
 
@@ -786,11 +761,10 @@ private:
                 return true;
             }
             if (ai == 24) {
-                if (!ensure_bytes(2)) {
-                    setError(ParseError::UNEXPECTED_END_OF_DATA);
-                    return false;
-                }
-                cur_ += 2;
+                if (!ensure_bytes()) return false;
+                ++cur_;
+                if (!ensure_bytes()) return false;
+                ++cur_;
                 return true;
             }
             if (ai == 25 || ai == 26 || ai == 27) {
@@ -869,7 +843,12 @@ public:
     bool write_array_end(ArrayFrame& frame) {
         // For definite-length arrays there is no terminator byte in CBOR.
         // Optionally enforce that we wrote exactly expected_size elements.
-        if (frame.written != frame.expected_size) {
+        if(frame.expected_size < 2 && frame.written != 0) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+
+        if (frame.expected_size >= 2 && frame.written != frame.expected_size - 1) {
             setError(CborWriterError::invalid_argument);
             return false;
         }
@@ -894,7 +873,11 @@ public:
     }
 
     bool write_map_end(MapFrame& frame) {
-        if (frame.written_pairs != frame.expected_pairs) {
+        if(frame.expected_pairs < 2 && frame.written_pairs != 0) {
+            setError(CborWriterError::invalid_argument);
+            return false;
+        }
+        if (frame.expected_pairs >= 2 && frame.written_pairs != frame.expected_pairs - 1) {
             setError(CborWriterError::invalid_argument);
             return false;
         }
@@ -972,8 +955,16 @@ public:
         }
     }
 
-    bool write_string(const char* data, std::size_t size) {
+    bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
         // Major type 3 = text string, argument = length in bytes
+        if(null_terminated) {
+            size = 0;
+            const char * d = data;
+            while(d != 0) {
+                d ++;
+                size ++;
+            }
+        }
         if (!write_major_type_with_length(/*major=*/3, size)) {
             return false;
         }
@@ -1076,7 +1067,7 @@ private:
         static_assert(std::is_integral_v<Int>, "write_integral requires integral type");
 
         using Signed   = std::conditional_t<std::is_signed_v<Int>, Int, std::int64_t>;
-        using Unsigned = std::conditional_t<std::is_unsigned_v<Int>, Int, std::uint64_t>;
+        // using Unsigned = std::conditional_t<std::is_unsigned_v<Int>, Int, std::uint64_t>;
 
         if constexpr (std::is_signed_v<Int>) {
             if (value >= 0) {

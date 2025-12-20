@@ -133,7 +133,7 @@ LIBRARIES = [
         ],
     ),
     Library(
-        name="JsonFusion CBOR",
+        name="JsonFusion CBOR <->",
         source_file="parse_config_cbor.cpp",
         description="JsonFusion CBOR parser",
     ),

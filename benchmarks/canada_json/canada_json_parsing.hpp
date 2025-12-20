@@ -119,7 +119,7 @@ double benchmark(const std::string& label, int iterations, Func&& func) {
     auto total_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     double avg_us = static_cast<double>(total_us) / iterations;
 
-    std::cout << std::format("{:<70} {:>8.2f} µs/iter  ({} iterations)\n",
+    std::cout << std::format("{:<70} {:>8.0f}\n",
                              label, avg_us, iterations);
 
     return avg_us;

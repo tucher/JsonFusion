@@ -1,6 +1,7 @@
 
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/cbor.hpp>
+#include <JsonFusion/serializer.hpp>
 #include <JsonFusion/validators.hpp>
 #include <string_view>
 
@@ -150,24 +151,35 @@ A<EmbeddedConfig, indexes_as_keys> g_config;
 
 // Parse function - instantiates JsonFusion parser for this model
 // This is what gets measured for code size
-extern "C" __attribute__((used)) bool parse_config(const std::uint8_t* data, size_t size) {
+extern "C" __attribute__((used)) bool parse_serialize_config(const std::uint8_t* data, size_t size) {
     JsonFusion::CborReader reader(data, data + size);
     auto result = JsonFusion::ParseWithReader(g_config, reader);
-    return !!result;
+
+    std::uint8_t* d = const_cast<std::uint8_t*>(data);
+    JsonFusion::CborWriter writer(d, d + size);
+    auto result_s = JsonFusion::SerializeWithWriter(g_config, writer);
+
+    return !!result && !!result_s;
 }
 
-extern "C" __attribute__((used)) bool parse_rpc_command(const std::uint8_t* data, size_t size) {
+extern "C" __attribute__((used)) bool parse_serialize_rpc_command(const std::uint8_t* data, size_t size) {
     RpcCommand cmd;
     JsonFusion::CborReader reader(data, data + size);
-    auto result = JsonFusion::ParseWithReader(cmd, reader);
-    return !!result;
+    auto result_p = JsonFusion::ParseWithReader(cmd, reader);
+
+    std::uint8_t* d = const_cast<std::uint8_t*>(data);
+    JsonFusion::CborWriter writer(d, d + size);
+    auto result_s = JsonFusion::SerializeWithWriter(cmd, writer);
+        
+
+    return !!result_p && !!result_s;
 }
 // Entry point - ensures parse_config is not eliminated by linker
 // In a real embedded system, this would be your main loop
 int main() {
     // Call parse_config to ensure it's included in binary
-    volatile bool result = parse_config(reinterpret_cast<const std::uint8_t*>(""), 0);
-    volatile bool rpc_result = parse_rpc_command(reinterpret_cast<const std::uint8_t*>(""), 0);
+    volatile bool result = parse_serialize_config(reinterpret_cast<const std::uint8_t*>(""), 0);
+    volatile bool rpc_result = parse_serialize_rpc_command(reinterpret_cast<const std::uint8_t*>(""), 0);
     (void)result;
     (void)rpc_result;
     

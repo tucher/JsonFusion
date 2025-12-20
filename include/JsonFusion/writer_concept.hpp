@@ -55,7 +55,7 @@ concept WriterLike = requires(R writer,
     { mutable_writer.template write_number<int>(int_ref) } -> std::same_as<bool>;
     { mutable_writer.template write_number<double>(double_ref) } -> std::same_as<bool>;
     
-    { mutable_writer.write_string(char_ptr, size) } -> std::same_as<bool>;
+    { mutable_writer.write_string(char_ptr, size, false) } -> std::same_as<bool>;
     
 
 

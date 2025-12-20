@@ -134,10 +134,6 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonSerializableArray<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
-
-
-    bool first = true;
-
     using FH   = static_schema::array_read_cursor<ObjT>;
     FH cursor = [&]() {
         if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<FH, ObjT&, UserCtx*>) {
