@@ -434,8 +434,8 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 
 ### 5.9 float_decimals
 
-- `test_annotated_float_decimals.cpp`
-  - `float_decimals<N>` - Control decimal precision in serialization
+- `test_float_decimals.cpp`
+  - `float_decimals` - Control decimal precision in serialization via JSON writer argument
   - Rounding behavior
   - Different precision values
   - Integration with serialization

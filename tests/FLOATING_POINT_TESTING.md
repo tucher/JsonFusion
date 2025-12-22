@@ -344,9 +344,9 @@
 ### 6. Precision and Rounding Tests [MEDIUM PRIORITY]
 
 #### 6.1 Serialization Precision Levels
-**Goal:** Verify `float_decimals<N>` produces correct precision.
+**Goal:** Verify `float_decimals` JSON writer produces correct precision.
 
-**✅ Constexpr Coverage:** `test_annotated_float_decimals.cpp` (15 tests) covers:
+**✅ Constexpr Coverage:** `test_float_decimals.cpp` (15 tests) covers:
 - Precision levels 0, 2, 3, 4, 6, 8
 - Rounding behavior (not truncation)
 - Trailing zero removal

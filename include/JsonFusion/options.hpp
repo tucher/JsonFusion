@@ -25,7 +25,6 @@ struct allow_excess_fields_tag{};
 struct binary_fields_search_tag{};
 struct description_tag{};
 
-struct float_decimals_tag {};
 struct as_array_tag {};
 struct indexes_as_keys_tag {};
 struct skip_json_tag {};
@@ -93,15 +92,6 @@ struct description {
     }
 };
 
-
-template<std::size_t N>
-struct float_decimals {
-    using tag = detail::float_decimals_tag;
-    static constexpr std::size_t value = N;
-    static constexpr std::string_view to_string() {
-        return "float_decimals";
-    }
-};
 
 struct as_array {
     using tag = detail::as_array_tag;

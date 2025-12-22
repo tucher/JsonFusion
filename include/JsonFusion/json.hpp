@@ -1438,9 +1438,9 @@ public:
     constexpr It & current() {
         return m_current;
     }
-
-    constexpr JsonIteratorWriter(It & first, const Sent & last)
-        : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last) {}
+    std::size_t m_float_decimals=8;
+    constexpr JsonIteratorWriter(It & first, const Sent & last, std::size_t float_decimals=8)
+        : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last), m_float_decimals(float_decimals) {}
 
     constexpr bool write_array_begin(const std::size_t &, ArrayFrame&) {
         if(m_current == end_) {
@@ -1542,7 +1542,7 @@ public:
         }
     }
 
-    template<class NumberT, std::size_t decimals_value=8>
+    template<class NumberT>
     constexpr bool write_number(const NumberT & v){
         char buf[fp_to_str_detail::NumberBufSize];
         if constexpr (std::is_integral_v<NumberT>) {
@@ -1567,7 +1567,7 @@ public:
                 return true;
             } else {
 
-                char * endChar = fp_to_str_detail::format_double_to_chars(buf, content, decimals_value);
+                char * endChar = fp_to_str_detail::format_double_to_chars(buf, content, m_float_decimals);
                 auto s = endChar-buf;
                 if(endChar-buf == sizeof (buf)) {
                     return false;

@@ -99,15 +99,9 @@ constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
-    if constexpr (Opts::template has_option<options::detail::float_decimals_tag>) {
-        using decimals = typename Opts::template get_option<options::detail::float_decimals_tag>;
-        if(!writer.template write_number<ObjT, decimals::value>(obj)) {
-            return ctx.withWriterError(writer);
-        }
-    } else {
-        if(!writer.write_number(obj)) {
-            return ctx.withWriterError(writer);
-        }
+
+    if(!writer.write_number(obj)) {
+        return ctx.withWriterError(writer);
     }
     return true;
 }

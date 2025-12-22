@@ -405,8 +405,7 @@ struct Config {
     // Documentation metadata (for schema generation)
     Annotated<std::string, description<"User's email address">> email;
     
-    // Float precision control (serialization only)
-    Annotated<double, float_decimals<2>> price;  // Serialize with 2 decimal places
+   
 };
 ```
 
