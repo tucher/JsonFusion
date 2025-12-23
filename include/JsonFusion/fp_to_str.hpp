@@ -265,16 +265,32 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
 
     // Normalize v to [1, 10) and compute decimal exponent: value = v * 10^exp10
     int32_t exp10 = 0;
+    
+    // Optimized normalization: scale by large powers first (much faster than single-step loop)
     if (v >= 10.0L) {
-        while (v >= 10.0L) {
-            v /= 10.0L;
-            ++exp10;
-        }
+        // Scale down by powers of 10^16, 10^8, 10^4, 10^2, 10^1
+        constexpr long double p16 = 1e16L;
+        constexpr long double p8  = 1e8L;
+        constexpr long double p4  = 1e4L;
+        constexpr long double p2  = 1e2L;
+        
+        while (v >= p16) { v /= p16; exp10 += 16; }
+        while (v >= p8)  { v /= p8;  exp10 += 8;  }
+        while (v >= p4)  { v /= p4;  exp10 += 4;  }
+        while (v >= p2)  { v /= p2;  exp10 += 2;  }
+        while (v >= 10.0L) { v /= 10.0L; ++exp10; }
     } else if (v < 1.0L) {
-        while (v > 0.0L && v < 1.0L) {
-            v *= 10.0L;
-            --exp10;
-        }
+        // Scale up by powers of 10^16, 10^8, 10^4, 10^2, 10^1
+        constexpr long double p16 = 1e16L;
+        constexpr long double p8  = 1e8L;
+        constexpr long double p4  = 1e4L;
+        constexpr long double p2  = 1e2L;
+        
+        while (v > 0.0L && v < 1e-15L) { v *= p16; exp10 -= 16; }
+        while (v > 0.0L && v < 1e-7L)  { v *= p8;  exp10 -= 8;  }
+        while (v > 0.0L && v < 1e-3L)  { v *= p4;  exp10 -= 4;  }
+        while (v > 0.0L && v < 1e-1L)  { v *= p2;  exp10 -= 2;  }
+        while (v > 0.0L && v < 1.0L)   { v *= 10.0L; --exp10; }
     }
 
     // Generate digits: we produce prec+1 digits, the last is a guard for rounding

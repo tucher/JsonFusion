@@ -1,9 +1,11 @@
+#pragma once
 #include <yyjson/yyjson.h>
 #include <cstring>
 #include <vector>
 #include <cstdint>
 #include <charconv>
 #include "reader_concept.hpp"
+#include "writer_concept.hpp"
 
 namespace JsonFusion {
 
@@ -405,4 +407,358 @@ private:
     }
 };
 
+static_assert(reader::ReaderLike<YyjsonReader>);
+
+
+class YyjsonWriter {
+public:
+    using iterator_type = yyjson_mut_val*;
+
+    enum class Error {
+        None,
+        AllocFailed,
+        InvalidState
+    };
+
+    using error_type = Error;
+
+    struct ArrayFrame {
+        yyjson_mut_val* node = nullptr;
+
+        // link to parent "scope" (if any)
+        void* parent_frame   = nullptr;
+        bool  parent_is_map  = false;
+    };
+
+    struct MapFrame {
+        yyjson_mut_val* node = nullptr;
+
+        // parent scope
+        void* parent_frame   = nullptr;
+        bool  parent_is_map  = false;
+
+        // key state
+        bool        expecting_key = true;
+        bool        use_index_key = false;
+        std::size_t pending_index = 0;
+        std::string pending_key;
+    };
+
+    explicit YyjsonWriter(yyjson_mut_doc * doc)
+        : doc_(doc)
+        , root_(nullptr)
+        , current_(nullptr)
+        , error_(Error::None)
+        , scope_kind_(ScopeKind::Root)
+        , scope_frame_(nullptr)
+    {
+        if (!doc_) {
+            error_ = Error::AllocFailed;
+        }
+    }
+
+    // ========== required API for WriterLike ==========
+
+    iterator_type& current() noexcept {
+        return current_;
+    }
+
+    error_type getError() const noexcept {
+        return error_;
+    }
+
+    // ---- containers ----
+
+    bool write_array_begin(std::size_t const& /*size*/, ArrayFrame& frame) {
+        if (!ensure_ok()) return false;
+        yyjson_mut_val* arr = yyjson_mut_arr(doc_);
+        if (!arr) return fail(Error::AllocFailed);
+
+        // Attach array as a value of current scope
+        if (!attach_value_to_current(arr)) {
+            return false;
+        }
+
+        // Fill frame and switch scope to this array
+        frame.node         = arr;
+        frame.parent_frame = scope_frame_;
+        frame.parent_is_map = (scope_kind_ == ScopeKind::Map);
+
+        scope_kind_  = ScopeKind::Array;
+        scope_frame_ = &frame;
+
+        current_ = arr;
+        return true;
+    }
+
+    bool write_map_begin(std::size_t const& /*size*/, MapFrame& frame) {
+        if (!ensure_ok()) return false;
+
+        yyjson_mut_val* obj = yyjson_mut_obj(doc_);
+        if (!obj) return fail(Error::AllocFailed);
+
+        // Attach map as a value of current scope
+        if (!attach_value_to_current(obj)) {
+            return false;
+        }
+
+        frame.node          = obj;
+        frame.parent_frame  = scope_frame_;
+        frame.parent_is_map = (scope_kind_ == ScopeKind::Map);
+
+        frame.expecting_key = true;
+        frame.use_index_key = false;
+        frame.pending_index = 0;
+        frame.pending_key.clear();
+
+        scope_kind_  = ScopeKind::Map;
+        scope_frame_ = &frame;
+
+        current_ = obj;
+        return true;
+    }
+
+    // “Separator” hook: called *between* elements.
+    // For DOM / yyjson this is a no-op; commas are implicit in tree.
+    bool advance_after_value(ArrayFrame& ) {
+        return ensure_ok();
+    }
+
+    bool advance_after_value(MapFrame& ) {
+        return ensure_ok();
+    }
+
+    // For textual JSON this would emit ':'. For yyjson we just sanity-check.
+    bool move_to_value(MapFrame& frame) {
+        if (!ensure_ok()) return false;
+        if (scope_kind_ != ScopeKind::Map || scope_frame_ != &frame) {
+            return fail(Error::InvalidState);
+        }
+
+        if (frame.expecting_key) {
+            // value without key
+            return fail(Error::InvalidState);
+        }
+        // nothing to do; next write_* will attach as value for pending key
+        return true;
+    }
+
+    // String keys are handled by write_string() when in “key mode”.
+    // write_key_as_index is for indexes_as_keys.
+    bool write_key_as_index(std::size_t const& idx) {
+        if (!ensure_ok()) return false;
+        if (scope_kind_ != ScopeKind::Map) return fail(Error::InvalidState);
+
+        MapFrame* frame = static_cast<MapFrame*>(scope_frame_);
+        if (!frame->expecting_key) {
+            return fail(Error::InvalidState);
+        }
+
+        frame->use_index_key  = true;
+        frame->pending_index  = idx;
+        frame->pending_key.clear();
+        frame->expecting_key  = false;
+        return true;
+    }
+
+    bool write_array_end(ArrayFrame& frame) {
+        if (!ensure_ok()) return false;
+        if (scope_kind_ != ScopeKind::Array || scope_frame_ != &frame) {
+            return fail(Error::InvalidState);
+        }
+
+        // restore parent scope from frame
+        restore_parent_scope(frame.parent_frame, frame.parent_is_map);
+        return true;
+    }
+
+    bool write_map_end(MapFrame& frame) {
+        if (!ensure_ok()) return false;
+        if (scope_kind_ != ScopeKind::Map || scope_frame_ != &frame) {
+            return fail(Error::InvalidState);
+        }
+
+        if (!frame.expecting_key) {
+            // have a key without a value
+            return fail(Error::InvalidState);
+        }
+
+        restore_parent_scope(frame.parent_frame, frame.parent_is_map);
+        return true;
+    }
+
+    // ---- primitives ----
+
+    bool write_null() {
+        if (!ensure_ok()) return false;
+        yyjson_mut_val* v = yyjson_mut_null(doc_);
+        if (!v) return fail(Error::AllocFailed);
+        return attach_value_to_current(v);
+    }
+
+    bool write_bool(bool const& b) {
+        if (!ensure_ok()) return false;
+        yyjson_mut_val* v = yyjson_mut_bool(doc_, b);
+        if (!v) return fail(Error::AllocFailed);
+        return attach_value_to_current(v);
+    }
+
+    template<class NumberT>
+    bool write_number(NumberT const& value) {
+        if (!ensure_ok()) return false;
+
+        yyjson_mut_val* v = nullptr;
+        if constexpr (std::is_floating_point_v<NumberT>) {
+            v = yyjson_mut_real(doc_, static_cast<double>(value));
+        } else if constexpr (std::is_signed_v<NumberT>) {
+            v = yyjson_mut_sint(doc_, static_cast<int64_t>(value));
+        } else if constexpr (std::is_unsigned_v<NumberT>) {
+            v = yyjson_mut_uint(doc_, static_cast<uint64_t>(value));
+        } else {
+            static_assert(std::is_arithmetic_v<NumberT>,
+                          "write_number only supports arithmetic types");
+        }
+
+        if (!v) return fail(Error::AllocFailed);
+        return attach_value_to_current(v);
+    }
+
+    // String writing:
+    //  - In map & expecting_key → record key in MapFrame
+    //  - Else → create value string node and attach
+    bool write_string(char const* data, std::size_t size, bool null_terminated = false) {
+        if (!ensure_ok()) return false;
+
+        if (null_terminated) {
+            size = std::strlen(data);
+        }
+
+        if (scope_kind_ == ScopeKind::Map) {
+            MapFrame* frame = static_cast<MapFrame*>(scope_frame_);
+            if (frame->expecting_key) {
+                frame->pending_key.assign(data, size);
+                frame->use_index_key  = false;
+                frame->pending_index  = 0;
+                frame->expecting_key  = false;
+                return true;
+            }
+        }
+
+        yyjson_mut_val* v = yyjson_mut_strncpy(doc_, data, size);
+        if (!v) return fail(Error::AllocFailed);
+        return attach_value_to_current(v);
+    }
+
+    // ---- finish ----
+
+    bool finish() {
+        if (!ensure_ok()) return false;
+        if (!doc_) return fail(Error::InvalidState);
+
+        if (!root_) {
+            yyjson_mut_val* v = yyjson_mut_null(doc_);
+            if (!v) return fail(Error::AllocFailed);
+            yyjson_mut_doc_set_root(doc_, v);
+            root_ = v;
+        }
+
+        // You *could* assert here that scope_kind_ == Root, but
+        // serializer already guarantees balanced begin/end.
+        return true;
+    }
+
+
+private:
+    enum class ScopeKind { Root, Array, Map };
+
+    yyjson_mut_doc* doc_;
+    yyjson_mut_val* root_;
+    yyjson_mut_val* current_;
+    error_type      error_;
+
+    ScopeKind scope_kind_;
+    void*     scope_frame_;
+
+    bool ensure_ok() const noexcept {
+        return error_ == Error::None;
+    }
+
+    bool fail(Error e) {
+        if (error_ == Error::None) {
+            error_ = e;
+        }
+        return false;
+    }
+
+    void restore_parent_scope(void* parent_frame, bool parent_is_map) {
+        if (!parent_frame) {
+            scope_kind_  = ScopeKind::Root;
+            scope_frame_ = nullptr;
+        } else {
+            scope_kind_  = parent_is_map ? ScopeKind::Map : ScopeKind::Array;
+            scope_frame_ = parent_frame;
+        }
+    }
+
+    bool attach_value_to_current(yyjson_mut_val* v) {
+        if (!ensure_ok()) return false;
+
+        switch (scope_kind_) {
+        case ScopeKind::Root:
+            if (root_) {
+                return fail(Error::InvalidState); // multiple roots
+            }
+            root_ = v;
+            yyjson_mut_doc_set_root(doc_, v);
+            break;
+
+        case ScopeKind::Array: {
+            auto* frame = static_cast<ArrayFrame*>(scope_frame_);
+            if (!frame || !frame->node) return fail(Error::InvalidState);
+            if (!yyjson_mut_arr_add_val(frame->node, v)) {
+                return fail(Error::AllocFailed);
+            }
+            break;
+        }
+
+        case ScopeKind::Map: {
+            auto* frame = static_cast<MapFrame*>(scope_frame_);
+            if (!frame || !frame->node) return fail(Error::InvalidState);
+            if (frame->expecting_key) {
+                // got a value while still waiting for a key
+                return fail(Error::InvalidState);
+            }
+
+            yyjson_mut_val* key_node = nullptr;
+            if (frame->use_index_key) {
+                char buf[32];
+                auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), frame->pending_index);
+                if (ec != std::errc()) {
+                    return fail(Error::InvalidState);
+                }
+                std::size_t len = static_cast<std::size_t>(ptr - buf);
+                key_node = yyjson_mut_strncpy(doc_, buf, len);
+                frame->use_index_key = false;
+                frame->pending_index = 0;
+            } else {
+                key_node = yyjson_mut_strncpy(doc_,
+                                              frame->pending_key.data(),
+                                              frame->pending_key.size());
+                frame->pending_key.clear();
+            }
+
+            if (!key_node) return fail(Error::AllocFailed);
+            if (!yyjson_mut_obj_add(frame->node, key_node, v)) {
+                return fail(Error::AllocFailed);
+            }
+            frame->expecting_key = true;
+            break;
+        }
+        }
+
+        current_ = v;
+        return true;
+    }
+};
+static_assert(writer::WriterLike<YyjsonWriter>);
 } // namespace JsonFusion

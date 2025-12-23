@@ -30,15 +30,16 @@ public:
     using iterator_type = It;
 
     struct ArrayFrame {
-        std::uint64_t remaining = 0;  // elements left in this array
+        std::uint64_t remaining = 0;  // elements left in this array (unused if indefinite)
+        bool indefinite = false;      // true if indefinite-length array
     };
 
     struct MapFrame {
-        std::uint64_t remaining_pairs = 0; // key/value pairs left
-        // (we don't need any other state; parser drives key/value phases)
+        std::uint64_t remaining_pairs = 0; // key/value pairs left (unused if indefinite)
+        bool indefinite = false;           // true if indefinite-length map
     };
 
-    CborReader(It & first, const Sent & last) noexcept
+    CborReader(It & first, Sent last) noexcept
         : m_errorPos(first), cur_(first), end_(last)
         , err_(ParseError::NO_ERROR)
     {}
@@ -253,8 +254,8 @@ public:
                 return res;
             }
 
-
-            value_str_data_   = cur_;
+            // After decode_length, cur_ points to the first byte of string data.
+            // For forward-only iterators, we don't save this position - just track progress.
             value_str_len_    = static_cast<std::size_t>(len);
             value_str_offset_ = 0;
             value_str_active_ = true;
@@ -262,10 +263,11 @@ public:
 
         const std::size_t remaining = value_str_len_ - value_str_offset_;
         const std::size_t n         = remaining < capacity ? remaining : capacity;
-        if (!ensure_bytes()) {
-            return res;
-        }
+        
         for(std::size_t i = 0; i < n; i ++) {
+            if (!ensure_bytes()) {  // Check before each read
+                return res;  // Error already set by ensure_bytes()
+            }
             out[i] = *cur_;
             ++cur_;
         }
@@ -333,12 +335,24 @@ public:
             return ret;
         }
 
+        // Check for indefinite-length array (ai == 31)
+        if (ai == 31) {
+            ++cur_;  // Consume the indefinite-length marker
+            frame.indefinite = true;
+            frame.remaining = 0;  // Unused for indefinite
+            ret.has_value = true;  // Assume at least one element (will check for break)
+            ret.status = reader::TryParseStatus::ok;
+            return ret;
+        }
+
+        // Definite-length array
         std::uint64_t len;
         if (!decode_length(ai, len)) {
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
 
+        frame.indefinite = false;
         frame.remaining = len;
         ret.has_value = len != 0;
         ret.status = reader::TryParseStatus::ok;
@@ -356,6 +370,25 @@ public:
         reader::IterationStatus ret;
         ret.status = reader::TryParseStatus::ok;
 
+        if (frame.indefinite) {
+            // Check for break marker (0xFF)
+            if (!ensure_bytes()) {
+                ret.status = reader::TryParseStatus::error;
+                return ret;
+            }
+
+            if (*cur_ == 0xFF) {  // Break marker (major 7, ai 31)
+                ++cur_;  // Consume break
+                ret.has_value = false;
+                return ret;
+            }
+
+            // More elements available
+            ret.has_value = true;
+            return ret;
+        }
+
+        // Definite-length: decrement counter
         --frame.remaining;
         if (frame.remaining == 0) {
             ret.has_value = false;
@@ -387,12 +420,24 @@ public:
             return ret;
         }
 
+        // Check for indefinite-length map (ai == 31)
+        if (ai == 31) {
+            ++cur_;  // Consume the indefinite-length marker
+            frame.indefinite = true;
+            frame.remaining_pairs = 0;  // Unused for indefinite
+            ret.has_value = true;  // Assume at least one pair (will check for break)
+            ret.status = reader::TryParseStatus::ok;
+            return ret;
+        }
+
+        // Definite-length map
         std::uint64_t len;
         if (!decode_length(ai, len)) {
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
 
+        frame.indefinite = false;
         frame.remaining_pairs = len;
         ret.has_value = len > 0;
         ret.status = reader::TryParseStatus::ok;
@@ -415,6 +460,26 @@ public:
         reader::IterationStatus ret;
         reset_value_string_state();
         ret.status = reader::TryParseStatus::ok;
+
+        if (frame.indefinite) {
+            // Check for break marker (0xFF)
+            if (!ensure_bytes()) {
+                ret.status = reader::TryParseStatus::error;
+                return ret;
+            }
+
+            if (*cur_ == 0xFF) {  // Break marker (major 7, ai 31)
+                ++cur_;  // Consume break
+                ret.has_value = false;
+                return ret;
+            }
+
+            // More pairs available
+            ret.has_value = true;
+            return ret;
+        }
+
+        // Definite-length: decrement counter
         --frame.remaining_pairs;
         if (frame.remaining_pairs == 0) {
             ret.has_value = false;
@@ -448,12 +513,13 @@ public:
 private:
     It & m_errorPos;
     It & cur_;
-    const Sent & end_;
+    Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
 
     ParseError err_;
 
     // State for current string (value or key) being streamed.
-    const std::uint8_t* value_str_data_   = nullptr;
+    // Note: For forward-only iterators, we don't need to store the start position.
+    // cur_ always points to the next byte to read, and value_str_offset_ tracks progress.
     std::size_t         value_str_len_    = 0;
     std::size_t         value_str_offset_ = 0;
     bool                value_str_active_ = false;
@@ -475,7 +541,6 @@ private:
     }
 
     void reset_value_string_state() noexcept {
-        value_str_data_   = nullptr;
         value_str_len_    = 0;
         value_str_offset_ = 0;
         value_str_active_ = false;
@@ -534,7 +599,7 @@ private:
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
                 ++ cur_;
 
             }
@@ -601,7 +666,7 @@ private:
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
                 ++ cur_;
             }
 
@@ -651,7 +716,7 @@ private:
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (7-i)));
+                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
                 ++ cur_;
             }
 
@@ -717,7 +782,7 @@ private:
             if (!decode_length(ai, len)) {
                 return false;
             }
-            for(int i = 0; i < len; i ++) {
+            for(std::uint64_t i = 0; i < len; i ++) {  // Fixed: uint64_t
                 if (!ensure_bytes()) return false;
                 ++cur_;
             }
@@ -786,6 +851,8 @@ private:
     }
 };
 
+static_assert(reader::ReaderLike<CborReader<std::uint8_t*, std::uint8_t*>>);
+
 template<class It, class Sent>
 class CborWriter {
 public:
@@ -799,21 +866,23 @@ public:
     using error_type    = CborWriterError;
 
     struct ArrayFrame {
-        std::size_t expected_size = 0;  // number of elements
+        std::size_t expected_size = 0;  // number of elements (unused if indefinite)
         std::size_t written       = 0;  // number of elements actually written
+        bool        indefinite    = false;  // true if indefinite-length array
     };
 
     struct MapFrame {
-        std::size_t expected_pairs   = 0; // number of key/value pairs
+        std::size_t expected_pairs   = 0; // number of key/value pairs (unused if indefinite)
         std::size_t written_pairs    = 0; // completed pairs
         bool        expecting_key    = true; // for sanity checking
+        bool        indefinite       = false; // true if indefinite-length map
     };
 
     constexpr It & current() {
         return m_current;
     }
 
-    explicit CborWriter(It & first, const Sent & last) noexcept
+    explicit CborWriter(It & first, Sent last) noexcept
         : m_errorPos(first), m_current(first), end_(last)
         , err_(CborWriterError::none)
     {}
@@ -826,21 +895,33 @@ public:
 
     bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
-            // Indefinite-length arrays not implemented in this version
-            setError(CborWriterError::not_implemented);
-            return false;
+            // Indefinite-length array (0x9F = major 4, ai 31)
+            if (!write_byte(0x9F)) {
+                return false;
+            }
+            frame.indefinite = true;
+            frame.expected_size = 0;  // Unused
+            frame.written = 0;
+            return true;
         }
 
+        // Definite-length array
         if (!write_major_type_with_length(/*major=*/4, size)) {
             return false;
         }
 
+        frame.indefinite = false;
         frame.expected_size = size;
         frame.written       = 0;
         return true;
     }
 
     bool write_array_end(ArrayFrame& frame) {
+        if (frame.indefinite) {
+            // Write break marker (0xFF = major 7, ai 31)
+            return write_byte(0xFF);
+        }
+
         // For definite-length arrays there is no terminator byte in CBOR.
         // Optionally enforce that we wrote exactly expected_size elements.
         if(frame.expected_size < 2 && frame.written != 0) {
@@ -857,15 +938,23 @@ public:
 
     bool write_map_begin(const std::size_t& size, MapFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
-            // Indefinite-length maps not implemented either
-            setError(CborWriterError::not_implemented);
-            return false;
+            // Indefinite-length map (0xBF = major 5, ai 31)
+            if (!write_byte(0xBF)) {
+                return false;
+            }
+            frame.indefinite = true;
+            frame.expected_pairs = 0;  // Unused
+            frame.written_pairs = 0;
+            frame.expecting_key = true;
+            return true;
         }
 
+        // Definite-length map
         if (!write_major_type_with_length(/*major=*/5, size)) {
             return false;
         }
 
+        frame.indefinite = false;
         frame.expected_pairs = size;
         frame.written_pairs  = 0;
         frame.expecting_key  = true;
@@ -873,6 +962,12 @@ public:
     }
 
     bool write_map_end(MapFrame& frame) {
+        if (frame.indefinite) {
+            // Write break marker (0xFF = major 7, ai 31)
+            return write_byte(0xFF);
+        }
+
+        // Definite-length validation
         if(frame.expected_pairs < 2 && frame.written_pairs != 0) {
             setError(CborWriterError::invalid_argument);
             return false;
@@ -886,7 +981,7 @@ public:
 
     // After finishing an array element / a map value
     bool advance_after_value(ArrayFrame& frame) {
-        if (frame.written >= frame.expected_size) {
+        if (!frame.indefinite && frame.written >= frame.expected_size) {
             setError(CborWriterError::invalid_argument);
             return false;
         }
@@ -900,7 +995,7 @@ public:
             setError(CborWriterError::invalid_argument);
             return false;
         }
-        if (frame.written_pairs >= frame.expected_pairs) {
+        if (!frame.indefinite && frame.written_pairs >= frame.expected_pairs) {
             setError(CborWriterError::invalid_argument);
             return false;
         }
@@ -960,7 +1055,7 @@ public:
         if(null_terminated) {
             size = 0;
             const char * d = data;
-            while(d != 0) {
+            while(*d != '\0') {  // Fixed: dereference pointer
                 d ++;
                 size ++;
             }
@@ -981,7 +1076,7 @@ public:
 private:
     It & m_errorPos;
     It & m_current;
-    const Sent & end_;
+    Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
     error_type       err_ = CborWriterError::none;
 
     void setError(error_type e) noexcept {
@@ -1166,5 +1261,6 @@ private:
         return write_bytes(buf, 8);
     }
 };
+static_assert(writer::WriterLike<CborWriter<std::uint8_t*, std::uint8_t*>>);
 
 } // namespace JsonFusion

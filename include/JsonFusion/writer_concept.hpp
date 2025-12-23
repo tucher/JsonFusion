@@ -37,6 +37,9 @@ concept WriterLike = requires(R writer,
     { mutable_writer.write_map_begin(sizeRef, mapFrameRef) } -> std::same_as<bool>;
     
     // Containers
+
+    // IMPORTANT: Call this BETWEEN elements, not after the each element.
+    /// Think of it as "write a separator before the next value."
     { mutable_writer.advance_after_value(arrFrameRef) } -> std::same_as<bool>;
     { mutable_writer.advance_after_value(mapFrameRef) } -> std::same_as<bool>;
     { mutable_writer.move_to_value(mapFrameRef) } -> std::same_as<bool>;
@@ -45,16 +48,17 @@ concept WriterLike = requires(R writer,
     { mutable_writer.write_array_end(arrFrameRef) } -> std::same_as<bool>;
     { mutable_writer.write_map_end(mapFrameRef) } -> std::same_as<bool>;
 
-    // ========== Primitive Value Parsing ==========
-    // Null parsing
+    // ========== Primitive Value Writing ==========
+    // Null writing
     { mutable_writer.write_null() } -> std::same_as<bool>;
     
-    // Boolean parsing
+    // Boolean writing
     { mutable_writer.write_bool(bool_ref) } -> std::same_as<bool>;
     
     { mutable_writer.template write_number<int>(int_ref) } -> std::same_as<bool>;
     { mutable_writer.template write_number<double>(double_ref) } -> std::same_as<bool>;
     
+    // String writing (data pointer, size, null_terminated flag)
     { mutable_writer.write_string(char_ptr, size, false) } -> std::same_as<bool>;
     
 
@@ -65,11 +69,11 @@ concept WriterLike = requires(R writer,
     
   };
 
-/// Type trait to check if a type satisfies ReaderLike at compile time
+/// Type trait to check if a type satisfies WriterLike at compile time
 template<typename R>
 constexpr bool is_writer_like_v = WriterLike<R>;
 
 
-} // namespace reader
+} // namespace writer
 
 }

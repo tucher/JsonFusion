@@ -46,7 +46,7 @@ public:
 
     using error_type = JsonIteratorReaderError;
 
-    constexpr JsonIteratorReader(It & first, const Sent & last)
+    constexpr JsonIteratorReader(It & first, Sent last)
         : m_error(JsonIteratorReaderError::NO_ERROR), current_(first), end_(last) {}
 
 
@@ -908,7 +908,7 @@ private:
     JsonIteratorReaderError m_error;
     It & current_;
     It m_errorPos;
-    const Sent & end_;
+    Sent end_;
 
 
 
@@ -1434,12 +1434,12 @@ public:
     }
     It & m_errorPos;
     It & m_current;
-    const Sent & end_;
+    Sent end_;
     constexpr It & current() {
         return m_current;
     }
     std::size_t m_float_decimals=8;
-    constexpr JsonIteratorWriter(It & first, const Sent & last, std::size_t float_decimals=8)
+    constexpr JsonIteratorWriter(It & first, Sent last, std::size_t float_decimals=8)
         : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last), m_float_decimals(float_decimals) {}
 
     constexpr bool write_array_begin(const std::size_t &, ArrayFrame&) {

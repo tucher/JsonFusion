@@ -875,7 +875,9 @@ constexpr auto ParseWithReader(InputObjectT & obj, Reader & reader, UserCtx * us
     parser_details::ParseValue<typename Meta::options>(Meta::getRef(obj), reader, ctx, userCtx);
 
     if(ctx.currentError() == ParseError::NO_ERROR) {
-        reader.finish();
+        if(!reader.finish()) {
+            ctx.withReaderError(reader);
+        }
     }
     return ctx.result();
 }

@@ -29,7 +29,7 @@ enum class SerializeError {
     SCHEMA_VALIDATION_ERROR
 };
 
-template <CharOutputIterator OutIter, class WriterError>
+template <class OutIter, class WriterError>
 class SerializeResult {
     SerializeError m_error = SerializeError::NO_ERROR;
     WriterError m_writerError{};
@@ -57,7 +57,7 @@ public:
 namespace  serializer_details {
 
 
-template <CharOutputIterator OutIter, class WriterError>
+template <class OutIter, class WriterError>
 class SerializationContext {
 
     SerializeError error = SerializeError::NO_ERROR;
@@ -84,6 +84,7 @@ public:
         m_pos = writer.current();
         return false;
     }
+    constexpr SerializeError currentError(){return error;}
 
     constexpr SerializeResult<OutIter, WriterError> result() const {
         return SerializeResult<OutIter, WriterError>(error, writerError, _validationCtx.result(), m_pos);
@@ -502,6 +503,12 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
     using Meta = options::detail::annotation_meta_getter<InputObjectT>;
 
     serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), writer, ctx, userCtx);
+    if(ctx.currentError() == SerializeError::NO_ERROR) {
+        if(!writer.finish()) {
+            ctx.withWriterError(writer);
+        }
+    }
+
     return ctx.result();
 }
 

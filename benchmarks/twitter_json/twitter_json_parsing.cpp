@@ -11,7 +11,7 @@
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/error_formatting.hpp>
 #include <JsonFusion/serializer.hpp>
-#include <JsonFusion/yyjson_reader.hpp>
+#include <JsonFusion/yyjson.hpp>
 #include <JsonFusion/generic_streamer.hpp>
 #include <JsonFusion/cbor.hpp>
 #include <rapidjson/document.h>
@@ -209,7 +209,10 @@ int main(int argc, char* argv[]) {
                 throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
             }
             // std::cout << "CBOR size: " << cbor_out_ref.size() << std::endl;
-
+            // {
+            //     std::ofstream ostrm("twitter.cbor", std::ios::binary);
+            //     ostrm.write(cbor_out_ref.data(), cbor_out_ref.size());
+            // }
 
             TwitterData modelFromCBOR;
             benchmark("JsonFusion CBOR parsing", iterations, [&]() {
@@ -220,6 +223,7 @@ int main(int argc, char* argv[]) {
                 auto res = JsonFusion::ParseWithReader(modelFromCBOR, reader);
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+                    std::cerr << int(res.readerError()) << std::endl;
                     throw std::runtime_error(std::format("JsonFusion parse error"));
                 }
 
@@ -237,12 +241,44 @@ int main(int argc, char* argv[]) {
                 }
 
             });
-
-            // std::cout << "Statuses count: " << modelFromCBOR.statuses->size() << std::endl;
+            if(modelFromCBOR.statuses->size() != 100) {
+                std::cout << "Statuses count: " << modelFromCBOR.statuses->size() << std::endl;
+            }
             std::cout << "\n--Serialization--\n";
 
             std::string serialize_buffer;
             serialize_buffer.resize(10000000);
+
+            std::size_t final_size = 0;
+
+            benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
+
+                yyjson_read_err err;
+                yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
+                if (!doc) {
+                    return false;
+                }
+                YyjsonWriter writer(doc);
+                auto res = JsonFusion::SerializeWithWriter(model, writer);
+                if( !res) {
+                    std::cerr << std::format("JsonFusion serialize error") << std::endl;
+                    yyjson_mut_doc_free(doc);
+                    return false;
+                } else {
+                    size_t len = 0;
+                    char* json = yyjson_mut_write(doc, 0, &len);
+                    if (!json) {
+                        throw std::runtime_error(std::format("yyson yyjson_mut_write error"));
+                        return false;
+                    }
+                    std::free(json);
+                    final_size = len;
+                    yyjson_mut_doc_free(doc);
+                    return true;
+                }
+                return false;
+            });
+            // std::cout << "yyjson serialized size: " << final_size << std::endl;
 
             benchmark("JsonFusion serializing", iterations, [&]() {
                 char *d = serialize_buffer.data();
