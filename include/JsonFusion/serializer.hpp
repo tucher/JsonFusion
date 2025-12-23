@@ -11,6 +11,7 @@
 #include "struct_introspection.hpp"
 #include "static_schema.hpp"
 #include "struct_fields_helper.hpp"
+#include "validators.hpp"
 
 
 #include "options.hpp"
@@ -24,7 +25,8 @@ enum class SerializeError {
     NO_ERROR,
     INPUT_STREAM_ERROR,
     TRANSFORMER_ERROR,
-    WRITER_ERROR
+    WRITER_ERROR,
+    SCHEMA_VALIDATION_ERROR
 };
 
 template <CharOutputIterator OutIter, class WriterError>
@@ -32,9 +34,10 @@ class SerializeResult {
     SerializeError m_error = SerializeError::NO_ERROR;
     WriterError m_writerError{};
     OutIter m_pos;
+    ValidationResult validationResult;
 public:
-    constexpr SerializeResult(SerializeError err, WriterError werr, OutIter pos):
-        m_error(err), m_writerError(werr), m_pos(pos)
+    constexpr SerializeResult(SerializeError err, WriterError werr, ValidationResult schemaErrors, OutIter pos):
+        m_error(err), m_writerError(werr), m_pos(pos), validationResult(schemaErrors)
     {}
     constexpr operator bool() const {
         return m_error == SerializeError::NO_ERROR;
@@ -60,11 +63,13 @@ class SerializationContext {
     SerializeError error = SerializeError::NO_ERROR;
     WriterError writerError{};
     OutIter & m_pos;
+    validators::validators_detail::ValidationCtx _validationCtx;
 
 public:
     constexpr SerializationContext(OutIter & it): m_pos(it){}
     template<class Writer>
     constexpr bool withWriterError(Writer & writer) {
+        error = SerializeError::WRITER_ERROR;
         writerError = writer.getError();
         m_pos = writer.current();
         return false;
@@ -81,14 +86,28 @@ public:
     }
 
     constexpr SerializeResult<OutIter, WriterError> result() const {
-        return SerializeResult<OutIter, WriterError>(error, writerError, m_pos);
+        return SerializeResult<OutIter, WriterError>(error, writerError, _validationCtx.result(), m_pos);
     }
+
+    constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    constexpr bool withSchemaError(writer::WriterLike auto & writer) {
+        error = SerializeError::SCHEMA_VALIDATION_ERROR;
+        m_pos = writer.current();
+        return false;
+    }
+
+
 };
 
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonBool<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+    // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
+    //     return ctx.withSchemaError(writer);
+    // }
+
     if(!writer.write_bool(obj)) {
         return ctx.withWriterError(writer);
     }
@@ -99,6 +118,11 @@ constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
     requires static_schema::JsonNumber<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+
+    // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::number_parsing_finished>(obj, ctx.validationCtx())) {
+    //     return ctx.withSchemaError(writer);
+    // }
 
     if(!writer.write_number(obj)) {
         return ctx.withWriterError(writer);
@@ -111,12 +135,27 @@ template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class Us
     requires static_schema::JsonString<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
+    // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+
+
     if constexpr(static_schema::DynamicContainerTypeConcept<ObjT>) {
+        // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+
+        //                                                                                                                     std::string_view(obj.data(), obj.data() + obj.size()))) {
+        //     return ctx.withSchemaError(writer);
+        // }
+
         if(!writer.write_string(obj.data(), obj.size())) {
             return ctx.withWriterError(writer);
         }
 
     } else {
+        // const char * b = static_schema::static_string_traits<ObjT>::data(obj);
+        // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+        //        std::string_view(b))) {
+        //     return ctx.withSchemaError(writer);
+        // }
+
         if(!writer.write_string(static_schema::static_string_traits<ObjT>::data(obj),
                                  static_schema::static_string_traits<ObjT>::max_size(obj), true)) {
             return ctx.withWriterError(writer);
