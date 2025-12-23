@@ -75,6 +75,7 @@ JsonFusion::Serialize(conf, output);
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
   - [Supported Options](#supported-options-include)
 - [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
+- [CBOR Support](#cbor-support)
 - [Benchmarks](#benchmarks)
 - [Custom Types & Transformers](#custom-types--transformers)
 - [Advanced Features](#advanced-features)
@@ -541,6 +542,31 @@ However, **you trade JsonFusion's design philosophy (streaming, zero-allocation,
 reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some
 architecture-specific optimizations.
 
+
+## CBOR Support
+
+JsonFusion supports **CBOR (RFC 8949)** with the same guarantees as JSON:
+- ✅ Forward-only, byte-by-byte streaming (no seek, no buffering)
+- ✅ Zero runtime, zero allocations
+- ✅ Same features: validation, transformers, streaming, constexpr
+
+Examples could be found in  [`code size benchmarks`](benchmarks/embedded/code_size/parse_config_cbor.cpp) 
+
+**Usage:**
+
+```cpp
+#include <JsonFusion/cbor.hpp>
+
+// Parsing
+Config config;
+
+JsonFusion::CborReader reader(begin, end);
+auto result = JsonFusion::ParseWithReader(config, reader);
+
+// Serialization
+JsonFusion::CborWriter writer(out_begin, out_end);
+JsonFusion::SerializeWithWriter(config, writer);
+```
 
 ## Benchmarks
 
