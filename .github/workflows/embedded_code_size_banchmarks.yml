@@ -1,0 +1,70 @@
+name: Embedded code size benchmarks
+
+on:
+  push:
+    branches:
+      - master
+jobs:
+  run-benchmarks:
+    runs-on: ubuntu-latest
+   
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 wget tar xz-utils
+
+      - name: Install ARM GCC (xPack)
+        run: |
+          # Pick a specific xPack version
+          TOOLCHAIN_VERSION=13.2.1-1.1
+          ARCHIVE="xpack-arm-none-eabi-gcc-${TOOLCHAIN_VERSION}-linux-x64.tar.gz"
+          URL="https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${TOOLCHAIN_VERSION}/${ARCHIVE}"
+
+          mkdir -p "$HOME/xpack"
+          cd "$HOME/xpack"
+
+          echo "Downloading ${URL} ..."
+          wget -q "${URL}"
+
+          echo "Extracting ${ARCHIVE} ..."
+          tar -xzf "${ARCHIVE}"
+          rm "${ARCHIVE}"
+
+          # Archive unpacks into a directory named like:
+          #   xpack-arm-none-eabi-gcc-13.2.1-1.1
+          TOOLCHAIN_DIR=$(echo xpack-arm-none-eabi-gcc-*)
+
+          echo "Toolchain dir: ${TOOLCHAIN_DIR}"
+          echo "$HOME/xpack/${TOOLCHAIN_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Check ARM GCC
+        run: |
+          which arm-none-eabi-gcc || echo "arm-none-eabi-gcc not found in PATH"
+          arm-none-eabi-gcc --version
+      - name: Run benchmarks
+        run: |
+          mkdir -p ci_out
+
+          # capture both stdout and stderr
+          python3 benchmarks/embedded/code_size/build.py 2>&1 | tee ci_out/benchmarks.log
+
+      - name: Attach benchmark log to job summary
+        run: |
+          {
+            echo '## JsonFusion embedded code size benchmarks'
+            echo
+            echo 'Last run:'
+            echo
+            echo '```'
+            sed -n '1,200p' ci_out/benchmarks.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload full benchmark log as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-log
+          path: ci_out/benchmarks.log
