@@ -844,8 +844,8 @@ JsonFusion::Serialize(event, json);
 
 ### Constexpr Parsing & Serialization
 
-For models using compatible containers (`std::string`, `std::vector` are compatible) and  types (everything except FP numbers), both
-`Parse` and `Serialize` are fully `constexpr`-compatible. This enables compile-time JSON 
+For models using compatible containers (`std::string`, `std::vector` are compatible) both
+`Parse` and `Serialize` are fully `constexpr`-compatible, as long as your c++ standard library is modern enough. This enables compile-time JSON 
 validation, zero-cost embedded configs, and proves no hidden allocations or runtime 
 dependencies. See the compile-time test suite [`tests/constexpr/*`](tests/constexpr) for 
 examples with nested structs, arrays, and optionals.
@@ -953,8 +953,9 @@ You manually maintain state and assemble typed objects yourself.
 - JsonFusion parses each element into a **fully-typed C++ object**
 - Your callbacks receive complete, validated structures—not raw tokens
 - The abstraction **composes naturally**—streamers can contain structs, which contain other streamers
-- API to pass local (both at types and runtime level) typed context pointer
+- API to pass local (both at types and runtime level) typed context pointer.
 No need to use any global variables/singletons
+- Mappings streamers are also available, to stream key-value pairs in both directions.
 
 **Unified mechanism:**
 - **Producers**: `read()` fills elements on demand (serialization)
@@ -1040,14 +1041,29 @@ This is fundamentally different from traditional SAX:
 
 ### Compile-Time Testing
 
-JsonFusion's core is tested primarily through `constexpr` tests—JSON parsing and serialization executed entirely at **compile time** using
-`static_assert`. No test framework, no runtime: the compiler is the test runner.
+Nearly the whole JsonFusion's test suite is `constexpr`-only: JSON parsing and serialization run entirely at **compile time** and are verified with `static_assert`. There is no test framework and no runtime harness — the compiler *is* the test runner.
 
-**Why constexpr tests:**
-- **Proves zero hidden allocations**: If it compiles in `constexpr`, no hidden unsafe dynamic allocation happened
-- **Validates correctness before any runtime**: Catches bugs at compile time
-- **Tests the actual user-facing API**: Same `Parse`/`Serialize` calls users make
+**What this gives you:**
 
+- **Stronger guarantees about core logic**  
+  The parts of the library that are marked `constexpr` must be usable in constant evaluation: no hidden global state, no I/O, no thread-local caches, no “only works at runtime” tricks. If any of that sneaks in, the tests simply stop compiling.
+
+- **Early, compiler-enforced validation**  
+  Many bugs (wrong return types, broken invariants, incorrect parsing/serialization of edge cases) are caught as compile errors via `static_assert`, before you ever run a binary.
+
+- **Tests the real public API**  
+  The tests call the same `Parse` / `Serialize` functions users do. There’s no special “test mode” or backdoor.
+
+- **Good pressure towards “allocation-light” designs**  
+  While C++ now allows allocations in `constexpr`, JsonFusion’s core is written so that most schema plumbing works with fixed-size storage and trivial types. If core internals started to rely on non–`constexpr` dynamic allocation, the compile-time tests would start failing, which keeps the implementation honest.
+
+- **Very small, very robust test harness**  
+  Many tests are just:  
+  1. Define a model  
+  2. Parse/serialize in `constexpr`  
+  3. `static_assert` on the result  
+
+  A simple bash script that compiles all test translation units is enough — no test framework, no runner, no fixture boilerplate.
 
 **Example** (this runs at compile time):
 ```cpp
