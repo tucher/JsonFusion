@@ -201,7 +201,7 @@ struct EmbeddedConfigSmall {
     using StaticModel  = EmbeddedConfigStatic;
     using DynamicModel = EmbeddedConfigDynamic;
 
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     // choose one default "json" – we can add more fields if needed
 
@@ -209,7 +209,7 @@ struct EmbeddedConfigSmall {
 
 struct TelemetrySample {
     static constexpr std::string_view name = "TelemetrySample";
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     static constexpr std::string_view json = R"JSON(
         {
@@ -363,7 +363,7 @@ struct TelemetrySample {
 struct RPCCommand {
     static constexpr std::string_view name = "RPC Command";
 
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     static constexpr std::string_view json = R"JSON(
         {
@@ -479,7 +479,7 @@ struct RPCCommand {
 struct LogEvent {
     static constexpr std::string_view name = "Log events";
 
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     static constexpr std::string_view json = R"JSON(
     [
@@ -587,7 +587,7 @@ struct LogEvent {
 struct BusEvents_MessagePayloads {
     static constexpr std::string_view name = "Bus Events / Message Payloads";
 
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     static constexpr std::string_view json = R"JSON(
      [
@@ -743,7 +743,7 @@ struct BusEvents_MessagePayloads {
 struct MetricsTimeSeries {
     static constexpr std::string_view name = "Metrics / Time-Series Samples";
 
-    static constexpr std::size_t iter_count = 1000000;
+    static constexpr std::size_t iter_count = 100000;
 
     static constexpr std::string_view json = R"JSON(
 [
