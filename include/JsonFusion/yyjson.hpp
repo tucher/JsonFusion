@@ -1,5 +1,5 @@
 #pragma once
-#include <yyjson/yyjson.h>
+#include <yyjson.h>
 #include <cstring>
 #include <vector>
 #include <cstdint>

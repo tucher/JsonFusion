@@ -1,4 +1,4 @@
-#include <yyjson/yyjson.h>
+#include <yyjson.h>
 #include <string>
 #include "benchmark.hpp"
 

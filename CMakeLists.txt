@@ -10,7 +10,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(FetchContent)
 
 # Fetch RapidJSON
-message(STATUS "Fetching RapidJSON...")
 FetchContent_Declare(
   rapidjson
   GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
@@ -24,10 +23,8 @@ set(RAPIDJSON_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(RAPIDJSON_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(rapidjson)
-message(STATUS "RapidJSON fetched successfully")
 
 # Fetch reflect-cpp
-message(STATUS "Fetching reflect-cpp...")
 FetchContent_Declare(
   reflectcpp
   GIT_REPOSITORY https://github.com/getml/reflect-cpp.git
@@ -40,10 +37,8 @@ set(REFLECTCPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(REFLECTCPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(reflectcpp)
-message(STATUS "reflect-cpp fetched successfully")
 
 # Fetch Glaze
-message(STATUS "Fetching Glaze...")
 FetchContent_Declare(
   glaze
   GIT_REPOSITORY https://github.com/stephenberry/glaze.git
@@ -55,9 +50,19 @@ FetchContent_Declare(
 set(glaze_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glaze)
-message(STATUS "Glaze fetched successfully")
 # Single include directory containing both JsonFusion/ and pfr/
+
 include_directories(${PROJECT_SOURCE_DIR}/include)
+
+
+FetchContent_Declare(
+    yyjson
+    GIT_REPOSITORY https://github.com/ibireme/yyjson.git
+    GIT_TAG        master   # or a specific tag like v0.10.0
+)
+
+FetchContent_MakeAvailable(yyjson)
+set(YYJSON_SRC_DIR "${yyjson_SOURCE_DIR}/src")
 
 
 file(GLOB JSON_FUSION
@@ -83,11 +88,10 @@ file(GLOB JSON_FUSION
 
 add_executable(consteval_tests
     tests/consteval_tests.cpp
-    include/yyjson/yyjson.c
-
     ${JSON_FUSION}
-
 )
+target_link_libraries(consteval_tests PRIVATE yyjson)
+
 add_executable(sax_demo
     tests/sax_demo.cpp
     ${JSON_FUSION}
@@ -99,12 +103,9 @@ add_executable(canada_json_parsing
     benchmarks/canada_json/canada_json_parsing.hpp
     benchmarks/canada_json/canada_json_parsing_rapidjson.cpp
     benchmarks/canada_json/canada_json_parsing_glaze.cpp
-
-    include/yyjson/yyjson.c
-
     ${JSON_FUSION}
-
 )
+
 
 target_compile_options(canada_json_parsing PRIVATE
   $<$<CONFIG:Release>:
@@ -134,7 +135,7 @@ target_include_directories(canada_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
-target_link_libraries(canada_json_parsing PRIVATE glaze::glaze)
+target_link_libraries(canada_json_parsing PRIVATE glaze::glaze yyjson)
 
 
 
@@ -179,6 +180,7 @@ target_link_options(benchmarks PRIVATE
   >
 )
 
+target_link_libraries(benchmarks PRIVATE yyjson)
 
 add_executable(twitter_json_parsing
     benchmarks/twitter_json/twitter_model_generic.hpp
@@ -191,7 +193,6 @@ add_executable(twitter_json_parsing
     benchmarks/twitter_json/twitter_json_parsing_glaze.cpp
     benchmarks/twitter_json/benchmark.hpp
     benchmarks/twitter_json/twiiter_json_parsing_yyjson.cpp
-    include/yyjson/yyjson.c
     ${JSON_FUSION}
 
 )
@@ -200,7 +201,7 @@ target_include_directories(twitter_json_parsing PRIVATE
 )
 
 # Link reflect-cpp and Glaze for benchmarking
-target_link_libraries(twitter_json_parsing PRIVATE reflectcpp glaze::glaze)
+target_link_libraries(twitter_json_parsing PRIVATE reflectcpp glaze::glaze yyjson)
 
 target_compile_options(twitter_json_parsing PRIVATE
   $<$<CONFIG:Release>:
