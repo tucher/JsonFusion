@@ -11,6 +11,9 @@ mkdir -p "$TMP_DIR"
 echo "Running JsonFusion constexpr tests..."
 echo "======================================="
 
+: ${CXX:=g++}
+$CXX -v
+
 PASS=0
 FAIL=0
 WARNINGS=0
@@ -23,7 +26,7 @@ if [ -f "$STRUCTURAL_TEST" ]; then
     category="concepts"
     printf "%-20s %-20s ... " "$category" "$test_name"
     
-    if g++ -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
+    if $CXX -std=c++23 -stdlib=libc++ -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
         echo "❌ FAIL"
         echo ""
         echo "============================================================"
@@ -63,7 +66,7 @@ run_test() {
     test_name=$(basename "$test_file" .cpp)
     category=$(basename $(dirname "$test_file"))
     
-    if g++ -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
+    if $CXX -std=c++23 -stdlib=libc++ -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
         if grep -q "warning:" "$TMP_DIR/$test_name.log"; then
             echo "WARN|$category|$test_name"
         else
