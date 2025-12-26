@@ -4,13 +4,6 @@ on:
   # Manual trigger
   workflow_dispatch:
   # Optional: run on pushes to main / tags
-  push:
-    branches: [ main ]
-    paths:
-      - 'include/**'
-      - 'benchmarks/**'
-      - 'CMakeLists.txt'
-      - '.github/workflows/benchmarks.yml'
 
 jobs:
   run-benchmarks:

@@ -1,0 +1,24 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  constexpr-tests:
+    runs-on: ubuntu-latest
+
+    # Same container approach as your benchmark workflow
+    container:
+      image: gcc:15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run constexpr test suite
+        working-directory: tests/constexpr
+        run: |
+          chmod +x ./run_tests.sh
+          ./run_tests.sh
