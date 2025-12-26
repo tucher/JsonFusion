@@ -1,4 +1,5 @@
 # JsonFusion
+[![Constexpr Tests](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml)
 
 Parse JSON directly into your structs with validation and no glue code.
 
