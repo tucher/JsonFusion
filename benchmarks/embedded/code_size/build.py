@@ -7,6 +7,7 @@ Measures code footprint of different JSON libraries on a realistic embedded targ
 import argparse
 import subprocess
 import sys
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -115,7 +116,7 @@ LIBRARIES = [
         name="ArduinoJson",
         source_file="parse_config_arduinojson.cpp",
         description="ArduinoJson v7.2.1",
-        dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.2.1/ArduinoJson.h"],
+        dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.4.2/ArduinoJson-v7.4.2.h"],
     ),
     Library(
         name="jsmn",
@@ -193,7 +194,8 @@ class EmbeddedBenchmark:
         self.includes = [
             f"-I{self.project_root}/include",
             f"-I{self.script_dir}",
-            f"-I{self.script_dir}/libs",  # For downloaded headers
+            f"-I{self.script_dir}/libs",  # For downloaded headers (ArduinoJson, jsmn, cJSON)
+            f"-I{self.script_dir}/libs/glaze/include",  # For Glaze library
         ]
         self.results: Dict[str, Dict[str, int]] = {}  # config -> {lib: text_size}
     
@@ -227,6 +229,31 @@ class EmbeddedBenchmark:
         libs_dir.mkdir(exist_ok=True)
         
         for lib in LIBRARIES:
+            # Special handling for Glaze - clone entire repository
+            if lib.name == "Glaze":
+                glaze_dir = libs_dir / "glaze"
+                if glaze_dir.exists():
+                    print(f"✓ Glaze library already exists at {glaze_dir}")
+                else:
+                    print("Downloading Glaze library from GitHub...")
+                    try:
+                        # Clone the repository
+                        result = subprocess.run(
+                            ["git", "clone", "--depth", "1", 
+                             "https://github.com/stephenberry/glaze.git", 
+                             str(glaze_dir)],
+                            capture_output=True,
+                            text=True
+                        )
+                        if result.returncode != 0:
+                            print(Colors.red(f"✗ Failed to clone Glaze: {result.stderr}"))
+                            sys.exit(1)
+                        print(Colors.green(f"✓ Downloaded Glaze library"))
+                    except Exception as e:
+                        print(Colors.red(f"✗ Failed to download Glaze: {e}"))
+                        sys.exit(1)
+                continue
+            
             for dep in lib.dependencies:
                 if dep.startswith("http"):
                     # Extract filename from URL
@@ -243,6 +270,20 @@ class EmbeddedBenchmark:
                         except Exception as e:
                             print(Colors.red(f"✗ Failed to download {filename}: {e}"))
                             sys.exit(1)
+                    
+                    # Special handling for ArduinoJson - create ArduinoJson.h from versioned file
+                    if "ArduinoJson" in filename and filename != "ArduinoJson.h":
+                        arduino_header = libs_dir / "ArduinoJson.h"
+                        if not arduino_header.exists():
+                            print(f"Creating ArduinoJson.h from {filename}...")
+                            try:
+                                shutil.copy(dest_path, arduino_header)
+                                print(Colors.green(f"✓ Created ArduinoJson.h"))
+                            except Exception as e:
+                                print(Colors.red(f"✗ Failed to create ArduinoJson.h: {e}"))
+                                sys.exit(1)
+                        else:
+                            print(f"✓ ArduinoJson.h already exists")
         print()
     
     def compile(self, lib: Library, config: BuildConfig) -> Path:
