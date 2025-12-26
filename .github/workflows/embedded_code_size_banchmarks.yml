@@ -59,7 +59,7 @@ jobs:
             echo 'Last run:'
             echo
             echo '```'
-            sed -n '1,200p' ci_out/benchmarks.log
+            tail -n 20 ci_out/benchmarks.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
