@@ -1,4 +1,4 @@
-name: Tests
+name: Constexpr Tests
 
 on:
   push:
