@@ -560,12 +560,16 @@ a hack – C++26 is expected to standardize native reflection, making this appro
 
 ### Binary Size (Embedded Focus)
 
-Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cortex-M0+** (resource-constrained 32-bit MCUs) using a realistic embedded workload: parsing **two distinct JSON message types**—a configuration object and an RPC command structure—with nested objects, arrays, validation constraints, and optional fields.
+JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** (STM32, SAMV7) and **ESP32** (Xtensa LX6). All tests use a realistic workload: parsing **two distinct JSON message types**—a configuration object and an RPC command structure—with nested objects, arrays, validation constraints, and optional fields.
 
 **What we're measuring:** Complete workflow for **two models**: **parse JSON + populate structs + validate constraints**. This simulates real embedded systems that handle multiple message types (config, commands, telemetry, etc.).
 
 📁 **Benchmark**: [`benchmarks/embedded/code_size/`](benchmarks/embedded/code_size/)  
 📁 **Models**: [`embedded_config.hpp`](benchmarks/embedded/code_size/embedded_config.hpp) (EmbeddedConfig + RpcCommand)
+
+---
+
+#### ARM Cortex-M (STM32, SAMV7, etc.)
 
 **Test Setup:**
 - **Compiler**: `arm-none-eabi-gcc 14.2.1`
@@ -577,8 +581,8 @@ Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cor
 
 **Results (`.text` section - code size in flash):**
 
-| Library                             | M7 -O3  | M7 -Os  | M0+ -O3 | M0+ -Os |
-|-------------------------------------|---------|---------|---------|---------|
+| Library                             | M7 -O3      | M7 -Os      | M0+ -O3     | M0+ -Os     |
+|-------------------------------------|-------------|-------------|-------------|-------------|
 | **JsonFusion**                      | **23.7 KB** | **16.5 KB** | **31.1 KB** | **21.0 KB** |
 | ArduinoJson                         |   42.0 KB   |   15.5 KB   |   54.2 KB   |   23.9 KB   |
 | jsmn                                |   21.8 KB   |   19.6 KB   |   32.0 KB   |   29.0 KB   |
@@ -605,6 +609,44 @@ Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cor
    Manual C code (jsmn, cJSON) barely compresses (~10-15%) because each type gets unique hand-written functions that don't deduplicate. JsonFusion's shared Reader infrastructure + type-specific dispatch compresses well.
 
 5. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
+
+---
+
+#### ESP32 (Xtensa LX6)
+
+**Test Setup:**
+- **Compiler**: `xtensa-esp-elf-gcc 14.2.0`
+- **Target**: ESP32 (Xtensa LX6 architecture)
+- **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
+- **Linking**: `-Wl,--gc-sections -flto`
+
+**TL;DR:** ✅ **JsonFusion is smallest on ESP32 (18.5 KB)** — 65% smaller than ArduinoJson, 47% smaller than jsmn/cJSON.
+
+**Results (`.text` section - code size in flash):**
+
+| Library                             | ESP32 -O3   | ESP32 -Os   |
+|-------------------------------------|-------------|-------------|
+| **JsonFusion**                      | **29.0 KB** | **18.5 KB** |
+| ArduinoJson                         |   80.3 KB   |   53.0 KB   |
+| jsmn                                |   37.7 KB   |   34.6 KB   |
+| cJSON                               |   34.9 KB   |   33.4 KB   |
+| JsonFusion CBOR (parse + serialize) |   41.0 KB   |   25.7 KB   |
+
+**Key Takeaways:**
+
+1. **JsonFusion dominates on ESP32:**
+   - **18.5 KB** with `-Os` — smallest of all libraries
+   - **65% smaller** than ArduinoJson (53.0 KB)
+   - **47% smaller** than jsmn/cJSON (~34 KB)
+
+2. **Cross-platform consistency:**
+   - **ARM M7**: 16.5 KB
+   - **ESP32**: 18.5 KB (+12%)
+   - **ARM M0+**: 21.0 KB (+27%)
+
+3. **CBOR overhead remains reasonable:** 25.7 KB for full parse + serialize support (39% larger than JSON-parse-only)
+
+---
 
 #### Bonus: 8-bit AVR Support
 
