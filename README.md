@@ -64,6 +64,7 @@ JsonFusion::Serialize(conf, output);
 ## Table of Contents
 
 - [Installation](#installation)
+- [Quick Start](#quick-start)
 - [Main Features](#main-features)
 - [Design Goals (and Tradeoffs)](#design-goals-and-tradeoffs)
 - [Zero Runtime Subsystem](#zero-runtime-subsystem)
@@ -84,7 +85,7 @@ JsonFusion::Serialize(conf, output);
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
   - [Compile-Time Testing](#compile-time-testing)
-- [Limitations](#limitations)
+- [Limitations and When NOT to Use](#limitations-and-when-not-to-use)
 
 
 ## Installation
@@ -98,6 +99,27 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 - **C++23** or later
 - **Compiler: GCC 14 and newer+** (other compilers not currently supported)
 - **Boost.PFR** (bundled into `/include`, no separate installation needed)
+
+## Quick Start
+
+Try JsonFusion in 30 seconds:
+
+```bash
+git clone https://github.com/tucher/JsonFusion.git
+cd JsonFusion
+g++ -std=c++23 -I./include examples/basic_usage.cpp -o basic_usage && ./basic_usage
+```
+
+**Output:**
+```
+Successfully parsed!
+App: MyApp
+Version: 1
+Debug: ON
+Server: localhost:8080
+```
+
+📁 **See the code:** [`examples/basic_usage.cpp`](examples/basic_usage.cpp)  
 
 ## Main features
 
@@ -1094,9 +1116,10 @@ This approach aligns with JsonFusion's philosophy: leverage compile-time introsp
 
 📁 **Test suite details**: [`tests/constexpr/README.md`](tests/constexpr/README.md)
 
-## Limitations
+## Limitations and When NOT to Use
 
-- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable
+- **Requires GCC 14 or newer**. Other compilers (MSVC, Clang, older GCC versions) are not currently supported due to template instantiation complexity and performance characteristics.
+- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable.
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
 - **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
 - **Floating-point numbers handling**: JsonFusion uses an in-house constexpr-compatible FP parser/serializer by default (`JSONFUSION_FP_BACKEND=0`). While tested for correctness and sufficient for typical use cases, it is not as precise or fast as state-of-the-art implementations like fast_float. For applications with extreme FP requirements, the backend is swappable—see [docs/FP_BACKEND_ARCHITECTURE.md](docs/FP_BACKEND_ARCHITECTURE.md) for details on alternative backends or implementing custom FP handling.
