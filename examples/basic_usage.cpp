@@ -2,6 +2,7 @@
 // Compile: g++ -std=c++23 -I../include basic_usage.cpp -o basic_usage
 
 #include <JsonFusion/parser.hpp>
+#include <JsonFusion/error_formatting.hpp>
 #include <iostream>
 #include <string>
 
@@ -34,8 +35,8 @@ int main() {
     auto result = Parse(config, std::string_view(json));
     
     if (!result) {
-        std::cout << "Parse error: " << static_cast<int>(result.error()) 
-                  << " at position " << result.pos() << std::endl;
+        std::cerr << ParseResultToString<Config>(result) << std::endl;
+       
         return 1;
     }
     

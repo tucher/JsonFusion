@@ -2,6 +2,7 @@
 
 #include "options.hpp"
 #include "parse_result.hpp"
+#include <format>
 
 namespace JsonFusion {
 
