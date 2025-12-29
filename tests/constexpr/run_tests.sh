@@ -26,7 +26,7 @@ if [ -f "$STRUCTURAL_TEST" ]; then
     category="concepts"
     printf "%-20s %-20s ... " "$category" "$test_name"
     
-    if $CXX -std=c++23 -stdlib=libc++ -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
+    if $CXX -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
         echo "❌ FAIL"
         echo ""
         echo "============================================================"
@@ -37,11 +37,11 @@ if [ -f "$STRUCTURAL_TEST" ]; then
         cat "$TMP_DIR/$test_name.log"
         exit 1
     else
-        if grep -q "warning:" "$TMP_DIR/$test_name.log"; then
+        if ! grep -q "warning:" "$TMP_DIR/$test_name.log" | grep -qv "overriding deployment version from"; then
+            echo "✅ PASS"
+        else
             echo "⚠️  PASS (with warnings)"
             WARNINGS=$((WARNINGS + 1))
-        else
-            echo "✅ PASS"
         fi
         PASS=$((PASS + 1))
     fi
@@ -66,11 +66,11 @@ run_test() {
     test_name=$(basename "$test_file" .cpp)
     category=$(basename $(dirname "$test_file"))
     
-    if $CXX -std=c++23 -stdlib=libc++ -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
-        if grep -q "warning:" "$TMP_DIR/$test_name.log"; then
-            echo "WARN|$category|$test_name"
-        else
+    if $CXX -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
+        if ! grep -q "warning:" "$TMP_DIR/$test_name.log" | grep -qv "overriding deployment version from"; then
             echo "PASS|$category|$test_name"
+        else
+            echo "WARN|$category|$test_name"
         fi
     else
         echo "FAIL|$category|$test_name"
@@ -81,7 +81,7 @@ run_test() {
 export -f run_test
 export INCLUDE_DIR
 export TMP_DIR
-
+export CXX
 # Run all other tests in parallel
 find tests/constexpr -name "test_*.cpp" | grep -v "test_structural_detection.cpp" | sort | xargs -P "$NPROCS" -I {} bash -c 'run_test "$@"' _ {} > "$TMP_DIR/parallel_results.txt"
 

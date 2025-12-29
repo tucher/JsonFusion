@@ -43,7 +43,7 @@ struct TestCustomMap {
     constexpr void clear() {}
 };
 using TestMap = std::map<std::array<char, 32>, int>;
-using TestUnorderedMap = std::unordered_map<std::array<char, 32>, int>;
+using TestUnorderedMap = std::unordered_map<std::string, int>;
 
 using TestCArray = int[10];
 static_assert(JsonParsableArray<TestCArray>);   

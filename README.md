@@ -76,11 +76,11 @@ JsonFusion::Serialize(conf, output);
   - [Related Work / Comparison](#related-work--comparison)
 - [Declarative Schema and Runtime Validation](#declarative-schema-and-runtime-validation)
   - [Supported Options](#supported-options-include)
-- [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
 - [CBOR Support](#cbor-support)
 - [Benchmarks](#benchmarks)
 - [Custom Types & Transformers](#custom-types--transformers)
 - [Advanced Features](#advanced-features)
+  - [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
   - [Compile-Time Testing](#compile-time-testing)
@@ -96,7 +96,7 @@ JsonFusion is a **header-only library**. Simply copy the include/ directory into
 ### Requirements
 
 - **C++23** or later
-- Compiler: GCC 12+, Clang 13+
+- **Compiler: GCC 14 and newer+** (other compilers not currently supported)
 - **Boost.PFR** (bundled into `/include`, no separate installation needed)
 
 ## Main features
@@ -489,62 +489,6 @@ using IntDivisibleBy =
 signatures.
 
 
-## Optional high-performance yyjson backend
-
-⚠️ **IMPORTANT:** This is a **purely optional, experimental feature** for benchmarking and specific high-performance scenarios.  
-**It is NOT recommended for general use** and does **not** preserve JsonFusion's core guarantees:
-- ❌ No longer zero-allocation inside the library (yyjson allocates a DOM tree)
-- ❌ No longer streaming/forward-only (requires entire JSON in memory)
-- ❌ Adds external runtime dependency on yyjson
-
-The core JsonFusion library remains header-only and zero-allocation internally;  
-the yyjson backend is an opt-in integration layer on top of the yyjson C library.
-
----
-
-JsonFusion's parser is built around a small "reader" concept, making the low-level JSON engine pluggable. For benchmarking purposes or when you
-specifically need maximum throughput on "all JSON already in memory" workloads, you can drop in a `YyjsonReader` that adapts a `yyjson_doc` DOM to the
-same interface:
-
-```cpp
-#include <JsonFusion/yyjson_reader.hpp>
-
-yyjson_read_err err{};
-yyjson_doc* doc = yyjson_read_opts(
-    const_cast<char*>(copy.data()),
-    copy.size(),
-    0,
-    nullptr,
-    &err
-);
-yyjson_val* root = yyjson_doc_get_root(doc);
-
-JsonFusion::YyjsonReader reader(root);
-
-TwitterData model;
-
-auto res = JsonFusion::ParseWithReader(model, reader);
-yyjson_doc_free(doc);  // yyjson allocates memory internally!
-```
-
-This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine.
-However, **you trade JsonFusion's design philosophy (streaming, zero-allocation, no dependencies) for raw speed**.
-
-**Trade-offs summary:**
-
-| Feature | Iterator Reader (Default) | yyjson Reader (Optional) |
-|---------|--------------------------|-------------------------|
-| **Allocations** | ✅ Zero inside library | ❌ yyjson allocates DOM |
-| **Streaming** | ✅ Forward-only, byte-by-byte | ❌ Requires all JSON in memory |
-| **Dependencies** | ✅ None | ❌ Requires yyjson library |
-| **Input sources** | ✅ Any (files, sockets, etc.) | ❌ Contiguous memory only |
-
-
-**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the
-reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some
-architecture-specific optimizations.
-
-
 ## CBOR Support
 
 JsonFusion supports **CBOR (RFC 8949)** with the same guarantees as JSON:
@@ -675,7 +619,7 @@ constraints
 | **Bus Events / Message Payloads** | **25% faster** |
 | **Metrics / Time-Series** | **10% faster** |
 
-*Tested on Apple M1 Max, macOS 26.1, GCC 15, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static
+*Tested on Apple M1 Max, macOS 26.1, GCC 14, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static
 embedded config (optimal).*
 
 #### Key Takeaways
@@ -841,6 +785,62 @@ JsonFusion::Serialize(event, json);
 - Relationship with streaming interfaces
 
 ## Advanced Features
+
+### Optional high-performance yyjson backend
+
+⚠️ **IMPORTANT:** This is a **purely optional feature** for benchmarking and specific high-performance scenarios.  
+**It is NOT recommended for general use** and does **not** preserve JsonFusion's core guarantees:
+- ❌ No longer zero-allocation inside the library (yyjson allocates a DOM tree)
+- ❌ No longer streaming/forward-only (requires entire JSON in memory)
+- ❌ Adds external runtime dependency on yyjson
+
+The core JsonFusion library remains header-only and zero-allocation internally;  
+the yyjson backend is an opt-in integration layer on top of the yyjson C library.
+
+---
+
+JsonFusion's parser is built around a small "reader" concept, making the low-level JSON engine pluggable. For benchmarking purposes or when you
+specifically need maximum throughput on "all JSON already in memory" workloads, you can drop in a `YyjsonReader` that adapts a `yyjson_doc` DOM to the
+same interface:
+
+```cpp
+#include <JsonFusion/yyjson_reader.hpp>
+
+yyjson_read_err err{};
+yyjson_doc* doc = yyjson_read_opts(
+    const_cast<char*>(copy.data()),
+    copy.size(),
+    0,
+    nullptr,
+    &err
+);
+yyjson_val* root = yyjson_doc_get_root(doc);
+
+JsonFusion::YyjsonReader reader(root);
+
+TwitterData model;
+
+auto res = JsonFusion::ParseWithReader(model, reader);
+yyjson_doc_free(doc);  // yyjson allocates memory internally!
+```
+
+This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine.
+However, **you trade JsonFusion's design philosophy (streaming, zero-allocation, no dependencies) for raw speed**.
+
+**Trade-offs summary:**
+
+| Feature | Iterator Reader (Default) | yyjson Reader (Optional) |
+|---------|--------------------------|-------------------------|
+| **Allocations** | ✅ Zero inside library | ❌ yyjson allocates DOM |
+| **Streaming** | ✅ Forward-only, byte-by-byte | ❌ Requires all JSON in memory |
+| **Dependencies** | ✅ None | ❌ Requires yyjson library |
+| **Input sources** | ✅ Any (files, sockets, etc.) | ❌ Contiguous memory only |
+
+
+**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the
+reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some
+architecture-specific optimizations.
+
 
 ### Constexpr Parsing & Serialization
 

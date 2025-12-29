@@ -1486,7 +1486,7 @@ public:
         return true;
     }
 
-    constexpr bool write_key_as_index(const std::int64_t &int_key) {
+    __attribute__((noinline)) constexpr bool write_key_as_index(const std::int64_t &int_key) {
         char buf[fp_to_str_detail::NumberBufSize];
 
         if(m_current == end_) {
@@ -1543,7 +1543,7 @@ public:
     }
 
     template<class NumberT>
-    constexpr bool write_number(const NumberT & v){
+    __attribute__((noinline)) constexpr bool write_number(const NumberT & v){
         char buf[fp_to_str_detail::NumberBufSize];
         if constexpr (std::is_integral_v<NumberT>) {
             char* p = format_decimal_integer<NumberT>(v, buf, buf + sizeof(buf));
@@ -1599,7 +1599,7 @@ public:
         return true;
 
     }
-    constexpr bool write_string(const char * data, std::size_t size, bool null_ended = false) {
+    __attribute__((noinline)) constexpr bool write_string(const char * data, std::size_t size, bool null_ended = false) {
 
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);

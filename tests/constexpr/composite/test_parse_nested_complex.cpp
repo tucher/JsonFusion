@@ -21,17 +21,33 @@ struct Root {
 };
 
 // 3 levels: Root → containers[] → items[]
-static_assert(TestParse(
-    R"({"containers":[{"items":[{"id":1,"name":"a"},{"id":2,"name":"b"}]},{"items":[{"id":3,"name":"c"}]}]})",
-    Root{.containers={
+// WORKAROUND for GCC constexpr: construct expected value locally in lambda
+static_assert([]() constexpr {
+    Root obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(
+        R"({"containers":[{"items":[{"id":1,"name":"a"},{"id":2,"name":"b"}]},{"items":[{"id":3,"name":"c"}]}]})"));
+    if (!result) return false;
+    
+    Root expected{.containers={
         Container{.items={{1, "a"}, {2, "b"}}},
         Container{.items={{3, "c"}}}
-    }}
-));
+    }};
+    
+    return DeepEqual(obj, expected);
+}());
 
 // Empty at each level
-static_assert(TestParse(R"({"containers":[]})", Root{.containers={}}));
-static_assert(TestParse(R"({"containers":[{"items":[]}]})", Root{.containers={Container{.items={}}}}));
+static_assert(TestParse(R"({"containers":[]})", Root{{}}));
+
+// WORKAROUND for GCC constexpr: empty Container construction
+static_assert([]() constexpr {
+    Root obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(R"({"containers":[{"items":[]}]})"));
+    if (!result) return false;
+    
+    Root expected{{Container{}}};
+    return DeepEqual(obj, expected);
+}());
 
 // ============================================================================
 // Optional → Array → Optional Objects
@@ -209,14 +225,20 @@ struct DeepArrays {
 };
 
 // Valid: all constraints satisfied
-static_assert(TestParse(
-    R"({"data":[[1,2,3],[4,5],[6,7,8,9]]})",
-    DeepArrays{.data=std::vector<std::vector<A<int, range<1, 10>>>>{
+// WORKAROUND for GCC constexpr: nested vector initialization in lambda
+static_assert([]() constexpr {
+    DeepArrays obj{};
+    auto result = JsonFusion::Parse(obj, std::string_view(R"({"data":[[1,2,3],[4,5],[6,7,8,9]]})"));
+    if (!result) return false;
+    
+    DeepArrays expected{.data=std::vector<std::vector<A<int, range<1, 10>>>>{
         std::vector<A<int, range<1, 10>>>{1, 2, 3},
         std::vector<A<int, range<1, 10>>>{4, 5},
         std::vector<A<int, range<1, 10>>>{6, 7, 8, 9}
-    }}
-));
+    }};
+    
+    return DeepEqual(obj, expected);
+}());
 
 // Invalid: empty outer array (violates min_items<1>)
 static_assert(TestParseError<DeepArrays>(

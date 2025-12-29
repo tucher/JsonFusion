@@ -8,21 +8,13 @@ on:
 jobs:
   constexpr-tests:
     runs-on: ubuntu-latest
-
+    container:
+      image: gcc:14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Install LLVM 21
-        run: |
-          sudo apt-get update
-          DEBIAN_FRONTEND=noninteractive sudo apt-get install -y lsb-release wget software-properties-common gnupg
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 21
-          rm llvm.sh
-          sudo apt-get install -y libc++-21-dev libc++abi-21-dev
       - name: Run constexpr test suite
         working-directory: tests/constexpr
         run: |
           chmod +x ./run_tests.sh
-          CXX=clang++-21 ./run_tests.sh
+          ./run_tests.sh

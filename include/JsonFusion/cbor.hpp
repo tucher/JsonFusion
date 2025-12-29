@@ -9,6 +9,7 @@
 
 #include "reader_concept.hpp"
 #include "writer_concept.hpp"
+
 namespace JsonFusion {
 
 template<class It, class Sent>
@@ -57,7 +58,7 @@ public:
     // ========== Primitive Value Parsing ==========
 
     // CBOR has no whitespace; this just checks for null (simple value 22).
-    constexpr reader::TryParseStatus start_value_and_try_read_null() {
+    __attribute__((noinline)) constexpr reader::TryParseStatus start_value_and_try_read_null() {
         if (!ensure_bytes()) {
             return reader::TryParseStatus::error;
         }
@@ -74,7 +75,7 @@ public:
         return reader::TryParseStatus::no_match;
     }
 
-    constexpr reader::TryParseStatus read_bool(bool& b) {
+    __attribute__((noinline)) constexpr reader::TryParseStatus read_bool(bool& b) {
         if (!ensure_bytes()) {
             return reader::TryParseStatus::error;
         }
@@ -101,7 +102,7 @@ public:
     }
 
     template<class NumberT>
-    constexpr reader::TryParseStatus read_number(NumberT& storage) {
+    __attribute__((noinline)) constexpr reader::TryParseStatus read_number(NumberT& storage) {
         static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
                       "CborReader::read_number requires integral or floating type");
 
@@ -220,7 +221,7 @@ public:
     // Parser calls this for:
     //   - JSON-like "string values",
     //   - JSON-like "object keys" (for struct field lookup / maps).
-    constexpr reader::StringChunkResult read_string_chunk(char* out,
+    __attribute__((noinline)) constexpr reader::StringChunkResult read_string_chunk(char* out,
                                                                std::size_t capacity) {
         reader::StringChunkResult res{};
         res.status        = reader::StringChunkStatus::error;
@@ -286,7 +287,7 @@ public:
     }
 
     // Index-based keys (for indexes_as_keys).
-    constexpr bool read_key_as_index(std::size_t& out) {
+    __attribute__((noinline)) constexpr bool read_key_as_index(std::size_t& out) {
         if (!ensure_bytes()) {
             return false;
         }
@@ -317,7 +318,7 @@ public:
 
     // ========== Arrays ==========
 
-    constexpr reader::IterationStatus read_array_begin(ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr reader::IterationStatus read_array_begin(ArrayFrame& frame) {
         reader::IterationStatus ret;
         reset_value_string_state();
 
@@ -364,7 +365,7 @@ public:
     // After each element:
     //   - element has been fully parsed (cur_ is at next element or after array)
     //   - we just decrement remaining, no cursor work needed.
-    constexpr reader::IterationStatus advance_after_value(ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr reader::IterationStatus advance_after_value(ArrayFrame& frame) {
         reset_value_string_state();
 
         reader::IterationStatus ret;
@@ -402,7 +403,7 @@ public:
 
     // ========== Objects (maps) ==========
 
-    constexpr reader::IterationStatus read_map_begin(MapFrame& frame) {
+    __attribute__((noinline)) constexpr reader::IterationStatus read_map_begin(MapFrame& frame) {
         reader::IterationStatus ret;
         reset_value_string_state();
 
@@ -448,7 +449,7 @@ public:
     // After key is fully read (via read_string_chunk or read_key_as_index)
     // parser calls consume_kv_separator() to switch to the value.
     // In CBOR, we already advanced cur_ past the key, so it's now at the value.
-    constexpr bool move_to_value(MapFrame& frame) {
+    __attribute__((noinline)) constexpr bool move_to_value(MapFrame& frame) {
         (void)frame;
         reset_value_string_state();
         // Nothing to do: cur_ already at value.
@@ -456,7 +457,7 @@ public:
     }
 
     // After value is parsed, parser calls this to advance to next key.
-    constexpr reader::IterationStatus advance_after_value(MapFrame& frame) {
+    __attribute__((noinline)) constexpr reader::IterationStatus advance_after_value(MapFrame& frame) {
         reader::IterationStatus ret;
         reset_value_string_state();
         ret.status = reader::TryParseStatus::ok;
@@ -495,13 +496,13 @@ public:
     // ========== Utility Operations ==========
 
     template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    constexpr bool skip_value(OutputSinkContainer* = nullptr,
+    __attribute__((noinline)) constexpr bool skip_value(OutputSinkContainer* = nullptr,
                                    std::size_t          = std::numeric_limits<std::size_t>::max())
     {
         return skip_one<MAX_SKIP_NESTING>(0);
     }
 
-    bool finish() {
+    __attribute__((noinline)) bool finish() {
         // CBOR has no insignificant whitespace; if we aren't at the end, it's an error.
         if (cur_ != end_) {
             setError(ParseError::EXCESS_CHARACTERS);
@@ -893,7 +894,7 @@ public:
 
     // ========= Containers =========
 
-    bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
+    __attribute__((noinline)) bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
             // Indefinite-length array (0x9F = major 4, ai 31)
             if (!write_byte(0x9F)) {
@@ -916,7 +917,7 @@ public:
         return true;
     }
 
-    bool write_array_end(ArrayFrame& frame) {
+    __attribute__((noinline)) bool write_array_end(ArrayFrame& frame) {
         if (frame.indefinite) {
             // Write break marker (0xFF = major 7, ai 31)
             return write_byte(0xFF);
@@ -936,7 +937,7 @@ public:
         return true;
     }
 
-    bool write_map_begin(const std::size_t& size, MapFrame& frame) {
+    __attribute__((noinline)) bool write_map_begin(const std::size_t& size, MapFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
             // Indefinite-length map (0xBF = major 5, ai 31)
             if (!write_byte(0xBF)) {
@@ -961,7 +962,7 @@ public:
         return true;
     }
 
-    bool write_map_end(MapFrame& frame) {
+    __attribute__((noinline)) bool write_map_end(MapFrame& frame) {
         if (frame.indefinite) {
             // Write break marker (0xFF = major 7, ai 31)
             return write_byte(0xFF);
@@ -989,7 +990,7 @@ public:
         return true;
     }
 
-    bool advance_after_value(MapFrame& frame) {
+    __attribute__((noinline)) bool advance_after_value(MapFrame& frame) {
         // We should have just written a *value*, not a key
         if (frame.expecting_key) {
             setError(CborWriterError::invalid_argument);
@@ -1023,18 +1024,18 @@ public:
 
     // ========= Primitive values =========
 
-    bool write_null() {
+    __attribute__((noinline)) bool write_null() {
         // CBOR simple value "null" is major 7, additional info 22 => 0xF6
         return write_byte(0xF6);
     }
 
-    bool write_bool(const bool& b) {
+    __attribute__((noinline)) bool write_bool(const bool& b) {
         // false: 0xF4, true: 0xF5
         return write_byte(b ? 0xF5 : 0xF4);
     }
 
     template<class NumberT>
-    bool write_number(const NumberT& n) {
+    __attribute__((noinline)) bool write_number(const NumberT& n) {
         if constexpr (std::is_integral_v<NumberT>) {
             return write_integral(n);
         }  else if constexpr (std::is_floating_point_v<NumberT>) {
@@ -1050,7 +1051,7 @@ public:
         }
     }
 
-    bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
+    __attribute__((noinline)) bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
         // Major type 3 = text string, argument = length in bytes
         if(null_terminated) {
             size = 0;

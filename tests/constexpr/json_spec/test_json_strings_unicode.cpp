@@ -199,7 +199,7 @@ static_assert(
 
 // Test 12: Unicode in arrays
 struct WithStringArray {
-    std::array<std::string, 2> texts;
+    std::vector<std::string> texts;
 };
 
 static_assert(

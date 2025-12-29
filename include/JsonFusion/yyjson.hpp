@@ -55,7 +55,7 @@ public:
 
     // ---- Scalars ----
 
-    constexpr reader::TryParseStatus start_value_and_try_read_null() {
+    reader::TryParseStatus start_value_and_try_read_null() {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
             return reader::TryParseStatus::error;
@@ -66,7 +66,7 @@ public:
         return reader::TryParseStatus::ok;
     }
 
-    constexpr reader::TryParseStatus read_bool(bool& b) {
+    reader::TryParseStatus read_bool(bool& b) {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
             return reader::TryParseStatus::error;
@@ -79,7 +79,7 @@ public:
     }
 
     template<class NumberT>
-    constexpr reader::TryParseStatus read_number(NumberT& storage) {
+    reader::TryParseStatus read_number(NumberT& storage) {
         if (!current_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
             return reader::TryParseStatus::error;
@@ -146,7 +146,7 @@ public:
     //  - For values: current_ must point to the value node.
     //  The parser / object frame logic is responsible for setting current_.
 
-    constexpr reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+    reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
         reader::StringChunkResult res{};
         res.status = reader::StringChunkStatus::error;
         res.bytes_written = 0;
@@ -186,7 +186,7 @@ public:
         return res;
     }
 
-    constexpr bool read_key_as_index(std::size_t & out) {
+    bool read_key_as_index(std::size_t & out) {
         constexpr std::size_t bufSize = 32;
 
         char buf[bufSize];
@@ -207,7 +207,7 @@ public:
     // ---- Arrays (new frame-based API) ----
 
     // Parser: creates ArrayFrame on its stack and calls this.
-    constexpr reader::IterationStatus read_array_begin(ArrayFrame& frame) {
+    reader::IterationStatus read_array_begin(ArrayFrame& frame) {
         reset_value_string_state();
 
         reader::IterationStatus ret;
@@ -243,7 +243,7 @@ public:
         return ret;
     }
 
-    constexpr reader::IterationStatus advance_after_value(ArrayFrame& frame) {
+    reader::IterationStatus advance_after_value(ArrayFrame& frame) {
         reset_value_string_state();
         reader::IterationStatus ret;
 
@@ -270,7 +270,7 @@ public:
     }
 
 
-    constexpr reader::IterationStatus read_map_begin(MapFrame& frame) {
+    reader::IterationStatus read_map_begin(MapFrame& frame) {
         reset_value_string_state();
         reader::IterationStatus ret;
 
@@ -308,7 +308,7 @@ public:
 
     // Parser: after it finishes reading the key string, it calls this
     // to switch from key → value context.
-    constexpr bool move_to_value(MapFrame& frame) {
+    bool move_to_value(MapFrame& frame) {
         reset_value_string_state();
 
         if (!frame.obj) return true;
@@ -322,7 +322,7 @@ public:
     }
 
     // Parser: after the value is parsed, it calls this to move to the next member.
-    constexpr reader::IterationStatus advance_after_value(MapFrame& frame) {
+    reader::IterationStatus advance_after_value(MapFrame& frame) {
         reset_value_string_state();
 
         reader::IterationStatus ret;
@@ -351,7 +351,7 @@ public:
     // ---- Skip support ----
 
     template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    constexpr bool skip_value(OutputSinkContainer* = nullptr,
+    bool skip_value(OutputSinkContainer* = nullptr,
                                    std::size_t = std::numeric_limits<std::size_t>::max())
     {
         // DOM is already built; for yyjson, "skip" means "don't materialize".
