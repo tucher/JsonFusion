@@ -69,36 +69,18 @@ file(GLOB JSON_FUSION
      ${PROJECT_SOURCE_DIR}/include/JsonFusion/*.hpp
 )
 
-
-# add_executable(rapidjson_comparison_parsing_benchmark
-#     benchmarks/comparison_parsing_benchmark.cpp
-#     tests/test_model.hpp
+# add_executable(consteval_tests
+#     tests/consteval_tests.cpp
 #     ${JSON_FUSION}
-
 # )
-
-
-# target_compile_options(rapidjson_comparison_parsing_benchmark PRIVATE
-#   $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto=8>
-# )
-
-# target_link_options(rapidjson_comparison_parsing_benchmark PRIVATE
-#   $<$<AND:$<CONFIG:Release>,$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>>:-flto=8>
-# )
-
-add_executable(consteval_tests
-    tests/consteval_tests.cpp
-    ${JSON_FUSION}
-)
-target_link_libraries(consteval_tests PRIVATE yyjson)
+# target_link_libraries(consteval_tests PRIVATE yyjson)
 
 add_executable(sax_demo
     tests/sax_demo.cpp
     ${JSON_FUSION}
-
 )
+
 add_executable(canada_json_parsing
-    # tests/sax_demo.cpp
     benchmarks/canada_json/canada_json_parsing.cpp
     benchmarks/canada_json/canada_json_parsing.hpp
     benchmarks/canada_json/canada_json_parsing_rapidjson.cpp
@@ -230,5 +212,4 @@ target_link_options(twitter_json_parsing PRIVATE
 add_executable(fp_test
     tests/fp/main.cpp
     ${JSON_FUSION}
-
 )

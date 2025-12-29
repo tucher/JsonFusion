@@ -129,9 +129,8 @@ how it is usually done in Python, Java, Go, etc..
  workflows on realistic data (see [Benchmarks](#benchmarks)). What would take hundreds of 
  lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs 
  (which you'd need anyway) and JsonFusion handles the rest. With optional yyjson backend, JsonFusion is significantly faster than RapidJSON and faster than reflect-cpp.
-- **Competitive binary footprint**: On embedded ARM (Cortex-M7 and Cortex-M0+), JsonFusion achieves **16-21 KB** code size on typical application setup with `-Os`, 
- matching or beating industry-standard libraries while maintaining modern C++23 type safety and declarative validation. 
- Consistently competitive with both `-O3` (speed) and `-Os` (size) optimizations across platforms, from resource-constrained MCUs to high-performance servers.
+- **Competitive binary footprint**: On embedded ARM (Cortex-M7 and Cortex-M0+), on typical application setup with `-Os` JsonFusion matches or beats popular json embedded libraries while maintaining modern C++23 type safety and declarative validation. 
+- Consistently competitive with both `-O3` (speed) and `-Os` (size) optimizations across platforms, from resource-constrained MCUs to high-performance servers.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
 - No macros, no codegen, no registration – relies on PFR-driven introspection
@@ -200,7 +199,7 @@ If you see any of those in your binary, it came from your code, not from JsonFus
 
 ### One codebase, all targets
 
-The same template-driven design is used everywhere — from ARM Cortex-M0/M7 microcontrollers to x64 servers. There is no “lite” embedded fork:
+The same template-driven design is used everywhere — from ARM Cortex-M0/M7/Esp32 microcontrollers to x64 servers. There is no “lite” embedded fork:
 
 - On big systems, the compiler inlines and folds the templates into tight loops over your model.
 - On microcontrollers, the same code compiles down (under `-Os`/LTO) to a small, predictable blob with no hidden runtime subsystem.
@@ -221,7 +220,7 @@ using Point = A<Pt_, as_array>;
 ```
 - On canada.json (2.2 MB numeric-heavy GeoJSON), a hand-written RapidJSON SAX handler that counts 
 features/rings/points serves as the baseline.
-- JsonFusion Streaming with selective skipping is **~34% faster** simply because the type system tells the parser "these values exist, 
+- JsonFusion Streaming with selective skipping is **~30% faster** simply because the type system tells the parser "these values exist, 
 but we don't need them." By annotating coordinate fields with `skip_json<>`, JsonFusion skips float parsing entirely while still 
 validating JSON structure.
 
