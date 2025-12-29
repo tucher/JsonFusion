@@ -18,14 +18,17 @@ import urllib.request
 # Configuration
 # ============================================================================
 
-AVR_ATMEGA_2560_TEST = False
-
-# ARM Cortex-M7 target configuration
-compiler_prefix="arm-none-eabi-"
-
-
-if AVR_ATMEGA_2560_TEST:
-    compiler_prefix="avr-"
+@dataclass
+class TargetPlatform:
+    """Target platform configuration"""
+    name: str
+    compiler_prefix: str
+    build_configs: List['BuildConfig']
+    linker_specs: List[str] = None  # Additional linker specs
+    
+    def __post_init__(self):
+        if self.linker_specs is None:
+            self.linker_specs = []
 
 
 @dataclass
@@ -48,9 +51,7 @@ class BuildConfig:
     opt_flags: List[str]
 
 
-
-
-# Embedded-friendly flags
+# Embedded-friendly flags (common across all platforms)
 EMBEDDED_FLAGS = [
     "-Wall",                             # Enable all warnings
     "-fno-exceptions",
@@ -62,94 +63,133 @@ EMBEDDED_FLAGS = [
     "-fno-asynchronous-unwind-tables",   # Remove async unwind info
 ]
 
-# Build configurations
-if not AVR_ATMEGA_2560_TEST:
-    BUILD_CONFIGS = [
-        BuildConfig("O3 cortext-m7", ["-O3", "-flto",
-            "-mcpu=cortex-m7",
-            "-mthumb",
-            "-mfloat-abi=hard",
-            "-mfpu=fpv5-d16",
-        ]),
-        BuildConfig("Os cortext-m7", ["-Os", "-flto",
-            "-mcpu=cortex-m7",
-            "-mthumb",
-            "-mfloat-abi=hard",
-            "-mfpu=fpv5-d16",
-        ]),
-        BuildConfig("O3 cortext-m0+", ["-O3", "-flto",
-            "-mcpu=cortex-m0plus",
-            "-mthumb",
-            "-mfloat-abi=soft",
-        ]),
-        BuildConfig("Os cortext-m0+", ["-Os", "-flto",
-            "-mcpu=cortex-m0plus",
-            "-mthumb",
-            "-mfloat-abi=soft",
-        ]),
-    ]
-else:
-    BUILD_CONFIGS = [
-        BuildConfig("O3 atmega2560", ["-O3", "-flto",
-            f"-I/libstdcpp",
-            "-mmcu=atmega2560",
-            "-g0",
-            "-fno-threadsafe-statics",
-        ]),
-        BuildConfig("Os atmega2560", ["-Os", "-flto",
-            f"-I/libstdcpp",
-            "-mmcu=atmega2560",
-            "-g0",
-            "-fno-threadsafe-statics",
-        ]),
-      
-    ]
+# ============================================================================
+# Target Platform Definitions
+# ============================================================================
 
-# Libraries to benchmark
-LIBRARIES = [
-    Library(
-        name="JsonFusion",
-        source_file="parse_config.cpp",
-        description="JsonFusion with in-house float parser",
-    ),
-    Library(
-        name="ArduinoJson",
-        source_file="parse_config_arduinojson.cpp",
-        description="ArduinoJson v7.2.1",
-        dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.4.2/ArduinoJson-v7.4.2.h"],
-    ),
-    Library(
-        name="jsmn",
-        source_file="parse_config_jsmn.cpp",
-        description="jsmn - minimalist JSON tokenizer",
-        dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
-    ),
-    Library(
-        name="cJSON",
-        source_file="parse_config_cjson.cpp",
-        description="cJSON - lightweight JSON parser in C",
-        dependencies=[
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
-            "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
-        ],
-    ),
-    Library(
-        name="JsonFusion CBOR <->",
-        source_file="parse_config_cbor.cpp",
-        description="JsonFusion CBOR parser",
-    ),
-]
-if not AVR_ATMEGA_2560_TEST:
-    LIBRARIES += [
-        Library(
-            name="Glaze",
-            source_file="parse_config_glaze.cpp",
-            description="Glaze - probably the fastest JSON parser in C++",
-            dependencies=[
-        
-            ],
-        )
+# ARM Cortex-M Platform
+ARM_CORTEX_M = TargetPlatform(
+    name="ARM Cortex-M",
+    compiler_prefix="arm-none-eabi-",
+    linker_specs=["-specs=nano.specs", "-specs=nosys.specs"],
+    build_configs=[
+        BuildConfig("M7 -O3", ["-O3", "-flto",
+            "-mcpu=cortex-m7",
+            "-mthumb",
+            "-mfloat-abi=hard",
+            "-mfpu=fpv5-d16",
+        ]),
+        BuildConfig("M7 -Os", ["-Os", "-flto",
+            "-mcpu=cortex-m7",
+            "-mthumb",
+            "-mfloat-abi=hard",
+            "-mfpu=fpv5-d16",
+        ]),
+        BuildConfig("M0+ -O3", ["-O3", "-flto",
+            "-mcpu=cortex-m0plus",
+            "-mthumb",
+            "-mfloat-abi=soft",
+        ]),
+        BuildConfig("M0+ -Os", ["-Os", "-flto",
+            "-mcpu=cortex-m0plus",
+            "-mthumb",
+            "-mfloat-abi=soft",
+        ]),
     ]
+)
+
+# ESP32 Platform (Xtensa LX6)
+ESP32 = TargetPlatform(
+    name="ESP32 (Xtensa LX6)",
+    compiler_prefix="xtensa-esp-elf-",
+    linker_specs=[],  # ESP32 doesn't use nano.specs
+    build_configs=[
+        BuildConfig("ESP32 -O3", ["-O3", "-flto",
+            "-mlongcalls",           # Required for Xtensa
+            "-mtext-section-literals",  # Place literals in .text
+        ]),
+        BuildConfig("ESP32 -Os", ["-Os", "-flto",
+            "-mlongcalls",
+            "-mtext-section-literals",
+        ]),
+    ]
+)
+
+# AVR ATmega Platform (8-bit)
+AVR_ATMEGA = TargetPlatform(
+    name="AVR ATmega2560",
+    compiler_prefix="avr-",
+    linker_specs=[],
+    build_configs=[
+        BuildConfig("ATmega -O3", ["-O3", "-flto",
+            "-I/libstdcpp",
+            "-mmcu=atmega2560",
+            "-g0",
+            "-fno-threadsafe-statics",
+        ]),
+        BuildConfig("ATmega -Os", ["-Os", "-flto",
+            "-I/libstdcpp",
+            "-mmcu=atmega2560",
+            "-g0",
+            "-fno-threadsafe-statics",
+        ]),
+    ]
+)
+
+# ============================================================================
+# Libraries to Benchmark
+# ============================================================================
+
+def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
+    """Get list of libraries to benchmark for the given platform"""
+    libraries = [
+        Library(
+            name="JsonFusion",
+            source_file="parse_config.cpp",
+            description="JsonFusion with in-house float parser",
+        ),
+        Library(
+            name="ArduinoJson",
+            source_file="parse_config_arduinojson.cpp",
+            description="ArduinoJson v7.2.1",
+            dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.4.2/ArduinoJson-v7.4.2.h"],
+        ),
+        Library(
+            name="jsmn",
+            source_file="parse_config_jsmn.cpp",
+            description="jsmn - minimalist JSON tokenizer",
+            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
+        ),
+        Library(
+            name="cJSON",
+            source_file="parse_config_cjson.cpp",
+            description="cJSON - lightweight JSON parser in C",
+            dependencies=[
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
+                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
+            ],
+        ),
+        Library(
+            name="JsonFusion CBOR <->",
+            source_file="parse_config_cbor.cpp",
+            description="JsonFusion CBOR parser",
+        ),
+    ]
+    
+    # Glaze only supported on ARM Cortex-M (not AVR or ESP32)
+    # ESP32: uses unimplemented atomic operations
+    # AVR: 8-bit architecture not supported
+    if platform.compiler_prefix == "arm-none-eabi-":
+        libraries.append(
+            Library(
+                name="Glaze",
+                source_file="parse_config_glaze.cpp",
+                description="Glaze - probably the fastest JSON parser in C++",
+                dependencies=[],
+            )
+        )
+    
+    return libraries
 
 # Linker warning patterns to filter out
 LINKER_WARNING_FILTERS = [
@@ -188,9 +228,11 @@ class Colors:
 # ============================================================================
 
 class EmbeddedBenchmark:
-    def __init__(self, script_dir: Path):
+    def __init__(self, script_dir: Path, platform: TargetPlatform):
         self.script_dir = script_dir
         self.project_root = script_dir.parent.parent.parent
+        self.platform = platform
+        self.libraries = get_libraries_for_platform(platform)
         self.includes = [
             f"-I{self.project_root}/include",
             f"-I{self.script_dir}",
@@ -228,7 +270,7 @@ class EmbeddedBenchmark:
         libs_dir = self.script_dir / "libs"
         libs_dir.mkdir(exist_ok=True)
         
-        for lib in LIBRARIES:
+        for lib in self.libraries:
             # Special handling for Glaze - clone entire repository
             if lib.name == "Glaze":
                 glaze_dir = libs_dir / "glaze"
@@ -292,7 +334,7 @@ class EmbeddedBenchmark:
         source = self.script_dir / lib.source_file
         
         cmd = [
-            f"{compiler_prefix}g++",
+            f"{self.platform.compiler_prefix}g++",
             "-std=c++23",
             *EMBEDDED_FLAGS,
             *config.opt_flags,
@@ -318,17 +360,15 @@ class EmbeddedBenchmark:
         map_file = self.script_dir / f"parse_config_{lib.name.lower()}_{config.name}.map"
         
         cmd = [
-            f"{compiler_prefix}g++",
+            f"{self.platform.compiler_prefix}g++",
             *EMBEDDED_FLAGS,
             *config.opt_flags,
-            # "-specs=nano.specs", "-specs=nosys.specs",
+            *self.platform.linker_specs,  # Platform-specific linker specs
             "-Wl,--gc-sections",
             f"-Wl,-Map={map_file}",
             str(obj_file),
             "-o", str(output_elf),
         ]
-        if not AVR_ATMEGA_2560_TEST:
-            cmd += ["-specs=nano.specs", "-specs=nosys.specs"]
         
         print("Linking to ELF...")
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -349,14 +389,58 @@ class EmbeddedBenchmark:
         print(Colors.green(f"✓ Built: {output_elf.name}"))
         return output_elf
     
+    def verify_symbols(self, elf_file: Path) -> bool:
+        """Verify that key parsing symbols are present in the binary"""
+        print("=== Symbol Verification ===")
+        
+        # Get all symbols
+        nm_result = subprocess.run(
+            [f"{self.platform.compiler_prefix}gcc-nm", str(elf_file)],
+            capture_output=True, text=True
+        )
+        
+        symbols = nm_result.stdout.lower()
+        
+        # Check for critical symbols that should be present
+        critical_patterns = [
+            "parse",           # Should have parse functions
+            "json",            # Should have json-related symbols
+            "embeddedconfig",  # Should have our model type
+        ]
+        
+        missing = []
+        found = []
+        for pattern in critical_patterns:
+            if pattern in symbols:
+                found.append(pattern)
+            else:
+                missing.append(pattern)
+        
+        if found:
+            print(Colors.green(f"✓ Found symbols: {', '.join(found)}"))
+        if missing:
+            print(Colors.yellow(f"⚠ Missing patterns: {', '.join(missing)}"))
+        
+        # Check if binary is suspiciously small (might be optimized away)
+        file_size = elf_file.stat().st_size
+        if file_size < 1024:  # Less than 1KB is suspicious
+            print(Colors.red(f"⚠ Warning: ELF file is very small ({file_size} bytes) - code might be optimized away!"))
+            return False
+        
+        print()
+        return len(found) > 0
+    
     def analyze_size(self, elf_file: Path) -> int:
         """Analyze ELF file and return .text section size"""
         print()
         print("=== Size Analysis ===")
         
+        # Verify symbols first
+        self.verify_symbols(elf_file)
+        
         # Overall size
         result = subprocess.run(
-            [f"{compiler_prefix}size", str(elf_file)],
+            [f"{self.platform.compiler_prefix}size", str(elf_file)],
             capture_output=True, text=True
         )
         print(result.stdout)
@@ -364,7 +448,7 @@ class EmbeddedBenchmark:
         # Detailed by section
         print("=== Detailed Size (by section) ===")
         result = subprocess.run(
-            [f"{compiler_prefix}size", "-A", str(elf_file)],
+            [f"{self.platform.compiler_prefix}size", "-A", str(elf_file)],
             capture_output=True, text=True
         )
         for line in result.stdout.split('\n'):
@@ -376,7 +460,7 @@ class EmbeddedBenchmark:
         top_count = 100
         # print(f"=== Top {top_count} Symbols by Size ===")
         nm_result = subprocess.run(
-            [f"{compiler_prefix}gcc-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
+            [f"{self.platform.compiler_prefix}gcc-nm", "--size-sort", "--reverse-sort", "--radix=d", str(elf_file)],
             capture_output=True, text=True
         )
         # Filter out BSS symbols and take top 10
@@ -395,7 +479,7 @@ class EmbeddedBenchmark:
         
         # Demangle
         demangle_result = subprocess.run(
-            [f"{compiler_prefix}c++filt"],
+            [f"{self.platform.compiler_prefix}c++filt"],
             input=top_symbols, capture_output=True, text=True
         )
         # print(demangle_result.stdout)
@@ -403,7 +487,7 @@ class EmbeddedBenchmark:
         
         # Extract .text size
         result = subprocess.run(
-            [f"{compiler_prefix}size", str(elf_file)],
+            [f"{self.platform.compiler_prefix}size", str(elf_file)],
             capture_output=True, text=True
         )
         lines = result.stdout.strip().split('\n')
@@ -416,7 +500,7 @@ class EmbeddedBenchmark:
     
     def build_library(self, lib: Library, config: BuildConfig):
         """Build a single library with given config"""
-        print(Colors.green(f"[{LIBRARIES.index(lib)+1}/{len(LIBRARIES)}] Building {lib.name}..."))
+        print(Colors.green(f"[{self.libraries.index(lib)+1}/{len(self.libraries)}] Building {lib.name}..."))
         print(f"Description: {lib.description}")
         print()
         
@@ -518,7 +602,9 @@ class EmbeddedBenchmark:
     def run(self, clean: bool = True):
         """Main build process"""
         print(Colors.green("=== Embedded Binary Size Benchmark ==="))
-        print(f"Comparing: {', '.join(lib.name for lib in LIBRARIES)}")
+        print(Colors.blue(f"Target Platform: {self.platform.name}"))
+        print(Colors.blue(f"Compiler: {self.platform.compiler_prefix}g++"))
+        print(f"Comparing: {', '.join(lib.name for lib in self.libraries)}")
         print()
         
         # Clean old artifacts if requested
@@ -529,14 +615,14 @@ class EmbeddedBenchmark:
         self.download_dependencies()
         
         # Build all combinations
-        for config in BUILD_CONFIGS:
+        for config in self.platform.build_configs:
             print(Colors.yellow("=" * 60))
             print(Colors.yellow(f"Configuration: {config.name}"))
             print(Colors.yellow(f"Flags: {' '.join(config.opt_flags)}"))
             print(Colors.yellow("=" * 60))
             print()
             
-            for lib in LIBRARIES:
+            for lib in self.libraries:
                 self.build_library(lib, config)
             
             # Compare results for this config
@@ -553,18 +639,27 @@ class EmbeddedBenchmark:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Build and benchmark JSON libraries for ARM Cortex-M7",
+        description="Build and benchmark JSON libraries for embedded platforms",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                    # Build all (clean first)
-  %(prog)s --no-clean         # Build all (keep old artifacts)
-  %(prog)s --clean-only       # Just clean, don't build
+  %(prog)s                             # Build for ARM Cortex-M (default)
+  %(prog)s --platform esp32            # Build for ESP32
+  %(prog)s --platform avr              # Build for AVR ATmega2560
+  %(prog)s --no-clean                  # Build without cleaning first
+  %(prog)s --clean-only                # Just clean, don't build
         """
+    )
+    parser.add_argument(
+        "--platform",
+        choices=["arm", "esp32", "avr"],
+        default="arm",
+        help="Target platform (default: arm)"
     )
     parser.add_argument(
         "--no-clean",
         action="store_false",
+        dest="clean",
         help="Don't remove old build artifacts before building (default: clean first)"
     )
     parser.add_argument(
@@ -572,11 +667,24 @@ Examples:
         action="store_true",
         help="Only clean build artifacts, don't build"
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Run additional verification checks (disassembly, detailed symbols)"
+    )
     
     args = parser.parse_args()
     
+    # Select platform
+    platform_map = {
+        "arm": ARM_CORTEX_M,
+        "esp32": ESP32,
+        "avr": AVR_ATMEGA,
+    }
+    selected_platform = platform_map[args.platform]
+    
     script_dir = Path(__file__).parent.resolve()
-    benchmark = EmbeddedBenchmark(script_dir)
+    benchmark = EmbeddedBenchmark(script_dir, selected_platform)
     
     try:
         # Clean-only mode
@@ -585,8 +693,7 @@ Examples:
             return
         
         # Normal build (with or without cleaning)
-        benchmark.run(clean=not args.no_clean)
-        # benchmark.clean()
+        benchmark.run(clean=args.clean)
     except KeyboardInterrupt:
         print()
         print(Colors.yellow("Interrupted by user"))

@@ -1,0 +1,105 @@
+name: Embedded code size benchmarks
+
+on:
+  push:
+    branches:
+      - master
+jobs:
+  run-benchmarks:
+    runs-on: ubuntu-latest
+   
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 wget tar xz-utils git
+
+      - name: Install ARM GCC (xPack)
+        run: |
+          # Pick a specific xPack version
+          TOOLCHAIN_VERSION=14.2.1-1.1
+          ARCHIVE="xpack-arm-none-eabi-gcc-${TOOLCHAIN_VERSION}-linux-x64.tar.gz"
+          URL="https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${TOOLCHAIN_VERSION}/${ARCHIVE}"
+
+          mkdir -p "$HOME/xpack"
+          cd "$HOME/xpack"
+
+          echo "Downloading ${URL} ..."
+          wget -q "${URL}"
+
+          echo "Extracting ${ARCHIVE} ..."
+          tar -xzf "${ARCHIVE}"
+          rm "${ARCHIVE}"
+
+          # Archive unpacks into a directory named like:
+          #   xpack-arm-none-eabi-gcc-14.2.1-1.1
+          TOOLCHAIN_DIR=$(echo xpack-arm-none-eabi-gcc-*)
+
+          echo "Toolchain dir: ${TOOLCHAIN_DIR}"
+          echo "$HOME/xpack/${TOOLCHAIN_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Install Xtensa ESP32 GCC
+        run: |
+          URL_XTENSA="https://github.com/espressif/crosstool-NG/releases/download/esp-14.2.0_20251219/xtensa-esp-elf-14.2.0_20251219-x86_64-linux-gnu.tar.gz"
+          ARCHIVE_XTENSA="xtensa-esp-elf.tar.gz"
+          
+          mkdir -p "$HOME/xtensa"
+          cd "$HOME/xtensa"
+          
+          echo "Downloading Xtensa ESP32 toolchain..."
+          wget -q "${URL_XTENSA}" -O "${ARCHIVE_XTENSA}"
+          
+          echo "Extracting ${ARCHIVE_XTENSA}..."
+          tar -xzf "${ARCHIVE_XTENSA}"
+          rm "${ARCHIVE_XTENSA}"
+          
+          # Archive unpacks into xtensa-esp-elf/
+          XTENSA_DIR=$(echo xtensa-esp-elf*)
+          
+          echo "Xtensa toolchain dir: ${XTENSA_DIR}"
+          echo "$HOME/xtensa/${XTENSA_DIR}/bin" >> "$GITHUB_PATH"
+
+      - name: Check ARM GCC
+        run: |
+          which arm-none-eabi-gcc || echo "arm-none-eabi-gcc not found in PATH"
+          arm-none-eabi-gcc --version
+      
+      - name: Check Xtensa ESP32 GCC
+        run: |
+          which xtensa-esp-elf-gcc || echo "xtensa-esp-elf-gcc not found in PATH"
+          xtensa-esp-elf-gcc --version
+      
+      - name: Run ARM Cortex-M benchmarks
+        run: |
+          mkdir -p ci_out
+          # Run ARM Cortex-M benchmarks (default platform)
+          python3 benchmarks/embedded/code_size/build.py --platform arm 2>&1 | tee ci_out/benchmarks_arm.log
+      
+      - name: Run ESP32 benchmarks
+        run: |
+          # Run ESP32 benchmarks
+          python3 benchmarks/embedded/code_size/build.py --platform esp32 2>&1 | tee ci_out/benchmarks_esp32.log
+
+      - name: Attach benchmark logs to job summary
+        run: |
+          {
+            echo '## JsonFusion Embedded Code Size Benchmarks'
+            echo
+            echo '### ARM Cortex-M Results'
+            echo '```'
+            tail -n 25 ci_out/benchmarks_arm.log
+            echo '```'
+            echo
+            echo '### ESP32 Results'
+            echo '```'
+            tail -n 20 ci_out/benchmarks_esp32.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark logs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-logs
+          path: ci_out/*.log

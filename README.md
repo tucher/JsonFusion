@@ -360,6 +360,10 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 contiguous buffers and doesn't try to be iterator-generic or streaming-friendly in the same way JsonFusion does.
 - It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight
 into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
+- **Embedded code size trade-off**: Glaze uses extremely effective template metaprogramming for performance, but this aggressive inlining strategy
+causes significant code duplication when parsing multiple types. Our [embedded benchmarks](#binary-size-embedded-focus) show **3-4× larger code size**
+compared to JsonFusion and other libraries (64-76 KB vs 16-21 KB on ARM Cortex-M with `-Os`). This makes Glaze less suitable for resource-constrained
+embedded systems where flash memory is limited.
 - Glaze has only lightweight validation (mostly structural + type correctness); it doesn't attempt rich, schema-style declarative validation like
 JsonFusion's option packs, per-field validators, or detailed error contexts.
 - Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion
@@ -564,38 +568,43 @@ Measured on **ARM Cortex-M7** (modern 32-bit MCUs like STM32H7, SAMV7) and **Cor
 📁 **Models**: [`embedded_config.hpp`](benchmarks/embedded/code_size/embedded_config.hpp) (EmbeddedConfig + RpcCommand)
 
 **Test Setup:**
-- **Compiler**: `arm-none-eabi-gcc 13.3.1`
+- **Compiler**: `arm-none-eabi-gcc 14.2.1`
 - **Targets**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb`) and Cortex-M0+ (`-mcpu=cortex-m0plus -mthumb`)
 - **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
 - **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
 
+**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ (21.0 KB), slightly larger than ArduinoJson on Cortex-M7 (16.5 KB vs 15.5 KB)** — modern C++23 type safety with competitive code size while eliminating manual boilerplate and adding declarative validation.
+
 **Results (`.text` section - code size in flash):**
 
-| Library       | M7 -O3 | M7 -Os | M0+ -O3 | M0+ -Os |
-|---------------|--------|--------|---------|---------|
-| **JsonFusion** | **24.1 KB** | **16.3 KB** | **31.4 KB** | **21.2 KB** |
-| ArduinoJson   | 46.1 KB | 15.8 KB | 57.8 KB | 23.3 KB |
-| jsmn          | 22.0 KB | 19.7 KB | 31.2 KB | 28.3 KB |
-| cJSON         | 20.2 KB | 18.9 KB | 32.0 KB | 27.5 KB |
-| Glaze         | 48.8 KB | 64.1 KB | 61.7 KB | 75.1 KB |
+| Library                             | M7 -O3  | M7 -Os  | M0+ -O3 | M0+ -Os |
+|-------------------------------------|---------|---------|---------|---------|
+| **JsonFusion**                      | **23.7 KB** | **16.5 KB** | **31.1 KB** | **21.0 KB** |
+| ArduinoJson                         |   42.0 KB   |   15.5 KB   |   54.2 KB   |   23.9 KB   |
+| jsmn                                |   21.8 KB   |   19.6 KB   |   32.0 KB   |   29.0 KB   |
+| cJSON                               |   20.0 KB   |   18.7 KB   |   32.5 KB   |   28.2 KB   |
+| JsonFusion CBOR (parse + serialize) |   34.8 KB   |   20.6 KB   |   43.2 KB   |   28.7 KB   |
+| Glaze                               |   50.6 KB   |   64.4 KB   |   65.1 KB   |   76.5 KB   |
 
 **Key Takeaways:**
 
-1. **JsonFusion with `-Os` matches or beats all libraries on both platforms:**  
-   - **M7**: 16.3 KB (only 3% larger than ArduinoJson's 15.8 KB, **smaller than jsmn/cJSON**)
-   - **M0+**: 21.2 KB (9% smaller than ArduinoJson's 23.3 KB, **smallest of all tested**)
+1. **JsonFusion with `-Os` is smallest on M0+, competitive on M7:**  
+   - **M0+**: 21.0 KB — **smallest of all tested** (12% smaller than ArduinoJson's 23.9 KB, 27% smaller than jsmn/cJSON)
+   - **M7**: 16.5 KB — slightly larger than ArduinoJson (6%), but **smaller than jsmn/cJSON** (16-12%)
    
    While ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling), JsonFusion delivers the same validation with **zero manual code**—just define your structs.
 
-2. **Glaze exhibits classic template code bloating:** With `-Os`, Glaze produces **64-75 KB**—**4× larger than JsonFusion**. When parsing multiple types, the aggressive inlining strategy that works for single-type benchmarks leads to significant code duplication.
+2. **CBOR support with reasonable overhead:** JsonFusion's CBOR implementation (parse + serialize) requires 20.6 KB on M7 `-Os` vs 16.5 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
-3. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
-   - **M7**: Shrink 33% with `-Os` (24.1 KB → 16.3 KB)
-   - **M0+**: Shrink 32% with `-Os` (31.4 KB → 21.2 KB)
+3. **Glaze exhibits template code bloating:** With `-Os`, Glaze produces **3-4× larger code than others**.
+
+4. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
+   - **M7**: Shrink 30% with `-Os` (23.7 KB → 16.5 KB)
+   - **M0+**: Shrink 32% with `-Os` (31.1 KB → 21.0 KB)
    
    Manual C code (jsmn, cJSON) barely compresses (~10-15%) because each type gets unique hand-written functions that don't deduplicate. JsonFusion's shared Reader infrastructure + type-specific dispatch compresses well.
 
-4. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
+5. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
 
 #### Bonus: 8-bit AVR Support
 
