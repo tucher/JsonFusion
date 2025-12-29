@@ -757,8 +757,6 @@ this setup and data)
 - **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by
 trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
 
-*Remarkable: JsonFusion's full parse + populate with yyjson takes nearly the same time as RapidJSON's DOM-only parse (which gives you an unusable tree),
-all thanks to yyjson's exceptional performance.*
 
 **Cross-Language Comparison:**
 
