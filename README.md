@@ -1,6 +1,6 @@
 # JsonFusion
 [![Constexpr Tests](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml)
-[![Embedded code size benchmarks](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_banchmarks.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_banchmarks.yml)
+[![Embedded code size benchmarks](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_benchmarks.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_benchmarks.yml)
 
 Parse JSON directly into your structs with validation and no glue code.
 
