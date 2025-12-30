@@ -1,6 +1,8 @@
 
 #include <string_view>
-#include <glaze/json.hpp>
+// #include <glaze/json.hpp>
+#include <cstdlib>
+#include <glaze/json/read.hpp>
 
 #include "embedded_config.hpp"
 

@@ -78,22 +78,26 @@ ARM_CORTEX_M = TargetPlatform(
             "-mthumb",
             "-mfloat-abi=hard",
             "-mfpu=fpv5-d16",
+            "-fno-threadsafe-statics",
         ]),
         BuildConfig("M7 -Os", ["-Os", "-flto",
             "-mcpu=cortex-m7",
             "-mthumb",
             "-mfloat-abi=hard",
             "-mfpu=fpv5-d16",
+            "-fno-threadsafe-statics",
         ]),
         BuildConfig("M0+ -O3", ["-O3", "-flto",
             "-mcpu=cortex-m0plus",
             "-mthumb",
             "-mfloat-abi=soft",
+            "-fno-threadsafe-statics",
         ]),
         BuildConfig("M0+ -Os", ["-Os", "-flto",
             "-mcpu=cortex-m0plus",
             "-mthumb",
             "-mfloat-abi=soft",
+            "-fno-threadsafe-statics",
         ]),
     ]
 )
@@ -107,10 +111,12 @@ ESP32 = TargetPlatform(
         BuildConfig("ESP32 -O3", ["-O3", "-flto",
             "-mlongcalls",           # Required for Xtensa
             "-mtext-section-literals",  # Place literals in .text
+            "-fno-threadsafe-statics",  # Reduce code size
         ]),
         BuildConfig("ESP32 -Os", ["-Os", "-flto",
             "-mlongcalls",
             "-mtext-section-literals",
+            "-fno-threadsafe-statics",  # Reduce code size
         ]),
     ]
 )
@@ -176,7 +182,7 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
         ),
     ]
     
-    # Glaze only supported on ARM Cortex-M (not AVR or ESP32)
+    # Glaze only supported on ARM Cortex-M (not AVR or ESP32) Esp32 build is pulling deps on atomics via std::chrono
     # ESP32: uses unimplemented atomic operations
     # AVR: 8-bit architecture not supported
     if platform.compiler_prefix == "arm-none-eabi-":
