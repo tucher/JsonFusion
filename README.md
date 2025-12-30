@@ -85,6 +85,7 @@ JsonFusion::Serialize(conf, output);
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
   - [Compile-Time Testing](#compile-time-testing)
+  - [JSON Schema Generation](#json-schema-generation)
 - [Limitations and When NOT to Use](#limitations-and-when-not-to-use)
 
 
