@@ -849,6 +849,8 @@ JsonFusion::Serialize(event, json);
 - **Zero-overhead**: All transformations resolve at compile time
 - **Type-safe**: Errors caught during compilation
 
+**Schema evolution:** Transformers can handle type migrations (e.g., `bool` → `int`) in a generic, reusable way by capturing raw JSON with `json_sink<>` and trying multiple parse attempts. See [`examples/schema_evolution_bool_to_enum.cpp`](examples/schema_evolution_bool_to_enum.cpp) for example.
+
 📖 **Full guide**: [docs/TRANSFORMERS.md](docs/TRANSFORMERS.md) covers:
 - Core concepts (`ParseTransformer`, `SerializeTransformer`)
 - Building blocks (`Transformed`, `ArrayReduceField`, `MapReduceField`)
