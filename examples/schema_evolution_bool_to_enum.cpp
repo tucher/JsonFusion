@@ -2,6 +2,7 @@
 #include <JsonFusion/serializer.hpp>
 #include <iostream>
 #include <cassert>
+#include <functional>
 
 using namespace JsonFusion;
 using namespace JsonFusion::options;
