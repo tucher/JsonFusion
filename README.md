@@ -1159,6 +1159,22 @@ This approach aligns with JsonFusion's philosophy: leverage compile-time introsp
 
 📁 **Test suite details**: [`tests/constexpr/README.md`](tests/constexpr/README.md)
 
+### JSON Schema Generation
+
+All JsonFusion models can be automatically expressed as [JSON Schema](https://json-schema.org/draft/2020-12/schema) (Draft 2020-12), including full support for validators, options, and complex nested structures. The schema generation happens at **compile-time** and is fully `constexpr`-compatible.
+
+**Features:**
+- ✅ All validators mapped to JSON Schema constraints (`range`, `min_length`, `enum_values`, etc.)
+- ✅ All options supported (`key<>`, `as_array`, `indexes_as_keys`, `json_sink`, etc.)
+- ✅ Nullable types (`std::optional`, `std::unique_ptr`) generate `oneOf` with `null`
+- ✅ Zero runtime overhead - pure compile-time type introspection
+
+**Quick example:**
+```bash
+# Compile and run from project root
+g++-14 -std=c++23 -I./include -o /tmp/json_schema_demo ./examples/json_schema_demo.cpp && /tmp/json_schema_demo
+```
+
 ## Limitations and When NOT to Use
 
 - **Requires GCC 14 or newer**. Other compilers (MSVC, Clang, older GCC versions) are not currently supported due to template instantiation complexity and performance characteristics.
