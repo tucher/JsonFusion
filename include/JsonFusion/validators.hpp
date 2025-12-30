@@ -158,7 +158,25 @@ struct map_parsing_finished{};
 
 }
 
-
+namespace validators_options_tags {
+    struct range_tag{};
+    struct min_length_tag{};
+    struct max_length_tag{};
+    struct enum_values_tag{};
+    struct min_items_tag{};
+    struct max_items_tag{};
+    struct constant_tag{};
+    struct string_constant_tag{};
+    struct not_required_tag{};
+    struct required_tag{};
+    struct min_properties_tag{};
+    struct max_properties_tag{};
+    struct min_key_length_tag{};
+    struct max_key_length_tag{};
+    struct required_keys_tag{};
+    struct allowed_keys_tag{};
+    struct forbidden_keys_tag{};
+}
 /// Helper to compute sorted keys and metadata for key set validators
 template<ConstString... Keys>
 struct KeySetHelper {
@@ -189,6 +207,8 @@ struct KeySetHelper {
 
 template<auto C>
 struct constant {
+    constexpr static auto value = C;
+    using tag = validators_detail::validators_options_tags::constant_tag;
     static_assert(!is_const_string<decltype(C)>::value, "Use string_constant instead");
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::bool_parsing_finished>
@@ -267,6 +287,8 @@ struct constant {
 
 template<ConstString C>
 struct string_constant {
+    constexpr static auto value = C;
+    using tag = validators_detail::validators_options_tags::string_constant_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
     static constexpr  bool validate(const Storage&  v, validators_detail::ValidationCtx&  ctx, const std::string_view & value) {
@@ -289,6 +311,7 @@ struct string_constant {
 
 template<ConstString... Values>
 struct enum_values {    
+    using tag = validators_detail::validators_options_tags::enum_values_tag;
     using ValueSet = validators_detail::KeySetHelper<Values...>;
     static constexpr std::size_t valueCount = ValueSet::keyCount;
     static constexpr auto& sortedValues = ValueSet::sortedKeys;
@@ -340,6 +363,10 @@ struct enum_values {
 
 template<auto Min, auto Max>
 struct range {
+    constexpr static auto min = Min;
+    constexpr static auto max = Max;
+    using tag = validators_detail::validators_options_tags::range_tag;
+
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::number_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx) {
@@ -371,6 +398,8 @@ struct range {
 
 template<std::size_t N>
 struct min_length {
+    constexpr static std::size_t value = N;
+    using tag = validators_detail::validators_options_tags::min_length_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::string_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, const std::string_view & value) {
@@ -388,7 +417,8 @@ struct min_length {
 
 template<std::size_t N>
 struct max_length {
-
+    constexpr static std::size_t value = N;
+    using tag = validators_detail::validators_options_tags::max_length_tag;
     // Final validation after string is fully parsed
     template<class Tag, std::size_t Index, class Storage>
     static constexpr  bool validate(const Storage& str,
@@ -409,6 +439,8 @@ struct max_length {
 
 template<std::size_t N>
 struct min_items {
+    constexpr static std::size_t value = N;
+    using tag = validators_detail::validators_options_tags::min_items_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::array_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t count) {
@@ -426,6 +458,8 @@ struct min_items {
 
 template<std::size_t N>
 struct max_items {
+    constexpr static std::size_t value = N;
+    using tag = validators_detail::validators_options_tags::max_items_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::array_item_parsed>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t count) {
@@ -443,6 +477,13 @@ struct max_items {
 
 template <ConstString ... NotRequiredNames>
 struct not_required {
+    using tag = validators_detail::validators_options_tags::not_required_tag;
+    static constexpr std::array<std::string_view, sizeof...(NotRequiredNames)> values = []() consteval {
+        std::array<std::string_view, sizeof...(NotRequiredNames)> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = NotRequiredNames.toStringView()), ...);
+        return arr;
+    }();
 
     template<class Tag, std::size_t Index, class Storage, class FH>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
@@ -474,6 +515,14 @@ struct not_required {
 
 template <ConstString ... RequiredNames>
 struct required {
+    using tag = validators_detail::validators_options_tags::required_tag;
+
+    static constexpr std::array<std::string_view, sizeof...(RequiredNames)> values = []() consteval {
+        std::array<std::string_view, sizeof...(RequiredNames)> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = RequiredNames.toStringView()), ...);
+        return arr;
+    }();
 
     template<class Tag, std::size_t Index, class Storage, class FH>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_parsing_finished>
@@ -510,7 +559,7 @@ struct required {
 template<std::size_t N>
 struct min_properties {
     static constexpr std::size_t value = N;
-    
+    using tag = validators_detail::validators_options_tags::min_properties_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_parsing_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, std::size_t count) {
@@ -529,7 +578,7 @@ struct min_properties {
 template<std::size_t N>
 struct max_properties {
     static constexpr std::size_t value = N;
-    
+    using tag = validators_detail::validators_options_tags::max_properties_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_entry_parsed>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, std::size_t count) {
@@ -552,7 +601,7 @@ struct max_properties {
 template<std::size_t N>
 struct min_key_length {
     static constexpr std::size_t value = N;
-    
+    using tag = validators_detail::validators_options_tags::min_key_length_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, const std::string_view & key) {
@@ -572,7 +621,7 @@ struct min_key_length {
 template<std::size_t N>
 struct max_key_length {
     static constexpr std::size_t value = N;
-    
+    using tag = validators_detail::validators_options_tags::max_key_length_tag;
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, const std::string_view & key) {
@@ -591,7 +640,7 @@ struct max_key_length {
 
 template<ConstString... Keys>
 struct required_keys {
-    
+    using tag = validators_detail::validators_options_tags::required_keys_tag;
     using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
@@ -650,7 +699,7 @@ struct required_keys {
 
 template<ConstString... Keys>
 struct allowed_keys {
-    
+    using tag = validators_detail::validators_options_tags::allowed_keys_tag;
     using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
@@ -693,7 +742,7 @@ struct allowed_keys {
 
 template<ConstString... Keys>
 struct forbidden_keys {
-    
+    using tag = validators_detail::validators_options_tags::forbidden_keys_tag;
     using KeySet = validators_detail::KeySetHelper<Keys...>;
     static constexpr std::size_t keyCount = KeySet::keyCount;
     static constexpr auto& sortedKeys = KeySet::sortedKeys;
