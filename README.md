@@ -355,20 +355,25 @@ Perfect for:
 JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space, but with different priorities.
 
 **Glaze**
-- Typically significantly faster than JsonFusion on flat, in-memory JSON: its tokenizer is tuned for contiguous buffers and low-level tricks.
-- Glaze builds on a very tight, hand-rolled JSON scanner that works directly on `char*` with aggressive inlining and minimal abstraction. It assumes
-contiguous buffers and doesn't try to be iterator-generic or streaming-friendly in the same way JsonFusion does.
+- Typically significantly faster than JsonFusion on flat, in-memory JSON: its tokenizer is tuned for contiguous buffers and low-level optimizations.
+- Glaze builds on a hand-rolled JSON scanner that works directly on `char*` with extensive inlining. It assumes
+contiguous buffers and is not iterator-generic or streaming-friendly in the same way JsonFusion is.
 - It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight
 into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
-- **Embedded code size trade-off**: Glaze uses extremely effective template metaprogramming for performance, but this aggressive inlining strategy
+- **Embedded code size trade-off**: Glaze uses template metaprogramming for performance, but this extensive inlining strategy
 causes significant code duplication when parsing multiple types. Our [embedded benchmarks](#binary-size-embedded-focus) show **3-4× larger code size**
-compared to JsonFusion and other libraries (64-76 KB vs 16-21 KB on ARM Cortex-M with `-Os`). This makes Glaze less suitable for resource-constrained
+compared to JsonFusion and other libraries (64-76 KB vs 16-21 KB on ARM Cortex-M with `-Os`). The larger code size may be a consideration for resource-constrained
 embedded systems where flash memory is limited.
-- Glaze has only lightweight validation (mostly structural + type correctness); it doesn't attempt rich, schema-style declarative validation like
-JsonFusion's option packs, per-field validators, or detailed error contexts.
+- **Error reporting approach**: Glaze reports errors with line/column information and text context:
+  ```
+  1:17: expected_comma
+     {"Hello":"World"x, "color": "red"}
+                  ^
+  ```
+  JsonFusion provides structural JSON path tracking (e.g., `$.users[3].address.street: type mismatch`) in addition to buffer position. The choice depends on whether you prioritize text-oriented debugging or structural position within the JSON hierarchy.
 - Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion
-trades some of that peak speed to support generic iterators, streaming, and stricter validation while staying fully header-only and constexpr-friendly.
-- Uses its own metadata/registration style rather than "the struct is the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
+trades some of that peak speed to support generic iterators, and streaming while staying fully header-only and constexpr-friendly.
+- Uses its own metadata/registration style rather than "the types are the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
 
 **reflect-cpp**
 - Performance is slightly better or broadly comparable to **JsonFusion with default generic forward-only iterator** on typical object graphs.
