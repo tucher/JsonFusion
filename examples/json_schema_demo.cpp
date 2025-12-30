@@ -125,6 +125,11 @@ void print_schema(const std::string& title, const std::string& schema) {
     std::cout << schema << "\n";
 }
 
+struct TreeModel {
+    std::string data;
+    A<std::vector<TreeModel>, max_items<10>> children;
+};
+
 int main() {
     std::string schema;
     
@@ -187,9 +192,12 @@ int main() {
     std::cout << "  ✓ Pretty-printing with JsonIteratorWriter<It, Sent, Pretty=true>\n";
     std::cout << "  ✓ Automatic indentation and newlines\n";
     
+    schema.clear();
+    WriteSchemaInline<TreeModel, true>(schema);  // Pretty = true
+    print_schema("TreeModel Schema (Pretty-Printed)", schema);
+
     std::cout << "\n✅ All validators and options demonstrated!\n";
     std::cout << "See tests/constexpr/json_schema/test_json_schema_combined.cpp for constexpr tests.\n";
-    
     return 0;
 }
 

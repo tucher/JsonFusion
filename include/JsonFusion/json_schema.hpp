@@ -257,7 +257,9 @@ constexpr bool WriteArraySchema(W & writer) {
     if (!writer.advance_after_value(frame)) return false;
     if (!writer.write_string("items", 5, true)) return false;
     if (!writer.move_to_value(frame)) return false;
-    if (!WriteSchemaImpl<ElemT, T, SeenTypes...>(writer)) return false;
+    // Add the unwrapped array type to SeenTypes for cycle detection
+    using UnwrappedArrayType = AnnotatedValue<T>;
+    if (!WriteSchemaImpl<ElemT, UnwrappedArrayType, SeenTypes...>(writer)) return false;
     
     return writer.write_map_end(frame);
 }
@@ -502,7 +504,9 @@ constexpr bool WriteMapSchema(W & writer) {
                 if (!writer.write_string(AllowedKeysOpt::sortedKeys[i].name.data(),
                                         AllowedKeysOpt::sortedKeys[i].name.size(), true)) return false;
                 if (!writer.move_to_value(props_frame)) return false;
-                if (!WriteSchemaImpl<ElemT, T, SeenTypes...>(writer)) return false;
+                // Add the unwrapped map type to SeenTypes for cycle detection
+                using UnwrappedMapType = AnnotatedValue<T>;
+                if (!WriteSchemaImpl<ElemT, UnwrappedMapType, SeenTypes...>(writer)) return false;
             }
         } else if constexpr (has_required_keys) {
             using RequiredKeysOpt = typename Opts::template get_option<validators_options_tags::required_keys_tag>;
@@ -511,7 +515,9 @@ constexpr bool WriteMapSchema(W & writer) {
                 if (!writer.write_string(RequiredKeysOpt::sortedKeys[i].name.data(),
                                         RequiredKeysOpt::sortedKeys[i].name.size(), true)) return false;
                 if (!writer.move_to_value(props_frame)) return false;
-                if (!WriteSchemaImpl<ElemT, T, SeenTypes...>(writer)) return false;
+                // Add the unwrapped map type to SeenTypes for cycle detection
+                using UnwrappedMapType = AnnotatedValue<T>;
+                if (!WriteSchemaImpl<ElemT, UnwrappedMapType, SeenTypes...>(writer)) return false;
             }
         }
         
@@ -546,7 +552,9 @@ constexpr bool WriteMapSchema(W & writer) {
         if (!writer.write_bool(false)) return false;
     } else {
         // Open set - additional properties have the value schema
-        if (!WriteSchemaImpl<ElemT, T, SeenTypes...>(writer)) return false;
+        // Add the unwrapped map type to SeenTypes for cycle detection
+        using UnwrappedMapType = AnnotatedValue<T>;
+        if (!WriteSchemaImpl<ElemT, UnwrappedMapType, SeenTypes...>(writer)) return false;
     }
     
     return writer.write_map_end(frame);
@@ -605,7 +613,7 @@ constexpr bool WriteObjectSchemaAsArray(W & writer) {
                     }
                     first = false;
                     
-                    if (!WriteSchemaImpl<Field, T, SeenTypes...>(writer)) return;
+                    if (!WriteSchemaImpl<Field, AnnotatedValue<T>, SeenTypes...>(writer)) return;
                 }
             })(), ...));
         }(std::make_index_sequence<struct_elements_count>{});
@@ -818,7 +826,7 @@ constexpr bool WriteObjectSchema(W & writer) {
                     
                     if (!writer.write_string(field_name.data(), field_name.size(), true)) return;
                     if (!writer.move_to_value(props_frame)) return;
-                    if (!WriteSchemaImpl<Field, T, SeenTypes...>(writer)) return;
+                    if (!WriteSchemaImpl<Field, AnnotatedValue<T>, SeenTypes...>(writer)) return;
                 }
             })(), ...));
         }(std::make_index_sequence<struct_elements_count>{});
@@ -913,11 +921,63 @@ constexpr bool WriteObjectSchema(W & writer) {
     return writer.write_map_end(obj_frame);
 }
 
+// Helper to check if a type appears in a pack
+template<typename T, typename... Types>
+constexpr bool type_in_pack_v = (std::is_same_v<T, Types> || ...);
+
+// Get the last type in a parameter pack (the root schema type)
+template<typename... Types>
+struct last_type;
+
+template<typename T>
+struct last_type<T> { using type = T; };
+
+template<typename T, typename... Rest>
+struct last_type<T, Rest...> { using type = typename last_type<Rest...>::type; };
+
+template<typename... Types>
+using last_type_t = typename last_type<Types...>::type;
+
 // Main recursive schema writer with cycle detection
 template <typename Type, class... SeenTypes, writer::WriterLike W>
     requires JsonParsableValue<Type>
 constexpr bool WriteSchemaImpl(W & writer) {
     using T = AnnotatedValue<Type>;
+    
+    // Check for cycles
+    if constexpr (type_in_pack_v<T, SeenTypes...>) {
+        // Recursive type detected
+        // Check if this references the root schema (last type in SeenTypes)
+        constexpr bool is_root_reference = []() consteval {
+            if constexpr (sizeof...(SeenTypes) == 0) {
+                return false; // No SeenTypes - shouldn't happen if we're in this branch
+            } else {
+                using RootType = last_type_t<SeenTypes...>;
+                return std::is_same_v<T, RootType>;
+            }
+        }();
+        
+        if constexpr (is_root_reference) {
+            // This is a self-reference to the root schema - emit {"$ref": "#"}
+            typename W::MapFrame frame;
+            std::size_t size = 1;
+            if (!writer.write_map_begin(size, frame)) return false;
+            if (!writer.write_string("$ref", 4, true)) return false;
+            if (!writer.move_to_value(frame)) return false;
+            if (!writer.write_string("#", 1, true)) return false;
+            return writer.write_map_end(frame);
+        } else {
+            // This is a nested or mutual recursion - not supported
+            static_assert(is_root_reference, 
+                "JsonFusion: Recursive schema detected that does not reference the root schema. "
+                "Only self-referencing types at the root level are supported (e.g., struct Tree { vector<Tree> children; }). "
+                "Mutual recursion (A->B->A) and nested recursive types are not supported.");
+            return false; // Unreachable, but needed for compilation
+        }
+    }
+    else {
+    // NO CYCLE - continue with normal schema generation
+    
     // Check options on the original Type (before unwrapping annotations)
     using OptsOnType = typename options::detail::annotation_meta_getter<Type>::options;
     
@@ -931,19 +991,6 @@ constexpr bool WriteSchemaImpl(W & writer) {
     }
     
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
-    
-    // Check for cycles - emit a $ref placeholder
-    if constexpr ((std::is_same_v<T, SeenTypes> || ...)) {
-        // For now, emit a simple recursive reference marker
-        // In a full implementation, you'd track definitions and emit proper $ref URIs
-        typename W::MapFrame frame;
-        std::size_t size = 1;
-        if (!writer.write_map_begin(size, frame)) return false;
-        if (!writer.write_string("$comment", 8, true)) return false;
-        if (!writer.move_to_value(frame)) return false;
-        if (!writer.write_string("recursive-type-detected", 23, true)) return false;
-        return writer.write_map_end(frame);
-    }
     
     // Handle transformers - use their wire type
     if constexpr (ParseTransformer<T>) {
@@ -999,6 +1046,7 @@ constexpr bool WriteSchemaImpl(W & writer) {
     else {
         return WriteObjectSchema<Type, SeenTypes...>(writer);
     }
+    } // end else (no cycle)
 }
 
 } // namespace detail

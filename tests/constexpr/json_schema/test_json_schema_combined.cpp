@@ -141,6 +141,12 @@ struct IndexedData_ {
 // Option: indexes_as_keys - use numeric indices as property names
 using IndexedData = A<IndexedData_, indexes_as_keys>;
 
+// Recursive type - tree structure (tests cycle detection and $ref generation)
+struct TreeModel {
+    std::string data;
+    A<std::vector<TreeModel>, max_items<10>> children;
+};
+
 // ============================================================================
 // Tests - Comprehensive Coverage of All Validators and Options
 // ============================================================================
@@ -170,6 +176,11 @@ static_assert(TestSchema<Person>(
 // Test 5: IndexedData - demonstrates indexes_as_keys and int_key<N> with enum-like semantics
 static_assert(TestSchemaInline<IndexedData>(
     R"({"additionalProperties":false,"type":"object","properties":{"0":{"type":"integer"},"10":{"type":"integer"},"11":{"type":"integer"},"100":{"type":"integer"},"101":{"type":"integer"}}})"
+));
+
+// Test 6: TreeModel - demonstrates recursive types with cycle detection and $ref
+static_assert(TestSchemaInline<TreeModel>(
+    R"({"additionalProperties":false,"type":"object","properties":{"data":{"type":"string"},"children":{"type":"array","maxItems":10,"items":{"$ref":"#"}}}})"
 ));
 
 // ============================================================================
@@ -212,5 +223,11 @@ static_assert(TestSchemaInline<IndexedData>(
  * ✓ Metadata wrapper             - $schema and title properties
  * ✓ Enum-like index semantics    - int_key<N> follows C++ enum rules
  * ✓ additionalProperties:false   - default for objects without allow_excess_fields
+ * ✓ Recursive types              - cycle detection with {"$ref": "#"}
  */
 
+// Main function for running the test
+int main() {
+    // All tests are static_assert, so if we compile, we pass
+    return 0;
+}
