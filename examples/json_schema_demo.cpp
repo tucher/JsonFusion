@@ -58,14 +58,14 @@ bool WriteSchema(std::string& out,
     return JsonFusion::json_schema::WriteSchema<T>(writer, title, schema_uri) && writer.finish();
 }
 
-template <typename T>
+template <typename T, bool Pretty = false>
     requires JsonFusion::static_schema::JsonParsableValue<T>
 bool WriteSchemaInline(std::string& out) {
     out.clear();
     auto it = std::back_inserter(out);
     limitless_sentinel end{};
     
-    JsonFusion::JsonIteratorWriter<decltype(it), limitless_sentinel> writer(it, end);
+    JsonFusion::JsonIteratorWriter<decltype(it), limitless_sentinel, Pretty> writer(it, end);
     return JsonFusion::json_schema::WriteSchemaInline<T>(writer) && writer.finish();
 }
 } // anonymous namespace
@@ -179,6 +179,13 @@ int main() {
     std::cout << "  ✓ indexes_as_keys - numeric property names\n";
     std::cout << "  ✓ int_key<N> - custom index (follows C++ enum semantics)\n";
     std::cout << "  Note: Primarily for CBOR serialization\n";
+    
+    // Example 6: Pretty-printed output
+    schema.clear();
+    WriteSchemaInline<Address, true>(schema);  // Pretty = true
+    print_schema("Address Schema (Pretty-Printed)", schema);
+    std::cout << "  ✓ Pretty-printing with JsonIteratorWriter<It, Sent, Pretty=true>\n";
+    std::cout << "  ✓ Automatic indentation and newlines\n";
     
     std::cout << "\n✅ All validators and options demonstrated!\n";
     std::cout << "See tests/constexpr/json_schema/test_json_schema_combined.cpp for constexpr tests.\n";

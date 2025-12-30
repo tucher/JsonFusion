@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <string_view>
 
 #include "fp_to_str.hpp"
 #include "reader_concept.hpp"
@@ -1410,15 +1411,15 @@ enum class JsonIteratorWriterError {
     OUTPUT_OVERFLOW
 };
 
-template<class It, class Sent>
+template<class It, class Sent, bool Pretty = false>
 class JsonIteratorWriter {
 public:
     using iterator_type = It;
     struct ArrayFrame {
-
+        std::size_t depth = 0;  // Track depth for indentation
     };
     struct MapFrame {
-
+        std::size_t depth = 0;  // Track depth for indentation
     };
 
     using error_type = JsonIteratorWriterError;
@@ -1439,23 +1440,63 @@ public:
         return m_current;
     }
     std::size_t m_float_decimals=8;
-    constexpr JsonIteratorWriter(It & first, Sent last, std::size_t float_decimals=8)
-        : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last), m_float_decimals(float_decimals) {}
+    std::size_t m_indent_level = 0;  // Current indentation level
+    std::size_t m_indent_size = 2;   // Spaces per indent level
+    
+    constexpr JsonIteratorWriter(It & first, Sent last, std::size_t float_decimals=8, std::size_t indent_size=2)
+        : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last), m_float_decimals(float_decimals), m_indent_size(indent_size) {}
 
-    constexpr bool write_array_begin(const std::size_t &, ArrayFrame&) {
+private:
+    // Helper to write newline + indentation
+    constexpr bool write_indent() {
+        if constexpr (Pretty) {
+            // Write newline
+            if (m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            *m_current++ = '\n';
+            
+            // Write spaces for indentation
+            for (std::size_t i = 0; i < m_indent_level * m_indent_size; ++i) {
+                if (m_current == end_) {
+                    setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                    return false;
+                }
+                *m_current++ = ' ';
+            }
+        }
+        return true;
+    }
+
+public:
+
+    constexpr bool write_array_begin(const std::size_t &, ArrayFrame& frame) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
         *m_current ++ = '[';
+        
+        if constexpr (Pretty) {
+            frame.depth = m_indent_level;
+            m_indent_level++;
+            if (!write_indent()) return false;
+        }
         return true;
     }
-    constexpr bool write_map_begin(const std::size_t &, MapFrame&) {
+    constexpr bool write_map_begin(const std::size_t &, MapFrame& frame) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
         *m_current++ = '{';
+        
+        if constexpr (Pretty) {
+            frame.depth = m_indent_level;
+            m_indent_level++;
+            if (!write_indent()) return false;
+        }
         return true;
     }
 
@@ -1465,6 +1506,10 @@ public:
             return false;
         }
         *m_current ++ = ',';
+        
+        if constexpr (Pretty) {
+            if (!write_indent()) return false;
+        }
         return true;
     }
     constexpr bool advance_after_value(MapFrame&) {
@@ -1473,6 +1518,10 @@ public:
             return false;
         }
         *m_current ++ = ',';
+        
+        if constexpr (Pretty) {
+            if (!write_indent()) return false;
+        }
         return true;
     }
     constexpr bool move_to_value(MapFrame&) {
@@ -1482,6 +1531,15 @@ public:
             return false;
         }
         *m_current++ = ':';
+        
+        if constexpr (Pretty) {
+            // Add space after colon for readability
+            if(m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            *m_current++ = ' ';
+        }
 
         return true;
     }
@@ -1514,7 +1572,12 @@ public:
         return true;
     }
 
-    constexpr bool write_array_end(ArrayFrame&) {
+    constexpr bool write_array_end(ArrayFrame& frame) {
+        if constexpr (Pretty) {
+            m_indent_level = frame.depth;
+            if (!write_indent()) return false;
+        }
+        
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1522,7 +1585,12 @@ public:
         *m_current ++ = ']';
         return true;
     }
-    constexpr bool write_map_end(MapFrame&) {
+    constexpr bool write_map_end(MapFrame& frame) {
+        if constexpr (Pretty) {
+            m_indent_level = frame.depth;
+            if (!write_indent()) return false;
+        }
+        
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1665,7 +1733,7 @@ public:
         return m_current != end_;
     }
 
-    constexpr bool serialize_literal(const std::string_view & lit) {
+    constexpr bool serialize_literal(std::string_view lit) {
         for (char c : lit) {
             if (m_current == end_) {
                 setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
@@ -1743,6 +1811,7 @@ public:
     }
 };
 
-static_assert(JsonFusion::writer::WriterLike<JsonIteratorWriter<char*, char*>>);
+static_assert(JsonFusion::writer::WriterLike<JsonIteratorWriter<char*, char*, false>>);
+static_assert(JsonFusion::writer::WriterLike<JsonIteratorWriter<char*, char*, true>>);
 
 } // namespace JsonFusion
