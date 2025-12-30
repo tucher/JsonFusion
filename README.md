@@ -573,17 +573,17 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 **Test Setup:**
 - **Compiler**: `arm-none-eabi-gcc 14.2.1`
 - **Targets**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb`) and Cortex-M0+ (`-mcpu=cortex-m0plus -mthumb`)
-- **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
+- **Compilation**: `-fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
 - **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ (21.0 KB), slightly larger than ArduinoJson on Cortex-M7 (16.5 KB vs 15.5 KB)** — modern C++23 type safety with competitive code size while eliminating manual boilerplate and adding declarative validation.
+**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ (21.0 KB), slightly larger than ArduinoJson on Cortex-M7 (16.5 KB vs 15.4 KB)** — modern C++23 type safety with competitive code size while eliminating manual boilerplate and adding declarative validation.
 
 **Results (`.text` section - code size in flash):**
 
 | Library                             | M7 -O3      | M7 -Os      | M0+ -O3     | M0+ -Os     |
 |-------------------------------------|-------------|-------------|-------------|-------------|
 | **JsonFusion**                      | **23.7 KB** | **16.5 KB** | **31.1 KB** | **21.0 KB** |
-| ArduinoJson                         |   42.0 KB   |   15.5 KB   |   54.2 KB   |   23.9 KB   |
+| ArduinoJson                         |   41.8 KB   |   15.4 KB   |   54.2 KB   |   23.9 KB   |
 | jsmn                                |   21.8 KB   |   19.6 KB   |   32.0 KB   |   29.0 KB   |
 | cJSON                               |   20.0 KB   |   18.7 KB   |   32.5 KB   |   28.2 KB   |
 | JsonFusion CBOR (parse + serialize) |   34.8 KB   |   20.6 KB   |   43.2 KB   |   28.7 KB   |
@@ -592,12 +592,12 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 **Key Takeaways:**
 
 1. **JsonFusion with `-Os` is smallest on M0+, competitive on M7:**  
-   - **M0+**: 21.0 KB — **smallest of all tested** (12% smaller than ArduinoJson's 23.9 KB, 27% smaller than jsmn/cJSON)
-   - **M7**: 16.5 KB — slightly larger than ArduinoJson (6%), but **smaller than jsmn/cJSON** (16-12%)
+   - **M0+**: 21.0 KB — **smallest of all tested** (smaller than ArduinoJson, smaller than jsmn/cJSON)
+   - **M7**: 16.5 KB — slightly larger than ArduinoJson, but **smaller than jsmn/cJSON**
    
    While ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling), JsonFusion delivers the same validation with **zero manual code**—just define your structs.
 
-2. **CBOR support with reasonable overhead:** JsonFusion's CBOR implementation (parse + serialize) requires 20.6 KB on M7 `-Os` vs 16.5 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
+2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) requires 20.6 KB on M7 `-Os` vs 16.5 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
 3. **Glaze exhibits template code bloating:** With `-Os`, Glaze produces **3-4× larger code than others**.
 
@@ -616,34 +616,29 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 **Test Setup:**
 - **Compiler**: `xtensa-esp-elf-gcc 14.2.0`
 - **Target**: ESP32 (Xtensa LX6 architecture)
-- **Compilation**: `-fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
+- **Compilation**: `-fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
 - **Linking**: `-Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on ESP32 (18.5 KB)** — 65% smaller than ArduinoJson, 47% smaller than jsmn/cJSON.
+**TL;DR:** ✅ **JsonFusion is smallest on ESP32 (18.5 KB)**
 
 **Results (`.text` section - code size in flash):**
 
 | Library                             | ESP32 -O3   | ESP32 -Os   |
 |-------------------------------------|-------------|-------------|
 | **JsonFusion**                      | **29.0 KB** | **18.5 KB** |
-| ArduinoJson                         |   80.3 KB   |   53.0 KB   |
+| ArduinoJson                         |   45.8 KB   |   18.7 KB   |
 | jsmn                                |   37.7 KB   |   34.6 KB   |
 | cJSON                               |   34.9 KB   |   33.4 KB   |
 | JsonFusion CBOR (parse + serialize) |   41.0 KB   |   25.7 KB   |
 
 **Key Takeaways:**
 
-1. **JsonFusion dominates on ESP32:**
-   - **18.5 KB** with `-Os` — smallest of all libraries
-   - **65% smaller** than ArduinoJson (53.0 KB)
-   - **47% smaller** than jsmn/cJSON (~34 KB)
-
-2. **Cross-platform consistency:**
+1. **Cross-platform consistency:**
    - **ARM M7**: 16.5 KB
    - **ESP32**: 18.5 KB (+12%)
    - **ARM M0+**: 21.0 KB (+27%)
 
-3. **CBOR overhead remains reasonable:** 25.7 KB for full parse + serialize support (39% larger than JSON-parse-only)
+2. **CBOR overhead remains reasonable:** 25.7 KB for full parse + serialize support (39% larger than JSON-parse-only)
 
 ---
 
