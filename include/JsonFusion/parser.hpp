@@ -924,7 +924,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 
 template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires (!static_schema::ParseTransformerLike<Field>)
+    requires (!static_schema::ParseTransformerLike<Field> && !WireSinkLike<Field>)
 constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
@@ -958,6 +958,17 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
             return ParseNonNullValue<FieldOptions>(static_schema::getRef(field), reader, ctx, userCtx);
         }
     }
+}
+
+// WireSink: First-class wire format capture
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+    requires WireSinkLike<Field>
+constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+    field.clear();
+    if (!reader.capture_to_sink(field)) {
+        return ctx.withReaderError(reader);
+    }
+    return true;
 }
 
 template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include "wire_sink.hpp"
 
 namespace JsonFusion {
 
@@ -67,6 +68,10 @@ concept WriterLike = requires(R writer,
     // Skip to end, ensuring only whitespace remains
     { mutable_writer.finish() } -> std::same_as<bool>;
     
+    // ========== WireSink Operations ==========
+    // Output wire sink contents as a value (protocol-agnostic raw data emission)
+    { mutable_writer.output_from_sink(std::declval<const WireSink<256>&>()) } -> std::same_as<bool>;
+    { mutable_writer.output_from_sink(std::declval<const WireSink<1024, true>&>()) } -> std::same_as<bool>;
   };
 
 /// Type trait to check if a type satisfies WriterLike at compile time

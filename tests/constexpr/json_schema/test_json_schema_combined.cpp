@@ -3,6 +3,7 @@
 #include <JsonFusion/annotated.hpp>
 #include <JsonFusion/validators.hpp>
 #include <JsonFusion/json.hpp>
+#include <JsonFusion/wire_sink.hpp>
 #include <string>
 #include <vector>
 #include <map>
@@ -155,6 +156,23 @@ struct LegacyAPI_ {
 };
 using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
 
+// Struct demonstrating new WireSink types (first-class wire capture)
+struct WireSinkExample {
+    int id;
+    std::string name;
+    
+    // NEW: WireSink<MaxSize> - first-class wire format capture (static buffer)
+    WireSink<1024> raw_data_static;
+    
+    // NEW: WireSink<MaxSize, dynamic=true> - dynamic buffer bounded by MaxSize
+    WireSink<2048, true> raw_data_dynamic;
+    
+    // OLD: wire_sink<> annotation (deprecated but still supported)
+    A<std::string, wire_sink<>> metadata_old_style;
+    
+    std::optional<std::string> description;
+};
+
 // ============================================================================
 // Tests - Comprehensive Coverage of All Validators and Options
 // ============================================================================
@@ -196,6 +214,12 @@ static_assert(TestSchemaInline<LegacyAPI>(
     R"({"type":"object","properties":{"username":{"type":"string"},"email":{"type":"string"},"user_id":{"type":"integer"}},"propertyNames":{"not":{"enum":["password","ssn"]}}})"
 ));
 
+// Test 8: WireSinkExample - demonstrates NEW WireSink<MaxSize> types (first-class wire capture)
+//         Both WireSink and old wire_sink<> annotation generate empty schema {} (accept any JSON value)
+static_assert(TestSchemaInline<WireSinkExample>(
+    R"({"additionalProperties":false,"type":"object","properties":{"id":{"type":"integer"},"name":{"type":"string"},"raw_data_static":{},"raw_data_dynamic":{},"metadata_old_style":{},"description":{"oneOf":[{"type":"string"},{"type":"null"}]}}})"
+));
+
 // ============================================================================
 // Summary of Coverage
 // ============================================================================
@@ -224,7 +248,9 @@ static_assert(TestSchemaInline<LegacyAPI>(
  * ✓ key<"custom_name">           - custom JSON property name
  * ✓ int_key<N>                   - custom numeric index (CBOR-oriented)
  * ✓ exclude                     - exclude field from schema/serialization
- * ✓ wire_sink<>                  - accept any JSON value (no schema constraint)
+ * ✓ wire_sink<>                  - accept any JSON value (OLD annotation, deprecated)
+ * ✓ WireSink<MaxSize>            - first-class wire capture type (NEW)
+ * ✓ WireSink<MaxSize, dynamic>   - dynamic wire capture (NEW)
  * ✓ allow_excess_fields<>        - allow additional properties
  * ✓ as_array                     - serialize struct as tuple (prefixItems)
  * ✓ indexes_as_keys              - use numeric indices as property names

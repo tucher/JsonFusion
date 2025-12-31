@@ -12,6 +12,7 @@
 
 #include "options.hpp"
 #include "struct_introspection.hpp"
+#include "wire_sink.hpp"
 
 namespace JsonFusion {
 
@@ -453,13 +454,15 @@ concept NumberLike =
 /* ######## String type detection ######## */
 template<class C>
 concept StringLike =
+    !WireSinkLike<AnnotatedValue<C>> &&  // WireSink is NOT a string
+    (
 #if __has_include(<string>)
     // std::same_as<AnnotatedValue<C>, std::string>      ||
 #endif
     std::same_as<AnnotatedValue<C>, std::string_view> ||
     (std::ranges::contiguous_range<AnnotatedValue<C>> &&
      std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>
-    && !parse_transform_traits<C>::is_transformer && !serialize_transform_traits<C>::is_transformer);
+    && !parse_transform_traits<C>::is_transformer && !serialize_transform_traits<C>::is_transformer));
 
 
 
@@ -501,7 +504,9 @@ template<typename T>
 struct is_json_object {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT an object
+        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (std::ranges::range<U>) {
             return false; // arrays are handled separately
@@ -551,7 +556,9 @@ template<class T>
 struct is_json_serializable_array {
     static constexpr bool value = []{
         using U = AnnotatedValue<T>;
-        if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT an array
+        } else if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else if constexpr(serialize_transform_traits<U>::is_transformer) {
             return false;
@@ -571,7 +578,10 @@ concept SerializableArrayLike = is_json_serializable_array<C>::value;
 template<class T>
 struct is_non_null_json_serializable_value {
     static constexpr bool value = []{
-        if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
+        using U = AnnotatedValue<T>;
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT a regular non-null value
+        } else if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -579,7 +589,6 @@ struct is_non_null_json_serializable_value {
             return true;
         } else {
             // Inline map check
-            using U = AnnotatedValue<T>;
             if constexpr (MapReadable<U>) {
                 using Cursor = map_read_cursor<U>;
                 return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
@@ -623,8 +632,10 @@ concept NonNullableSerializableValue = is_non_null_json_serializable_value<Field
 
 template<class T>
 struct is_json_serializable_value {
-    static constexpr bool value = is_non_null_json_serializable_value<T>::value
-                                  || is_nullable_json_serializable_value<T>::value || serialize_transform_traits<T>::is_transformer;
+    static constexpr bool value = WireSinkLike<AnnotatedValue<T>>  // WireSink IS serializable!
+                                  || is_non_null_json_serializable_value<T>::value
+                                  || is_nullable_json_serializable_value<T>::value 
+                                  || serialize_transform_traits<T>::is_transformer;
 };
 
 template<class C>
@@ -637,7 +648,9 @@ template<class T>
 struct is_json_parsable_array {
     static constexpr bool value = []{
         using U = AnnotatedValue<T>;
-        if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT an array
+        } else if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else {
             if constexpr(ArrayWritable<U>) {
@@ -656,7 +669,10 @@ concept ParsableArrayLike = is_json_parsable_array<C>::value;
 template<class T>
 struct is_non_null_json_parsable_value {
     static constexpr bool value = []{
-        if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
+        using U = AnnotatedValue<T>;
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT a regular non-null value
+        } else if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -664,7 +680,6 @@ struct is_non_null_json_parsable_value {
             return true;
         } else {
             // Inline map check
-            using U = AnnotatedValue<T>;
             if constexpr (MapWritable<U>) {
                 using Cursor = map_write_cursor<U>;
                 return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
@@ -708,8 +723,10 @@ concept NonNullableParsableValue = is_non_null_json_parsable_value<Field>::value
 
 template<class T>
 struct is_json_parsable_value {
-    static constexpr bool value = is_non_null_json_parsable_value<T>::value
-                                  || is_nullable_json_parsable_value<T>::value || parse_transform_traits<T>::is_transformer;
+    static constexpr bool value = WireSinkLike<AnnotatedValue<T>>  // WireSink IS parsable!
+                                  || is_non_null_json_parsable_value<T>::value
+                                  || is_nullable_json_parsable_value<T>::value 
+                                  || parse_transform_traits<T>::is_transformer;
 };
 
 template<class C>
@@ -721,7 +738,9 @@ template<typename T>
 struct is_json_parsable_map {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT a map
+        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
@@ -742,7 +761,9 @@ template<typename T>
 struct is_json_serializable_map {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        if constexpr (WireSinkLike<U>) {
+            return false; // WireSink is NOT a map
+        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
@@ -1250,7 +1271,10 @@ consteval std::size_t calc_type_depth() {
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return SCHEMA_UNBOUNDED;
     } else {
-        if constexpr(ParseTransformerLike<T>) {
+        // WireSink is a leaf type (depth 1) - doesn't recurse into its members
+        if constexpr (WireSinkLike<T>) {
+            return 1;
+        } else if constexpr(ParseTransformerLike<T>) {
             return  calc_type_depth<typename T::wire_type, SeenTypes...>();
         } else {
             if constexpr (NullableParsableValue<T>) {
@@ -1318,7 +1342,10 @@ consteval std::size_t has_maps() {
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return false;
     } else {
-        if constexpr(ParseTransformerLike<T>) {
+        // WireSink doesn't contain maps - it's a leaf type
+        if constexpr (WireSinkLike<T>) {
+            return false;
+        } else if constexpr(ParseTransformerLike<T>) {
             return  has_maps<typename T::wire_type, SeenTypes...>();
         } else {
             if constexpr (NullableParsableValue<T>) {

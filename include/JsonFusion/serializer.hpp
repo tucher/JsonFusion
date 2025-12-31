@@ -446,7 +446,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 }
 
 template <class FieldOptions, static_schema::SerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires (!static_schema::SerializeTransformerLike<Field>)
+    requires (!static_schema::SerializeTransformerLike<Field> && !WireSinkLike<Field>)
 constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
@@ -477,6 +477,16 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
         }
     }
     return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), writer, ctx, userCtx);
+}
+
+// WireSink: First-class wire format emission
+template <class FieldOptions, static_schema::SerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
+    requires WireSinkLike<Field>
+constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
+    if (!writer.output_from_sink(obj)) {
+        return ctx.withWriterError(writer);
+    }
+    return true;
 }
 
 template <class FieldOptions, static_schema::SerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>

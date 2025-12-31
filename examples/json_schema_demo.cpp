@@ -11,6 +11,7 @@
 #include <JsonFusion/annotated.hpp>
 #include <JsonFusion/validators.hpp>
 #include <JsonFusion/json.hpp>
+#include <JsonFusion/wire_sink.hpp>
 
 #include <iostream>
 #include <string>
@@ -139,6 +140,24 @@ struct LegacyAPI_ {
 };
 using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
 
+// Struct demonstrating new WireSink types (first-class wire capture)
+struct WireSinkExample {
+    int id;
+    std::string name;
+    
+    // NEW: WireSink<MaxSize> - first-class wire format capture
+    // Static buffer with max 1024 bytes
+    WireSink<1024> raw_data_static;
+    
+    // NEW: WireSink<MaxSize, dynamic=true> - dynamic buffer bounded by MaxSize
+    WireSink<2048, true> raw_data_dynamic;
+    
+    // OLD: wire_sink<> annotation (deprecated but still supported)
+    A<std::string, wire_sink<>> metadata_old_style;
+    
+    std::optional<std::string> description;
+};
+
 int main() {
     std::string schema;
     
@@ -212,6 +231,16 @@ int main() {
     print_schema("LegacyAPI Schema (with Forbidden Fields)", schema);
     std::cout << "  ✓ forbidden<...> - prohibits specific fields (like deprecated ones)\n";
     std::cout << "  ✓ Works with allow_excess_fields to accept unknown fields but reject specific ones\n";
+    
+    // Example 8: WireSink types - NEW first-class wire format capture
+    schema.clear();
+    WriteSchemaInline<WireSinkExample, true>(schema);
+    print_schema("WireSinkExample Schema (WireSink Types)", schema);
+    std::cout << "  ✓ WireSink<MaxSize> - first-class wire capture type (static buffer)\n";
+    std::cout << "  ✓ WireSink<MaxSize, dynamic=true> - first-class wire capture (dynamic buffer)\n";
+    std::cout << "  ✓ Both generate empty schema {} (accept any JSON value)\n";
+    std::cout << "  ✓ OLD: wire_sink<> annotation still supported (deprecated)\n";
+    std::cout << "  Note: WireSink captures raw protocol data, useful for unknown schemas\n";
 
     std::cout << "\n✅ All validators and options demonstrated!\n";
     std::cout << "See tests/constexpr/json_schema/test_json_schema_combined.cpp for constexpr tests.\n";

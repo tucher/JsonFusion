@@ -1034,8 +1034,16 @@ constexpr bool WriteSchemaImpl(W & writer) {
     
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
     
+    // Handle WireSink types - they accept any JSON value (empty schema)
+    if constexpr (WireSinkLike<T>) {
+        // Empty schema {} allows any JSON value
+        typename W::MapFrame frame;
+        std::size_t size = 0;
+        if (!writer.write_map_begin(size, frame)) return false;
+        return writer.write_map_end(frame);
+    }
     // Handle transformers - use their wire type
-    if constexpr (ParseTransformerLike<T>) {
+    else if constexpr (ParseTransformerLike<T>) {
         return WriteSchemaImpl<typename T::wire_type, SeenTypes...>(writer);
     } 
     // Handle nullable types - emit oneOf [schema, null]

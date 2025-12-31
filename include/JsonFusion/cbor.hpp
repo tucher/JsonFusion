@@ -510,6 +510,14 @@ public:
         }
         return true;
     }
+    
+    // WireSink support - stub implementation (TODO: implement later)
+    template<WireSinkLike Sink>
+    bool capture_to_sink(Sink& /*sink*/) {
+        // TODO: Implement CBOR wire sink capture
+        setError(ParseError::ILLFORMED_STRING); // Placeholder error
+        return false;
+    }
 
 private:
     It & m_errorPos;
@@ -1072,6 +1080,14 @@ public:
     bool finish() {
         // Nothing to flush for this simple writer.
         return (err_ == CborWriterError::none);
+    }
+    
+    // WireSink support - stub implementation (TODO: implement later)
+    template<WireSinkLike Sink>
+    bool output_from_sink(const Sink& /*sink*/) {
+        // TODO: Implement CBOR wire sink output
+        setError(CborWriterError::buffer_overflow); // Placeholder error
+        return false;
     }
 
 private:

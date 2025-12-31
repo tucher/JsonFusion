@@ -114,6 +114,14 @@ public:
         }
         return true;
     }
+    
+    // WireSink support - stub implementation (TODO: implement in Step 4)
+    template<WireSinkLike Sink>
+    constexpr bool capture_to_sink(Sink& /*sink*/) {
+        // TODO: Implement wire sink capture
+        setError(JsonIteratorReaderError::ILLFORMED_STRING); // Placeholder error
+        return false;
+    }
 
 
     // Array/object structural events
@@ -1731,6 +1739,14 @@ public:
 
     constexpr bool finish() {
         return m_current != end_;
+    }
+    
+    // WireSink support - stub implementation (TODO: implement in Step 4)
+    template<WireSinkLike Sink>
+    constexpr bool output_from_sink(const Sink& /*sink*/) {
+        // TODO: Implement wire sink output
+        setError(JsonIteratorWriterError::OUTPUT_OVERFLOW); // Placeholder error
+        return false;
     }
 
     constexpr bool serialize_literal(std::string_view lit) {

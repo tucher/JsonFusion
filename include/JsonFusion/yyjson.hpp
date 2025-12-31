@@ -361,6 +361,14 @@ public:
     bool finish() {
         return true;
     }
+    
+    // WireSink support - stub implementation (TODO: implement later)
+    template<WireSinkLike Sink>
+    bool capture_to_sink(Sink& /*sink*/) {
+        // TODO: Implement yyjson wire sink capture (could store node handle!)
+        err_ = ParseError::ILLFORMED_OBJECT; // Placeholder error
+        return false;
+    }
 
 private:
     yyjson_val* root_   = nullptr;
@@ -665,6 +673,13 @@ public:
         // You *could* assert here that scope_kind_ == Root, but
         // serializer already guarantees balanced begin/end.
         return true;
+    }
+    
+    // WireSink support - stub implementation (TODO: implement later)
+    template<WireSinkLike Sink>
+    bool output_from_sink(const Sink& /*sink*/) {
+        // TODO: Implement yyjson wire sink output
+        return fail(Error::InvalidState); // Placeholder error
     }
 
 

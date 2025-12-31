@@ -2,6 +2,7 @@
 
 #include <concepts>
 #include <limits>
+#include "wire_sink.hpp"
 
 namespace JsonFusion {
 
@@ -90,6 +91,11 @@ concept ReaderLike = requires(R reader,
     
     // Skip entire value (with optional output to sink)
     { mutable_reader.template skip_value<2>(static_cast<void*>(nullptr), std::numeric_limits<std::size_t>::max()) } -> std::same_as<bool>;
+    
+    // ========== WireSink Operations ==========
+    // Capture current value to a wire sink (protocol-agnostic raw data capture)
+    { mutable_reader.capture_to_sink(std::declval<WireSink<256>&>()) } -> std::same_as<bool>;
+    { mutable_reader.capture_to_sink(std::declval<WireSink<1024, true>&>()) } -> std::same_as<bool>;
 };
 
 /// Type trait to check if a type satisfies ReaderLike at compile time
