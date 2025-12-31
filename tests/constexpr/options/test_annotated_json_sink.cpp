@@ -10,13 +10,13 @@ using namespace JsonFusion::options;
 using namespace TestHelpers;
 
 // ============================================================================
-// Test: json_sink<> - Capture Raw JSON
+// Test: wire_sink<> - Capture Raw JSON
 // ============================================================================
 
-// Test: json_sink with std::string - captures primitive value
+// Test: wire_sink with std::string - captures primitive value
 constexpr bool test_json_sink_string_primitive() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -30,12 +30,12 @@ constexpr bool test_json_sink_string_primitive() {
     
     return true;
 }
-static_assert(test_json_sink_string_primitive(), "json_sink with std::string - captures primitive");
+static_assert(test_json_sink_string_primitive(), "wire_sink with std::string - captures primitive");
 
-// Test: json_sink with std::string - captures string value
+// Test: wire_sink with std::string - captures string value
 constexpr bool test_json_sink_string_string_value() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -49,12 +49,12 @@ constexpr bool test_json_sink_string_string_value() {
     
     return true;
 }
-static_assert(test_json_sink_string_string_value(), "json_sink with std::string - captures string value");
+static_assert(test_json_sink_string_string_value(), "wire_sink with std::string - captures string value");
 
-// Test: json_sink with std::string - captures object
+// Test: wire_sink with std::string - captures object
 constexpr bool test_json_sink_string_object() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -69,12 +69,12 @@ constexpr bool test_json_sink_string_object() {
     
     return true;
 }
-static_assert(test_json_sink_string_object(), "json_sink with std::string - captures object");
+static_assert(test_json_sink_string_object(), "wire_sink with std::string - captures object");
 
-// Test: json_sink with std::string - captures array
+// Test: wire_sink with std::string - captures array
 constexpr bool test_json_sink_string_array() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -89,12 +89,12 @@ constexpr bool test_json_sink_string_array() {
     
     return true;
 }
-static_assert(test_json_sink_string_array(), "json_sink with std::string - captures array");
+static_assert(test_json_sink_string_array(), "wire_sink with std::string - captures array");
 
-// Test: json_sink with std::string - captures boolean
+// Test: wire_sink with std::string - captures boolean
 constexpr bool test_json_sink_string_boolean() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -108,12 +108,12 @@ constexpr bool test_json_sink_string_boolean() {
     
     return true;
 }
-static_assert(test_json_sink_string_boolean(), "json_sink with std::string - captures boolean");
+static_assert(test_json_sink_string_boolean(), "wire_sink with std::string - captures boolean");
 
-// Test: json_sink with std::string - captures null
+// Test: wire_sink with std::string - captures null
 constexpr bool test_json_sink_string_null() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -127,12 +127,12 @@ constexpr bool test_json_sink_string_null() {
     
     return true;
 }
-static_assert(test_json_sink_string_null(), "json_sink with std::string - captures null");
+static_assert(test_json_sink_string_null(), "wire_sink with std::string - captures null");
 
-// Test: json_sink with std::array<char, N> - fixed size buffer
+// Test: wire_sink with std::array<char, N> - fixed size buffer
 constexpr bool test_json_sink_array_fixed_size() {
     struct Test {
-        Annotated<std::array<char, 32>, json_sink<>> captured;
+        Annotated<std::array<char, 32>, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -147,12 +147,12 @@ constexpr bool test_json_sink_array_fixed_size() {
     
     return true;
 }
-static_assert(test_json_sink_array_fixed_size(), "json_sink with std::array<char, N> - fixed size buffer");
+static_assert(test_json_sink_array_fixed_size(), "wire_sink with std::array<char, N> - fixed size buffer");
 
-// Test: json_sink with std::array<char, N> - fails when buffer too small
+// Test: wire_sink with std::array<char, N> - fails when buffer too small
 constexpr bool test_json_sink_array_truncation() {
     struct Test {
-        Annotated<std::array<char, 10>, json_sink<>> captured;
+        Annotated<std::array<char, 10>, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -168,12 +168,12 @@ constexpr bool test_json_sink_array_truncation() {
     
     return true;
 }
-static_assert(test_json_sink_array_truncation(), "json_sink with std::array<char, N> - fails when buffer too small");
+static_assert(test_json_sink_array_truncation(), "wire_sink with std::array<char, N> - fails when buffer too small");
 
-// Test: json_sink with MaxStringLength limit
+// Test: wire_sink with MaxStringLength limit
 constexpr bool test_json_sink_string_length_limit() {
     struct Test {
-        Annotated<std::string, json_sink<64, 20>> captured;  // Max 20 chars
+        Annotated<std::string, wire_sink<64, 20>> captured;  // Max 20 chars
     };
     
     Test obj{};
@@ -191,12 +191,12 @@ constexpr bool test_json_sink_string_length_limit() {
     
     return true;
 }
-static_assert(test_json_sink_string_length_limit(), "json_sink with MaxStringLength limit");
+static_assert(test_json_sink_string_length_limit(), "wire_sink with MaxStringLength limit");
 
-// Test: json_sink with nested structures
+// Test: wire_sink with nested structures
 constexpr bool test_json_sink_nested_structures() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -211,13 +211,13 @@ constexpr bool test_json_sink_nested_structures() {
     
     return true;
 }
-static_assert(test_json_sink_nested_structures(), "json_sink with nested structures");
+static_assert(test_json_sink_nested_structures(), "wire_sink with nested structures");
 
-// Test: json_sink with custom depth limit
+// Test: wire_sink with custom depth limit
 // Depth limit = max number of opened arrays/objects during parsing
 constexpr bool test_json_sink_custom_depth() {
     struct Test {
-        Annotated<std::string, json_sink<2>> captured;  // Max 2 opened arrays/objects
+        Annotated<std::string, wire_sink<2>> captured;  // Max 2 opened arrays/objects
     };
     
     Test obj{};
@@ -246,12 +246,12 @@ constexpr bool test_json_sink_custom_depth() {
     
     return true;
 }
-static_assert(test_json_sink_custom_depth(), "json_sink with custom depth limit");
+static_assert(test_json_sink_custom_depth(), "wire_sink with custom depth limit");
 
-// Test: json_sink - whitespace removal
+// Test: wire_sink - whitespace removal
 constexpr bool test_json_sink_whitespace_removal() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -267,12 +267,12 @@ constexpr bool test_json_sink_whitespace_removal() {
     
     return true;
 }
-static_assert(test_json_sink_whitespace_removal(), "json_sink - whitespace removal");
+static_assert(test_json_sink_whitespace_removal(), "wire_sink - whitespace removal");
 
-// Test: json_sink - validates JSON correctness
+// Test: wire_sink - validates JSON correctness
 constexpr bool test_json_sink_validates_json() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -285,14 +285,14 @@ constexpr bool test_json_sink_validates_json() {
     
     return true;
 }
-static_assert(test_json_sink_validates_json(), "json_sink - validates JSON correctness");
+static_assert(test_json_sink_validates_json(), "wire_sink - validates JSON correctness");
 
-// Test: json_sink with multiple fields
+// Test: wire_sink with multiple fields
 constexpr bool test_json_sink_multiple_fields() {
     struct Test {
         int regular;
-        Annotated<std::string, json_sink<>> captured1;
-        Annotated<std::string, json_sink<>> captured2;
+        Annotated<std::string, wire_sink<>> captured1;
+        Annotated<std::string, wire_sink<>> captured2;
         bool regular2;
     };
     
@@ -308,12 +308,12 @@ constexpr bool test_json_sink_multiple_fields() {
     
     return true;
 }
-static_assert(test_json_sink_multiple_fields(), "json_sink with multiple fields");
+static_assert(test_json_sink_multiple_fields(), "wire_sink with multiple fields");
 
-// Test: json_sink with escape sequences - basic escapes
+// Test: wire_sink with escape sequences - basic escapes
 constexpr bool test_json_sink_escape_sequences_basic() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -323,7 +323,7 @@ constexpr bool test_json_sink_escape_sequences_basic() {
     
     if (!result) return false;
     
-    // json_sink now PRESERVES escape sequences as valid JSON
+    // wire_sink now PRESERVES escape sequences as valid JSON
     // The captured string should contain the raw JSON with escapes intact:
     // "hello\nworld\t\"quote\"" (with literal backslash-n, backslash-t, etc.)
     std::string expected = "\"hello\\nworld\\t\\\"quote\\\"\"";
@@ -331,12 +331,12 @@ constexpr bool test_json_sink_escape_sequences_basic() {
     
     return true;
 }
-static_assert(test_json_sink_escape_sequences_basic(), "json_sink with escape sequences - preserves escapes");
+static_assert(test_json_sink_escape_sequences_basic(), "wire_sink with escape sequences - preserves escapes");
 
-// Test: json_sink with all standard escape types
+// Test: wire_sink with all standard escape types
 constexpr bool test_json_sink_all_escape_types() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -352,12 +352,12 @@ constexpr bool test_json_sink_all_escape_types() {
     
     return true;
 }
-static_assert(test_json_sink_all_escape_types(), "json_sink with all standard escape types");
+static_assert(test_json_sink_all_escape_types(), "wire_sink with all standard escape types");
 
-// Test: json_sink with Unicode escape sequences
+// Test: wire_sink with Unicode escape sequences
 constexpr bool test_json_sink_unicode_escapes() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -373,12 +373,12 @@ constexpr bool test_json_sink_unicode_escapes() {
     
     return true;
 }
-static_assert(test_json_sink_unicode_escapes(), "json_sink with Unicode escapes");
+static_assert(test_json_sink_unicode_escapes(), "wire_sink with Unicode escapes");
 
-// Test: json_sink with Unicode surrogate pairs
+// Test: wire_sink with Unicode surrogate pairs
 constexpr bool test_json_sink_surrogate_pairs() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -394,12 +394,12 @@ constexpr bool test_json_sink_surrogate_pairs() {
     
     return true;
 }
-static_assert(test_json_sink_surrogate_pairs(), "json_sink with Unicode surrogate pairs");
+static_assert(test_json_sink_surrogate_pairs(), "wire_sink with Unicode surrogate pairs");
 
-// Test: json_sink with escapes in nested structures
+// Test: wire_sink with escapes in nested structures
 constexpr bool test_json_sink_escapes_in_nested() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -414,12 +414,12 @@ constexpr bool test_json_sink_escapes_in_nested() {
     
     return true;
 }
-static_assert(test_json_sink_escapes_in_nested(), "json_sink with escapes in nested structures");
+static_assert(test_json_sink_escapes_in_nested(), "wire_sink with escapes in nested structures");
 
-// Test: json_sink with mixed content and escapes
+// Test: wire_sink with mixed content and escapes
 constexpr bool test_json_sink_mixed_escapes() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -435,12 +435,12 @@ constexpr bool test_json_sink_mixed_escapes() {
     
     return true;
 }
-static_assert(test_json_sink_mixed_escapes(), "json_sink with mixed content and escapes");
+static_assert(test_json_sink_mixed_escapes(), "wire_sink with mixed content and escapes");
 
-// Test: json_sink with number formats
+// Test: wire_sink with number formats
 constexpr bool test_json_sink_number_formats() {
     struct Test {
-        Annotated<std::string, json_sink<>> captured;
+        Annotated<std::string, wire_sink<>> captured;
     };
     
     Test obj{};
@@ -459,5 +459,5 @@ constexpr bool test_json_sink_number_formats() {
     
     return true;
 }
-static_assert(test_json_sink_number_formats(), "json_sink with number formats");
+static_assert(test_json_sink_number_formats(), "wire_sink with number formats");
 

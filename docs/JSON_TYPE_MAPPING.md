@@ -400,7 +400,7 @@ struct Config {
     Annotated<int, key<"portNumber">> port;  // JSON: "portNumber", C++: port
     
     // Exclude from JSON serialization/deserialization
-    Annotated<std::string, not_json> internal_cache;
+    Annotated<std::string, exclude> internal_cache;
     
     // Documentation metadata (for schema generation)
     Annotated<std::string, description<"User's email address">> email;
@@ -414,12 +414,16 @@ struct Config {
 // Allow unknown fields
 Annotated<Config, allow_excess_fields> config;
 
-// Explicit optional fields (struct-level annotation)
+// Explicit optional fields, others are required (struct-level annotation)
 struct User {
     std::string nickname;  // 
     std::string email;     // Required
 };
 Annotated<User, not_required<"nickname">> user;  // Mark "nickname" as not required and all others required
+
+Annotated<User, required<"nickname">> user1;  // Mark "nickname" as required and all others are not required
+
+Annotated<User, forbidden<"id">, allow_excess_fields> user2;  // Mark "id" as forbidden, even if occures in unknown fields
 
 // Serialize struct as JSON array instead of object (fields in order)
 struct Point {

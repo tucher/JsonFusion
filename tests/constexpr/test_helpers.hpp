@@ -378,7 +378,7 @@ constexpr bool TestRoundTripSemantic(const char* json_str, const T& expected) {
 /// Check if path element matches expected field name (for struct fields)
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementHasField(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem,
     std::string_view expected_field) 
 {
     return elem.field_name == expected_field;
@@ -387,7 +387,7 @@ constexpr bool PathElementHasField(
 /// Check if path element matches expected array index
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementHasIndex(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem,
     std::size_t expected_index) 
 {
     return elem.array_index == expected_index;
@@ -396,7 +396,7 @@ constexpr bool PathElementHasIndex(
 /// Check if path element is a field (not array index)
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementIsField(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem) 
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem) 
 {
     return elem.array_index == std::numeric_limits<std::size_t>::max() 
         && !elem.field_name.empty();
@@ -405,7 +405,7 @@ constexpr bool PathElementIsField(
 /// Check if path element is an array index (not field)
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementIsIndex(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem) 
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem) 
 {
     return elem.array_index != std::numeric_limits<std::size_t>::max();
 }
@@ -414,7 +414,7 @@ constexpr bool PathElementIsIndex(
 /// Usage: PathElementMatches(elem, "field") or PathElementMatches(elem, 3)
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementMatches(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem,
     std::string_view expected_field) 
 {
     return PathElementHasField(elem, expected_field);
@@ -422,7 +422,7 @@ constexpr bool PathElementMatches(
 
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementMatches(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& elem,
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& elem,
     std::size_t expected_index) 
 {
     return PathElementHasIndex(elem, expected_index);
@@ -441,11 +441,11 @@ constexpr bool TestParseErrorWithPathDepth(
     if constexpr(std::is_same_v<ErrorT, JsonFusion::ParseError>) {
         return !result 
             && result.error() == expected_error
-            && result.errorJsonPath().currentLength == expected_depth;
+            && result.errorPath().currentLength == expected_depth;
     } else {
         return !result 
             && result.readerError() == expected_error
-            && result.errorJsonPath().currentLength == expected_depth;
+            && result.errorPath().currentLength == expected_depth;
     }
 }
 
@@ -464,7 +464,7 @@ constexpr bool TestParseErrorWithPathElement(
         return false;
     }
     
-    const auto& path = result.errorJsonPath();
+    const auto& path = result.errorPath();
     if (element_index >= path.currentLength) {
         return false;
     }
@@ -494,7 +494,7 @@ constexpr bool TestParseErrorWithPath(
         }
     }
     
-    const auto& path = result.errorJsonPath();
+    const auto& path = result.errorPath();
     constexpr std::size_t expected_length = sizeof...(PathComponents);
     
     if (path.currentLength != expected_length) {
@@ -519,8 +519,8 @@ constexpr bool TestParseErrorWithPath(
 /// Compare two PathElement objects for equality
 template<std::size_t InlineKeyCapacity>
 constexpr bool PathElementsEqual(
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& a,
-    const JsonFusion::json_path::PathElement<InlineKeyCapacity>& b)
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& a,
+    const JsonFusion::path::PathElement<InlineKeyCapacity>& b)
 {
     // Check array index
     if (a.array_index != b.array_index) {
@@ -541,11 +541,11 @@ constexpr bool PathElementsEqual(
     return true;
 }
 
-/// Compare two JsonPath objects for equality
+/// Compare two Path objects for equality
 template<std::size_t SchemaDepth, bool SchemaHasMaps>
 constexpr bool JsonPathsEqual(
-    const JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>& actual,
-    const JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>& expected)
+    const JsonFusion::path::Path<SchemaDepth, SchemaHasMaps>& actual,
+    const JsonFusion::path::Path<SchemaDepth, SchemaHasMaps>& expected)
 {
     // 1. Check lengths are the same
     if (actual.currentLength != expected.currentLength) {
@@ -563,7 +563,7 @@ constexpr bool JsonPathsEqual(
 }
 
 /// Test parsing fails with specific error and expected JSON path
-/// Uses type-driven JsonPath construction for compile-time verification
+/// Uses type-driven Path construction for compile-time verification
 /// Example: TestParseErrorWithJsonPath<Config>(json, ParseError::..., "field", 3, "nested")
 template<typename T, class ErrorClass, typename... PathComponents>
 constexpr bool TestParseErrorWithJsonPath(
@@ -588,11 +588,11 @@ constexpr bool TestParseErrorWithJsonPath(
     constexpr bool SchemaHasMaps = JsonFusion::schema_analyzis::has_maps<T>();
     
     // Construct expected path directly from components
-    using PathT = JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
+    using PathT = JsonFusion::path::Path<SchemaDepth, SchemaHasMaps>;
     PathT expected_path(expected_path_components...);
     
     // Compare paths
-    return JsonPathsEqual(result.errorJsonPath(), expected_path);
+    return JsonPathsEqual(result.errorPath(), expected_path);
 }
 
 /// Test validation error with expected JSON path
@@ -613,11 +613,11 @@ constexpr bool TestValidationErrorWithJsonPath(
     constexpr bool SchemaHasMaps = JsonFusion::schema_analyzis::has_maps<T>();
     
     // Construct expected path
-    using PathT = JsonFusion::json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
+    using PathT = JsonFusion::path::Path<SchemaDepth, SchemaHasMaps>;
     PathT expected_path(expected_path_components...);
     
     // Compare paths
-    return JsonPathsEqual(result.errorJsonPath(), expected_path);
+    return JsonPathsEqual(result.errorPath(), expected_path);
 }
 
 } // namespace TestHelpers

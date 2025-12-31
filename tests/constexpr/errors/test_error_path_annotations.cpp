@@ -34,19 +34,19 @@ static_assert([]() constexpr {
 }(), "Test 2: key<> annotation - error detection");
 
 // ============================================================================
-// Test 3: not_json annotation - field skipped in JSON
+// Test 3: exclude annotation - field skipped in JSON
 // ============================================================================
 
 struct WithHiddenField {
     int visible;
-    A<int, not_json> hidden;
+    A<int, exclude> hidden;
 };
 
 static_assert([]() constexpr {
     WithHiddenField obj{};
-    // Only "visible" in JSON, "hidden" is not_json
+    // Only "visible" in JSON, "hidden" is exclude
     return Parse(obj, std::string_view(R"({"visible": 42})"));
-}(), "Test 3: not_json - field skipped");
+}(), "Test 3: exclude - field skipped");
 
 // ============================================================================
 // Test 4: Nested structs with key<> annotations

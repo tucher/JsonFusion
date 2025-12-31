@@ -30,7 +30,7 @@ That's it. No `oneOf`, no date, no "discriminated union", no "RPC". Just those s
 - **Bool** → `bool`
 - **null** → `std::optional<T>`, `std::unique_ptr<T>`
 
-Static schema concepts (`JsonObject`, `JsonArray`, `JsonString`, …) are all about answering:
+Static schema concepts (`ObjectLike`, `JsonArray`, `StringLike`, …) are all about answering:
 
 > If I ignore annotations, options, validators, etc., does this C++ type represent one of the six JSON value categories?
 
@@ -93,7 +93,7 @@ JsonFusion core doesn't know anything about `MyDate`, or reducers, or sum types.
 
 1. **Transformers** – value ↔ value
 2. **Streamers** – JSON array/map → callbacks instead of storage
-3. **`json_sink` annotation** – "capture this subtree as raw JSON" so you can interpret it later
+3. **`wire_sink` annotation** – "capture this subtree as raw JSON" so you can interpret it later
 
 Let's look at each.
 
@@ -111,13 +111,13 @@ A transformer is a small object that says:
 namespace static_schema {
 
 template<class T>
-concept ParseTransformer = requires(T t, const typename T::wire_type& w) {
+concept ParseTransformerLike = requires(T t, const typename T::wire_type& w) {
     typename T::wire_type;         // the JSON-facing type
     { t.transform_from(w) } -> std::convertible_to<bool>;
 };
 
 template<class T>
-concept SerializeTransformer = requires(const T t, typename T::wire_type& w) {
+concept SerializeTransformerLike = requires(const T t, typename T::wire_type& w) {
     typename T::wire_type;
     { t.transform_to(w) } -> std::convertible_to<bool>;
 };
@@ -128,7 +128,7 @@ concept SerializeTransformer = requires(const T t, typename T::wire_type& w) {
 The parser logic becomes roughly:
 
 ```cpp
-if constexpr (ParseTransformer<FieldT>) {
+if constexpr (ParseTransformerLike<FieldT>) {
     typename FieldT::wire_type tmp;
     // Parse JSON into tmp as if tmp were the actual field
     if (!Parse(tmp, reader, ctx)) { ... }
@@ -228,15 +228,15 @@ Again: the core stays in layer 1; the semantics "count points", "accumulate sum"
 
 ---
 
-## `json_sink`: capturing raw JSON for later
+## `wire_sink`: capturing raw JSON for later
 
 Sometimes you don't want to interpret a subtree immediately at all. You just want:
 
 > "Give me this part of JSON as a buffer/string/DOM, I'll decide later."
 
-That's where `json_sink` comes in:
+That's where `wire_sink` comes in:
 - JsonFusion walks the JSON as usual
-- For the `json_sink` field, it re-emits the raw JSON into your sink
+- For the `wire_sink` field, it re-emits the raw JSON into your sink
 - You end up with a "sub-document" or chunk of JSON you can feed into:
   - another parser,
   - a schema engine (`oneOf`/`anyOf`/custom logic),
@@ -265,7 +265,7 @@ There are basically two things people mean when they say "variant":
 **Neither of those needs the core parser to know about `std::variant`.**
 
 You can build them in layer 3:
-- Use `json_sink` to capture the subtree
+- Use `wire_sink` to capture the subtree
 - Try multiple `Parse(...)` calls into different candidate wire types
 - Wrap the chosen one into a `std::variant`
 - Glue it to JsonFusion via a transformer
@@ -280,7 +280,7 @@ You write:
 
 ```cpp
 struct OneOf_ABC {
-    using wire_type = A<std::string, json_sink>; 
+    using wire_type = A<std::string, wire_sink>; 
 
     std::variant<A,B,C> value;
 
@@ -303,7 +303,7 @@ This is precisely the kind of thing that belongs in "extras", not in the core:
 - It's schema/domain logic ("pick one of multiple shapes")
 - It's built entirely from:
   - core parser (`Parse`)
-  - `json_sink`
+  - `wire_sink`
   - transformers
 
 The core stays beautifully ignorant.
@@ -328,12 +328,12 @@ The three layers look like this:
 - Implemented via:
   - **Transformers** (wire JSON ↔ domain type)
   - **Streamers** (arrays/maps → callbacks with context)
-  - **`json_sink`** (capture raw JSON to handle later or elsewhere)
+  - **`wire_sink`** (capture raw JSON to handle later or elsewhere)
 - All arbitrarily composable
 
 **JsonFusion core should never embed domain concepts into layer 1.**
 
-It models pure JSON, and opens doors (Transformers/Streamers/`json_sink`) for everything else.
+It models pure JSON, and opens doors (Transformers/Streamers/`wire_sink`) for everything else.
 
 That's why you can now:
 - Express arbitrary JSON shapes directly as C++ types (implicitly attaching some constraints, like the lack of abstract "number" in C++)
@@ -377,7 +377,7 @@ But now you've forced that strategy into the core:
 - Even if the user knows "99% of the time it's B", the core can't specialize that
 - Even if the user wants a totally different resolution strategy ("look at a type field first", "dispatch on shape"), the core's variant logic is in the way
 
-If you do this in layer 3 instead (via transformer + `json_sink`), you can implement whichever strategy you want:
+If you do this in layer 3 instead (via transformer + `wire_sink`), you can implement whichever strategy you want:
 - First try B, then C, then A
 - Or inspect a discriminator and only parse the matching type
 - Or do shape-based dispatch
@@ -405,7 +405,7 @@ Options, none of them nice:
   - Who pays for this when they don't use variants?
 
 But if you move this to layer 3:
-- You can say: "for this particular oneOf-style transformer, I'll use a `json_sink` string buffer", or a small DOM, or whatever fits your constraints
+- You can say: "for this particular oneOf-style transformer, I'll use a `wire_sink` string buffer", or a small DOM, or whatever fits your constraints
 - Different call sites can choose different strategies
 - Core never needs to know about buffering policy at all
 
@@ -449,7 +449,7 @@ Instead of putting `std::variant` into the core, you get:
 
 - **Pure JSON core (layer 1)** — only the six JSON types
 - **Validators (layer 2)** — filter allowed values, still purely JSON
-- **Transformers / Streamers / `json_sink` (layer 3 hooks)** — everything domain-specific:
+- **Transformers / Streamers / `wire_sink` (layer 3 hooks)** — everything domain-specific:
   - dates,
   - reducers,
   - RPC,
@@ -459,7 +459,7 @@ So if someone really wants variant + `oneOf`, they can build:
 
 ```cpp
 struct VariantOneOf {
-    using wire_type = json_sink;
+    using wire_type = wire_sink;
 
     std::variant<A,B,C> value;
 

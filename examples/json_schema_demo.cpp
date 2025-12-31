@@ -46,7 +46,7 @@ constexpr bool operator!=(const limitless_sentinel& s,
 }
 
 template <typename T>
-    requires JsonFusion::static_schema::JsonParsableValue<T>
+    requires JsonFusion::static_schema::ParsableValue<T>
 bool WriteSchema(std::string& out, 
                  const char* title = nullptr,
                  const char* schema_uri = "https://json-schema.org/draft/2020-12/schema") {
@@ -59,7 +59,7 @@ bool WriteSchema(std::string& out,
 }
 
 template <typename T, bool Pretty = false>
-    requires JsonFusion::static_schema::JsonParsableValue<T>
+    requires JsonFusion::static_schema::ParsableValue<T>
 bool WriteSchemaInline(std::string& out) {
     out.clear();
     auto it = std::back_inserter(out);
@@ -84,11 +84,11 @@ struct Address {
     };
     A<Coordinates, as_array> coordinates;
     
-    // Option: not_json - excluded from schema and serialization
-    A<std::string, not_json> internal_id;
+    // Option: exclude - excluded from schema and serialization
+    A<std::string, exclude> internal_id;
     
-    // Option: json_sink - accepts any JSON value
-    A<std::string, json_sink<>> metadata;
+    // Option: wire_sink - accepts any JSON value
+    A<std::string, wire_sink<>> metadata;
 };
 
 // Structure with arrays and optional fields
@@ -147,15 +147,15 @@ int main() {
     std::cout << "\nThis demo showcases ALL validators and options available in JsonFusion.\n";
     std::cout << "Generated schemas conform to JSON Schema Draft 2020-12.\n\n";
     
-    // Example 1: Address - String validators, enums, as_array, key<>, not_json, json_sink
+    // Example 1: Address - String validators, enums, as_array, key<>, exclude, wire_sink
     WriteSchemaInline<Address>(schema);
     print_schema("Address Schema (Inline)", schema);
     std::cout << "  ✓ min_length, max_length - string length constraints\n";
     std::cout << "  ✓ enum_values - enumeration of allowed values\n";
     std::cout << "  ✓ key<> - custom JSON property name\n";
     std::cout << "  ✓ as_array - tuple-like array schema (prefixItems)\n";
-    std::cout << "  ✓ not_json - field excluded from schema\n";
-    std::cout << "  ✓ json_sink - accepts any JSON value\n";
+    std::cout << "  ✓ exclude - field excluded from schema\n";
+    std::cout << "  ✓ wire_sink - accepts any JSON value\n";
     
     // Example 2: Person - Numeric validators, arrays, optional, required
     schema.clear();

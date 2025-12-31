@@ -81,7 +81,7 @@ if (!result) {
 ```cpp
 auto result = Parse(cfg, json_data);
 if (!result) {
-    const auto& path = result.errorJsonPath();
+    const auto& path = result.errorPath();
     
     // Examine path structure:
     for (size_t i = 0; i < path.currentLength; ++i) {
@@ -139,7 +139,7 @@ if (!result && result.error() == ParseError::SCHEMA_VALIDATION_ERROR) {
 ```cpp
 auto result = Parse(cfg, json_data);
 if (!result) {
-    const auto& path = result.errorJsonPath();
+    const auto& path = result.errorPath();
     
     // Visit field options at error location:
     path.template visit_options<Config>([](auto opts) {
@@ -173,7 +173,7 @@ auto result = Parse(cfg, json_data);
 // Note: Partial parse may have left object in inconsistent state
 // Use with caution
 
-const auto& path = result.errorJsonPath();
+const auto& path = result.errorPath();
 
 // Visit the field that caused the error:
 path.visit(cfg, [](auto& field_value, auto opts) {
@@ -215,7 +215,7 @@ auto result = Parse(cfg, json);
 if (!result) {
     DiagnosticReport report;
     report.offset = result.offset();
-    report.json_path = format_path(result.errorJsonPath());
+    report.json_path = format_path(result.errorPath());
     report.error_type = result.error();
     
     if (result.error() == ParseError::SCHEMA_VALIDATION_ERROR) {
@@ -223,7 +223,7 @@ if (!result) {
         report.schema_error = result.validationErrors().error();
         
         // Extract expected values from annotations
-        result.errorJsonPath().template visit_options<Config>([&](auto opts) {
+        result.errorPath().template visit_options<Config>([&](auto opts) {
             report.constraints = extract_constraints(opts);
         });
     }
@@ -239,7 +239,7 @@ auto result = Parse(cfg, json);
 if (!result && result.error() == ParseError::SCHEMA_VALIDATION_ERROR) {
     // Validation failed, but parse succeeded structurally
     // Apply defaults to invalid fields:
-    result.errorJsonPath().visit(cfg, [](auto& field, auto opts) {
+    result.errorPath().visit(cfg, [](auto& field, auto opts) {
         apply_default(field, opts);
     });
 }
@@ -284,7 +284,7 @@ static_assert([]() constexpr {
 **For tooling:** Access `ParseResult` directly:
 - `pos()` / `offset()` → error location
 - `error()` → error code
-- `errorJsonPath()` → semantic path
+- `errorPath()` → semantic path
 - `validationErrors()` → constraint details
 - `visit_options()` / `visit()` → annotation/value inspection
 

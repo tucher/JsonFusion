@@ -60,7 +60,7 @@ struct ManyKeysConsumer {
 };
 
 static_assert(ConsumingMapStreamerLike<ManyKeysConsumer>);
-static_assert(JsonParsableMap<ManyKeysConsumer>);
+static_assert(ParsableMapLike<ManyKeysConsumer>);
 
 // Test 1: allowed_keys with 30 keys
 struct ManyAllowedKeys {

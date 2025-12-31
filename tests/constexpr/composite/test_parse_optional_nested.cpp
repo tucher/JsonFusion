@@ -11,25 +11,25 @@ using namespace JsonFusion::static_schema;
 // Test: Optional Nested Types
 // ============================================================================
 
-// Negative test: Verify nested optionals are rejected by JsonParsableValue concept
+// Negative test: Verify nested optionals are rejected by ParsableValue concept
 static_assert(
-    !JsonParsableValue<std::optional<std::optional<int>>>,
+    !ParsableValue<std::optional<std::optional<int>>>,
     "Nested optional (optional<optional<int>>) should be rejected"
 );
 
 static_assert(
-    !JsonParsableValue<std::optional<std::optional<bool>>>,
+    !ParsableValue<std::optional<std::optional<bool>>>,
     "Nested optional (optional<optional<bool>>) should be rejected"
 );
 
 // Positive test: Single optional is accepted
 static_assert(
-    JsonParsableValue<std::optional<int>>,
+    ParsableValue<std::optional<int>>,
     "Single optional should be accepted"
 );
 
 static_assert(
-    JsonParsableValue<std::optional<bool>>,
+    ParsableValue<std::optional<bool>>,
     "Single optional<bool> should be accepted"
 );
 

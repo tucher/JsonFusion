@@ -16,25 +16,25 @@ Think of it as providing a **Lego set**, not a **catalog**.
 
 At the foundation, JsonFusion recognizes two C++20 concepts that are **baked into the parser and serializer**:
 
-### ParseTransformer Concept
+### ParseTransformerLike Concept
 
 ```cpp
 template<class T>
-concept ParseTransformer = requires(T t, const typename T::wire_type& w) {
+concept ParseTransformerLike = requires(T t, const typename T::wire_type& w) {
     typename T::wire_type;              // What appears in JSON
     { t.transform_from(w) } -> std::same_as<bool>;  // JSON → domain type
-} && JsonParsableValue<typename T::wire_type>;
+} && ParsableValue<typename T::wire_type>;
 ```
 
 **How it works in the parser** (simplified):
 
 ```cpp
 template <class Field>
-    requires ParseTransformer<Field>
+    requires ParseTransformerLike<Field>
 bool ParseValue(Field& field, Reader& reader, Context& ctx) {
     typename Field::wire_type wire;
     
-    // 1. Parse JSON into wire_type (recursive - can be any JsonParsableValue!)
+    // 1. Parse JSON into wire_type (recursive - can be any ParsableValue!)
     bool ok = ParseValue(wire, reader, ctx);
     
     // 2. Transform wire → domain type
@@ -48,21 +48,21 @@ bool ParseValue(Field& field, Reader& reader, Context& ctx) {
 }
 ```
 
-### SerializeTransformer Concept
+### SerializeTransformerLike Concept
 
 ```cpp
 template<class T>
-concept SerializeTransformer = requires(const T t, typename T::wire_type& w) {
+concept SerializeTransformerLike = requires(const T t, typename T::wire_type& w) {
     typename T::wire_type;              // What appears in JSON
     { t.transform_to(w) } -> std::same_as<bool>;    // Domain type → JSON
-} && JsonSerializableValue<typename T::wire_type>;
+} && SerializableValue<typename T::wire_type>;
 ```
 
 **How it works in the serializer** (simplified):
 
 ```cpp
 template <class Field>
-    requires SerializeTransformer<Field>
+    requires SerializeTransformerLike<Field>
 bool SerializeValue(const Field& field, Iterator& it, Context& ctx) {
     typename Field::wire_type wire;
     
@@ -77,7 +77,7 @@ bool SerializeValue(const Field& field, Iterator& it, Context& ctx) {
 }
 ```
 
-**Key insight**: `wire_type` can be **anything** that's `JsonParsableValue` / `JsonSerializableValue`:
+**Key insight**: `wire_type` can be **anything** that's `ParsableValue` / `SerializableValue`:
 - Primitives: `int`, `bool`, `string`
 - Structs: `PersonWire { string first; string last; }`
 - Arrays: `vector<ItemWire>`
@@ -226,7 +226,7 @@ struct MapReduceField;
 
 ## Full Composability
 
-Because `wire_type` can be **any** `JsonParsableValue`, transformers compose naturally:
+Because `wire_type` can be **any** `ParsableValue`, transformers compose naturally:
 
 ### Multi-field Transformations
 
@@ -341,7 +341,7 @@ struct ArrayReduceField {
 
 This demonstrates the **layered architecture**:
 
-1. **Bottom layer**: `ParseTransformer` / `SerializeTransformer` concepts (baked into parser/serializer)
+1. **Bottom layer**: `ParseTransformerLike` / `SerializeTransformerLike` concepts (baked into parser/serializer)
 2. **Middle layer**: Streaming interfaces (`ConsumingStreamerLike`, `ProducingStreamerLike`)
 3. **Top layer**: Convenience templates (`Transformed`, `ArrayReduceField`, `LambdaStreamer`)
 
@@ -438,8 +438,8 @@ The building blocks are **complete** - any transformation can be expressed by:
 ## Summary
 
 **Core Hooks** (in parser/serializer):
-- `ParseTransformer` concept + specialized `ParseValue` overload
-- `SerializeTransformer` concept + specialized `SerializeValue` overload
+- `ParseTransformerLike` concept + specialized `ParseValue` overload
+- `SerializeTransformerLike` concept + specialized `SerializeValue` overload
 
 **Building Blocks** (in library):
 - `Transformed<Stored, Wire, From, To>` - bidirectional 1-to-1

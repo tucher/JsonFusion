@@ -10,7 +10,7 @@ enum class ParseError {
     FIXED_SIZE_CONTAINER_OVERFLOW,
 
     NON_NUMERIC_IN_NUMERIC_STORAGE,
-    NON_BOOL_JSON_IN_BOOL_VALUE,
+    NON_BOOL_IN_BOOL_VALUE,
     NON_STRING_IN_STRING_STORAGE,
     NON_ARRAY_IN_ARRAY_LIKE_VALUE,
     NON_MAP_IN_MAP_LIKE_VALUE,
@@ -39,7 +39,7 @@ constexpr std::string_view error_to_string(ParseError e) {
     case ParseError::ARRAY_DESTRUCTURING_SCHEMA_ERROR: return "ARRAY_DESTRUCTURING_SCHEMA_ERROR"; break;
     case ParseError::DATA_CONSUMER_ERROR: return "DATA_CONSUMER_ERROR"; break;
     case ParseError::DUPLICATE_KEY_IN_MAP: return "DUPLICATE_KEY_IN_MAP"; break;
-    case ParseError::NON_BOOL_JSON_IN_BOOL_VALUE: return "NON_BOOL_JSON_IN_BOOL_VALUE"; break;
+    case ParseError::NON_BOOL_IN_BOOL_VALUE: return "NON_BOOL_IN_BOOL_VALUE"; break;
     case ParseError::NON_STRING_IN_STRING_STORAGE: return "NON_STRING_IN_STRING_STORAGE"; break;
     case ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE: return "NON_ARRAY_IN_ARRAY_LIKE_VALUE"; break;
     case ParseError::NON_MAP_IN_MAP_LIKE_VALUE: return "NON_MAP_IN_MAP_LIKE_VALUE"; break;

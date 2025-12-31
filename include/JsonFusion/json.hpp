@@ -327,9 +327,9 @@ public:
                 return reader::TryParseStatus::error;
             }
         } else {
-            // Should never happen if JsonNumber is correct
+            // Should never happen if NumberLike is correct
             static_assert(std::is_integral_v<NumberT> || std::is_floating_point_v<NumberT>,
-                          "[[[ JsonFusion ]]] JsonNumber underlying type must be integral or floating");
+                          "[[[ JsonFusion ]]] NumberLike underlying type must be integral or floating");
             return reader::TryParseStatus::error;
         }
 

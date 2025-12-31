@@ -14,7 +14,7 @@ using namespace JsonFusion::options;
 /// Generic backward compatible field: accepts OldWireT or NewWireT, stores as StorageT
 // Always serializes as NewWireT (canonical form), even if parsed from OldWireT. 
 /// 
-/// This transformer uses json_sink to capture raw JSON, then tries parsing
+/// This transformer uses wire_sink to capture raw JSON, then tries parsing
 /// as both the old and new wire types. Perfect for schema evolution scenarios.
 ///
 /// Template parameters:
@@ -24,13 +24,13 @@ using namespace JsonFusion::options;
 ///   OldConvertFn   - Function pointer (OldWireT → StorageT)
 ///   NewConvertFn   - Function pointer (NewWireT → StorageT), often identity
 ///   ToWireFn       - Function pointer (StorageT → NewWireT) for serialization
-///   BufferSize     - Size of json_sink buffer
+///   BufferSize     - Size of wire_sink buffer
 template<class OldWireT, class NewWireT, class StorageT, 
          auto OldConvertFn, auto NewConvertFn, auto ToWireFn,
          std::size_t BufferSize = 64>
 struct CompatibleField {
     //JsonFusion guarantees that fixed sized string-like buffers are null terminated
-    using wire_type = A<std::array<char, BufferSize>, json_sink<>>;
+    using wire_type = A<std::array<char, BufferSize>, wire_sink<>>;
     StorageT value{};
     
     constexpr bool transform_from(const std::array<char, BufferSize>& json_buf) {

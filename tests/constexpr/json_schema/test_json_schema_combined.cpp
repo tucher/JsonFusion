@@ -41,7 +41,7 @@ constexpr bool operator!=(const limitless_sentinel& s,
 
 /// Test JSON schema generation (inline, no metadata)
 template <typename T>
-    requires JsonFusion::static_schema::JsonParsableValue<T>
+    requires JsonFusion::static_schema::ParsableValue<T>
 constexpr bool TestSchemaInline(std::string_view expected) {
     std::string out;
     auto it = std::back_inserter(out);
@@ -56,7 +56,7 @@ constexpr bool TestSchemaInline(std::string_view expected) {
 
 /// Test JSON schema generation (with metadata wrapper)
 template <typename T>
-    requires JsonFusion::static_schema::JsonParsableValue<T>
+    requires JsonFusion::static_schema::ParsableValue<T>
 constexpr bool TestSchema(std::string_view expected,
                           const char* title = nullptr,
                           const char* schema_uri = "https://json-schema.org/draft/2020-12/schema") {
@@ -90,11 +90,11 @@ struct Address {
     };
     A<Coordinates, as_array> coordinates;
     
-    // Option: not_json - excluded from schema and serialization
-    A<std::string, not_json> internal_id;
+    // Option: exclude - excluded from schema and serialization
+    A<std::string, exclude> internal_id;
     
-    // Option: json_sink - accepts any JSON value
-    A<std::string, json_sink<>> metadata;
+    // Option: wire_sink - accepts any JSON value
+    A<std::string, wire_sink<>> metadata;
 };
 
 // Structure with arrays and optional fields
@@ -159,7 +159,7 @@ using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_field
 // Tests - Comprehensive Coverage of All Validators and Options
 // ============================================================================
 
-// Test 1: Address - demonstrates key<>, enum_values, min_length, max_length, as_array, not_json, json_sink
+// Test 1: Address - demonstrates key<>, enum_values, min_length, max_length, as_array, exclude, wire_sink
 static_assert(TestSchemaInline<Address>(
     R"({"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2},"metadata":{}}})"
 ));
@@ -223,8 +223,8 @@ static_assert(TestSchemaInline<LegacyAPI>(
  * OPTIONS TESTED:
  * ✓ key<"custom_name">           - custom JSON property name
  * ✓ int_key<N>                   - custom numeric index (CBOR-oriented)
- * ✓ not_json                     - exclude field from schema/serialization
- * ✓ json_sink<>                  - accept any JSON value (no schema constraint)
+ * ✓ exclude                     - exclude field from schema/serialization
+ * ✓ wire_sink<>                  - accept any JSON value (no schema constraint)
  * ✓ allow_excess_fields<>        - allow additional properties
  * ✓ as_array                     - serialize struct as tuple (prefixItems)
  * ✓ indexes_as_keys              - use numeric indices as property names

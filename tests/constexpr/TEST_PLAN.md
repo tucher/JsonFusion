@@ -405,26 +405,26 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Mixed: some fields as_array, some not
   - Order dependency: fields must match array order
 
-### 5.3 not_json
+### 5.3 exclude
 
 - `test_annotated_not_json.cpp`
-  - Field marked `not_json` is skipped in parsing
-  - Field marked `not_json` is skipped in serialization
+  - Field marked `exclude` is skipped in parsing
+  - Field marked `exclude` is skipped in serialization
   - Derived/computed fields
   - Internal state fields
 
-### 5.4 skip_json
+### 5.4 skip
 
 - `test_annotated_skip_json.cpp`
-  - `skip_json<MaxSkipDepth>` - Fast-skip JSON value without parsing
+  - `skip<MaxSkipDepth>` - Fast-skip JSON value without parsing
   - Handles nested structures up to `MaxSkipDepth` levels
   - Performance optimization for unused fields
   - Depth limit behavior when exceeded
 
-### 5.7 json_sink
+### 5.7 wire_sink
 
 - `test_annotated_json_sink.cpp`
-  - `json_sink<MaxSkipDepth, MaxStringLength>` - Capture raw JSON as string
+  - `wire_sink<MaxSkipDepth, MaxStringLength>` - Capture raw JSON as string
   - Deferred parsing or pass-through scenarios
   - String length limit behavior
   - Depth limit behavior
@@ -596,7 +596,7 @@ Tests should use user-defined parsing/serializing contexts
   - `result.validationResult()` contains schema errors
   - `result.validationResult().hasSchemaError(SchemaError::number_out_of_range)`
   - Parse error vs validation error distinction
-  - **Verify `result.errorJsonPath()` shows correct field path (e.g., `$.config.port`)**
+  - **Verify `result.errorPath()` shows correct field path (e.g., `$.config.port`)**
 
 - `test_error_validation_length.cpp` 🔲 **NOT STARTED**
   - String too short/long
@@ -698,7 +698,7 @@ Tests should use user-defined parsing/serializing contexts
 - `test_error_json_path_constexpr.cpp` 🔲 **NOT STARTED**
   - JSON path tracking works in constexpr parsing
   - Verify path at compile time in `static_assert`
-  - Example: `result.errorJsonPath().storage[1].field_name == "name"`
+  - Example: `result.errorPath().storage[1].field_name == "name"`
   - Constexpr path depth calculation
   - Zero runtime allocation overhead
 
@@ -727,7 +727,7 @@ Tests should use user-defined parsing/serializing contexts
 - ✅ `test_error_path_annotations.cpp` **COMPLETE**
   - Fields with `key<"json_name">` show JSON name in path
   - `as_array` structures show field names, not array indices (JSON path reflects C++ structure)
-  - `not_json` fields don't appear in paths
+  - `exclude` fields don't appear in paths
   - Optional fields show in path when present
 
 ---
@@ -900,7 +900,7 @@ Tests should use user-defined parsing/serializing contexts
 - ⚠️ Error handling (malformed JSON, type mismatches) - **IN PROGRESS**
 - ⚠️ Validation error result object testing
 - ✅ JSON spec compliance (whitespace, escaping partially done)
-- ⚠️ Advanced annotations (as_array, not_json)
+- ⚠️ Advanced annotations (as_array, exclude)
 - ✅ Streaming consumers/producers (including maps) - ✅ COMPLETE (all core functionality covered)
 - ✅ **Validation** - ✅ COMPLETE (all validators covered: constant, range, length, items, not_required, combined)
 - ⚠️ Field ordering independence

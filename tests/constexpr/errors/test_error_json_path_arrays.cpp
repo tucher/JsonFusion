@@ -218,7 +218,7 @@ static_assert(
 );
 
 // ============================================================================
-// Using Generic JsonPath Comparison (Cleaner API)
+// Using Generic Path Comparison (Cleaner API)
 // ============================================================================
 
 // Test 15: Generic comparison - simple array element

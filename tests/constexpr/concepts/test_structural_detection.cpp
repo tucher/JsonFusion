@@ -46,8 +46,8 @@ using TestMap = std::map<std::array<char, 32>, int>;
 using TestUnorderedMap = std::unordered_map<std::string, int>;
 
 using TestCArray = int[10];
-static_assert(JsonParsableArray<TestCArray>);   
-static_assert(JsonSerializableArray<TestCArray>);   
+static_assert(ParsableArrayLike<TestCArray>);   
+static_assert(SerializableArrayLike<TestCArray>);   
 
 // 8. Optional (nullable type)
 using TestOptional = std::optional<int>;
@@ -56,240 +56,240 @@ using TestUniquePtr = std::unique_ptr<int>;
 using TestPointer = int*;
 
 // ============================================================================
-// SECTION 1: JsonBool - Must ONLY match bool
+// SECTION 1: BoolLike - Must ONLY match bool
 // ============================================================================
 
 namespace test_bool_concept {
-    // Positive: bool IS JsonBool
-    static_assert(JsonBool<bool>);
+    // Positive: bool IS BoolLike
+    static_assert(BoolLike<bool>);
     
     // Negative: bool is NOT other concepts
-    static_assert(!JsonNumber<bool>);
-    static_assert(!JsonString<bool>);
-    static_assert(!JsonObject<bool>);
-    static_assert(!JsonParsableArray<bool>);
-    static_assert(!JsonSerializableArray<bool>);
-    static_assert(!JsonParsableMap<bool>);
+    static_assert(!NumberLike<bool>);
+    static_assert(!StringLike<bool>);
+    static_assert(!ObjectLike<bool>);
+    static_assert(!ParsableArrayLike<bool>);
+    static_assert(!SerializableArrayLike<bool>);
+    static_assert(!ParsableMapLike<bool>);
     static_assert(!JsonSerializableMap<bool>);
     
-    // Negative: Other types are NOT JsonBool
-    static_assert(!JsonBool<int>);
-    static_assert(!JsonBool<double>);
-    static_assert(!JsonBool<TestString>);
-    static_assert(!JsonBool<TestObject>);
-    static_assert(!JsonBool<TestArray>);
-    static_assert(!JsonBool<TestCArray>);
-    static_assert(!JsonBool<TestCustomMap>);
-    static_assert(!JsonBool<TestUnorderedMap>);
-    static_assert(!JsonBool<TestMap>);
-    static_assert(!JsonBool<TestOptional>);
-    static_assert(!JsonBool<TestUniquePtr>);
-    static_assert(!JsonBool<TestPointer>);
+    // Negative: Other types are NOT BoolLike
+    static_assert(!BoolLike<int>);
+    static_assert(!BoolLike<double>);
+    static_assert(!BoolLike<TestString>);
+    static_assert(!BoolLike<TestObject>);
+    static_assert(!BoolLike<TestArray>);
+    static_assert(!BoolLike<TestCArray>);
+    static_assert(!BoolLike<TestCustomMap>);
+    static_assert(!BoolLike<TestUnorderedMap>);
+    static_assert(!BoolLike<TestMap>);
+    static_assert(!BoolLike<TestOptional>);
+    static_assert(!BoolLike<TestUniquePtr>);
+    static_assert(!BoolLike<TestPointer>);
 }
 
 // ============================================================================
-// SECTION 2: JsonNumber - Must ONLY match numeric types
+// SECTION 2: NumberLike - Must ONLY match numeric types
 // ============================================================================
 
 namespace test_number_concept {
-    // Positive: numeric types ARE JsonNumber
-    static_assert(JsonNumber<int>);
-    static_assert(JsonNumber<unsigned int>);
-    static_assert(JsonNumber<long>);
-    static_assert(JsonNumber<short>);
-    static_assert(JsonNumber<int8_t>);
-    static_assert(JsonNumber<int16_t>);
-    static_assert(JsonNumber<int32_t>);
-    static_assert(JsonNumber<int64_t>);
-    static_assert(JsonNumber<uint8_t>);
-    static_assert(JsonNumber<uint16_t>);
-    static_assert(JsonNumber<uint32_t>);
-    static_assert(JsonNumber<uint64_t>);
-    static_assert(JsonNumber<float>);
-    static_assert(JsonNumber<double>);
+    // Positive: numeric types ARE NumberLike
+    static_assert(NumberLike<int>);
+    static_assert(NumberLike<unsigned int>);
+    static_assert(NumberLike<long>);
+    static_assert(NumberLike<short>);
+    static_assert(NumberLike<int8_t>);
+    static_assert(NumberLike<int16_t>);
+    static_assert(NumberLike<int32_t>);
+    static_assert(NumberLike<int64_t>);
+    static_assert(NumberLike<uint8_t>);
+    static_assert(NumberLike<uint16_t>);
+    static_assert(NumberLike<uint32_t>);
+    static_assert(NumberLike<uint64_t>);
+    static_assert(NumberLike<float>);
+    static_assert(NumberLike<double>);
     
     // Negative: numbers are NOT other concepts
-    static_assert(!JsonBool<int>);
-    static_assert(!JsonString<int>);
-    static_assert(!JsonObject<int>);
-    static_assert(!JsonParsableArray<int>);
-    static_assert(!JsonSerializableArray<int>);
-    static_assert(!JsonParsableMap<int>);
+    static_assert(!BoolLike<int>);
+    static_assert(!StringLike<int>);
+    static_assert(!ObjectLike<int>);
+    static_assert(!ParsableArrayLike<int>);
+    static_assert(!SerializableArrayLike<int>);
+    static_assert(!ParsableMapLike<int>);
     static_assert(!JsonSerializableMap<int>);
     
-    static_assert(!JsonBool<double>);
-    static_assert(!JsonString<double>);
-    static_assert(!JsonObject<double>);
-    static_assert(!JsonParsableArray<double>);
-    static_assert(!JsonSerializableArray<double>);
-    static_assert(!JsonParsableMap<double>);
+    static_assert(!BoolLike<double>);
+    static_assert(!StringLike<double>);
+    static_assert(!ObjectLike<double>);
+    static_assert(!ParsableArrayLike<double>);
+    static_assert(!SerializableArrayLike<double>);
+    static_assert(!ParsableMapLike<double>);
     static_assert(!JsonSerializableMap<double>);
     
-    // Negative: Other types are NOT JsonNumber
-    static_assert(!JsonNumber<bool>);
-    static_assert(!JsonNumber<TestString>);
-    static_assert(!JsonNumber<TestObject>);
-    static_assert(!JsonNumber<TestArray>);
-    static_assert(!JsonNumber<TestCArray>);
-    static_assert(!JsonNumber<TestCustomMap>);
-    static_assert(!JsonNumber<TestUnorderedMap>);
-    static_assert(!JsonNumber<TestMap>);
-    static_assert(!JsonNumber<TestOptional>);
-    static_assert(!JsonNumber<TestUniquePtr>);
-    static_assert(!JsonNumber<TestPointer>);
+    // Negative: Other types are NOT NumberLike
+    static_assert(!NumberLike<bool>);
+    static_assert(!NumberLike<TestString>);
+    static_assert(!NumberLike<TestObject>);
+    static_assert(!NumberLike<TestArray>);
+    static_assert(!NumberLike<TestCArray>);
+    static_assert(!NumberLike<TestCustomMap>);
+    static_assert(!NumberLike<TestUnorderedMap>);
+    static_assert(!NumberLike<TestMap>);
+    static_assert(!NumberLike<TestOptional>);
+    static_assert(!NumberLike<TestUniquePtr>);
+    static_assert(!NumberLike<TestPointer>);
 }
 
 // ============================================================================
-// SECTION 3: JsonString - Must ONLY match string types
+// SECTION 3: StringLike - Must ONLY match string types
 // ============================================================================
 
 namespace test_string_concept {
-    // Positive: string types ARE JsonString
-    static_assert(JsonString<std::array<char, 32>>);
-    static_assert(JsonString<std::array<char, 64>>);
-    static_assert(JsonString<std::array<char, 1>>);
+    // Positive: string types ARE StringLike
+    static_assert(StringLike<std::array<char, 32>>);
+    static_assert(StringLike<std::array<char, 64>>);
+    static_assert(StringLike<std::array<char, 1>>);
     
     // Negative: strings are NOT other concepts
-    static_assert(!JsonBool<TestString>);
-    static_assert(!JsonNumber<TestString>);
-    static_assert(!JsonObject<TestString>);
-    static_assert(!JsonParsableArray<TestString>);
-    static_assert(!JsonSerializableArray<TestString>);
-    static_assert(!JsonParsableMap<TestString>);
+    static_assert(!BoolLike<TestString>);
+    static_assert(!NumberLike<TestString>);
+    static_assert(!ObjectLike<TestString>);
+    static_assert(!ParsableArrayLike<TestString>);
+    static_assert(!SerializableArrayLike<TestString>);
+    static_assert(!ParsableMapLike<TestString>);
     static_assert(!JsonSerializableMap<TestString>);
     
-    // Negative: Other types are NOT JsonString
-    static_assert(!JsonString<bool>);
-    static_assert(!JsonString<int>);
-    static_assert(!JsonString<double>);
-    static_assert(!JsonString<TestObject>);
-    static_assert(!JsonString<std::array<int, 10>>);  // array of int, not char
-    static_assert(!JsonString<TestCArray>);  // C array of int, not char
-    static_assert(!JsonString<TestCustomMap>);
-    static_assert(!JsonString<TestUnorderedMap>);
-    static_assert(!JsonString<TestMap>);
-    static_assert(!JsonString<TestOptional>);
-    static_assert(!JsonString<TestUniquePtr>);
-    static_assert(!JsonString<TestPointer>);
+    // Negative: Other types are NOT StringLike
+    static_assert(!StringLike<bool>);
+    static_assert(!StringLike<int>);
+    static_assert(!StringLike<double>);
+    static_assert(!StringLike<TestObject>);
+    static_assert(!StringLike<std::array<int, 10>>);  // array of int, not char
+    static_assert(!StringLike<TestCArray>);  // C array of int, not char
+    static_assert(!StringLike<TestCustomMap>);
+    static_assert(!StringLike<TestUnorderedMap>);
+    static_assert(!StringLike<TestMap>);
+    static_assert(!StringLike<TestOptional>);
+    static_assert(!StringLike<TestUniquePtr>);
+    static_assert(!StringLike<TestPointer>);
 }
 
 // ============================================================================
-// SECTION 4: JsonObject - Must ONLY match aggregate structs (not maps/arrays)
+// SECTION 4: ObjectLike - Must ONLY match aggregate structs (not maps/arrays)
 // ============================================================================
 
 namespace test_object_concept {
-    // Positive: aggregate structs ARE JsonObject
-    static_assert(JsonObject<TestObject>);
+    // Positive: aggregate structs ARE ObjectLike
+    static_assert(ObjectLike<TestObject>);
     
     struct AnotherObject {
         int a;
         bool b;
         std::array<char, 16> c;
     };
-    static_assert(JsonObject<AnotherObject>);
+    static_assert(ObjectLike<AnotherObject>);
     
     struct NestedObject {
         int x;
         TestObject inner;
     };
-    static_assert(JsonObject<NestedObject>);
+    static_assert(ObjectLike<NestedObject>);
     
     // Negative: objects are NOT other concepts
-    static_assert(!JsonBool<TestObject>);
-    static_assert(!JsonNumber<TestObject>);
-    static_assert(!JsonString<TestObject>);
-    static_assert(!JsonParsableArray<TestObject>);
-    static_assert(!JsonSerializableArray<TestObject>);
-    static_assert(!JsonParsableMap<TestObject>);
+    static_assert(!BoolLike<TestObject>);
+    static_assert(!NumberLike<TestObject>);
+    static_assert(!StringLike<TestObject>);
+    static_assert(!ParsableArrayLike<TestObject>);
+    static_assert(!SerializableArrayLike<TestObject>);
+    static_assert(!ParsableMapLike<TestObject>);
     static_assert(!JsonSerializableMap<TestObject>);
     
     // CRITICAL: Objects are NOT maps (even if they look similar)
-    static_assert(!JsonObject<TestCustomMap>);
-    static_assert(!JsonObject<TestUnorderedMap>);
-    static_assert(!JsonObject<TestMap>);
+    static_assert(!ObjectLike<TestCustomMap>);
+    static_assert(!ObjectLike<TestUnorderedMap>);
+    static_assert(!ObjectLike<TestMap>);
     
-    // Negative: Other types are NOT JsonObject
-    static_assert(!JsonObject<bool>);
-    static_assert(!JsonObject<int>);
-    static_assert(!JsonObject<double>);
-    static_assert(!JsonObject<TestString>);
-    static_assert(!JsonObject<TestArray>);
-    static_assert(!JsonObject<TestCArray>);
-    static_assert(!JsonObject<TestCustomMap>);
-    static_assert(!JsonObject<TestUnorderedMap>);
-    static_assert(!JsonObject<TestMap>);
-    static_assert(!JsonObject<TestOptional>);
-    static_assert(!JsonObject<TestUniquePtr>);
-    static_assert(!JsonObject<TestPointer>);
+    // Negative: Other types are NOT ObjectLike
+    static_assert(!ObjectLike<bool>);
+    static_assert(!ObjectLike<int>);
+    static_assert(!ObjectLike<double>);
+    static_assert(!ObjectLike<TestString>);
+    static_assert(!ObjectLike<TestArray>);
+    static_assert(!ObjectLike<TestCArray>);
+    static_assert(!ObjectLike<TestCustomMap>);
+    static_assert(!ObjectLike<TestUnorderedMap>);
+    static_assert(!ObjectLike<TestMap>);
+    static_assert(!ObjectLike<TestOptional>);
+    static_assert(!ObjectLike<TestUniquePtr>);
+    static_assert(!ObjectLike<TestPointer>);
 }
 
 // ============================================================================
-// SECTION 5: JsonParsableArray - Must ONLY match array types
+// SECTION 5: ParsableArrayLike - Must ONLY match array types
 // ============================================================================
 
 namespace test_array_concept {
-    // Positive: arrays ARE JsonParsableArray
-    static_assert(JsonParsableArray<std::array<int, 10>>);
-    static_assert(JsonParsableArray<std::array<bool, 5>>);
-    static_assert(JsonParsableArray<std::array<TestObject, 3>>);
-    static_assert(JsonParsableArray<std::array<std::array<int, 5>, 3>>);  // nested arrays
-    static_assert(JsonParsableArray<int[10]>);  // C array
-    static_assert(JsonParsableArray<bool[5]>);  // C array of bool
-    static_assert(JsonParsableArray<TestCArray>);  // C array type alias
+    // Positive: arrays ARE ParsableArrayLike
+    static_assert(ParsableArrayLike<std::array<int, 10>>);
+    static_assert(ParsableArrayLike<std::array<bool, 5>>);
+    static_assert(ParsableArrayLike<std::array<TestObject, 3>>);
+    static_assert(ParsableArrayLike<std::array<std::array<int, 5>, 3>>);  // nested arrays
+    static_assert(ParsableArrayLike<int[10]>);  // C array
+    static_assert(ParsableArrayLike<bool[5]>);  // C array of bool
+    static_assert(ParsableArrayLike<TestCArray>);  // C array type alias
     
-    // Positive: arrays ARE JsonSerializableArray
-    static_assert(JsonSerializableArray<std::array<int, 10>>);
-    static_assert(JsonSerializableArray<std::array<bool, 5>>);
-    static_assert(JsonSerializableArray<std::array<TestObject, 3>>);
-    static_assert(JsonSerializableArray<int[10]>);  // C array
-    static_assert(JsonSerializableArray<bool[5]>);  // C array of bool
-    static_assert(JsonSerializableArray<TestCArray>);  // C array type alias
+    // Positive: arrays ARE SerializableArrayLike
+    static_assert(SerializableArrayLike<std::array<int, 10>>);
+    static_assert(SerializableArrayLike<std::array<bool, 5>>);
+    static_assert(SerializableArrayLike<std::array<TestObject, 3>>);
+    static_assert(SerializableArrayLike<int[10]>);  // C array
+    static_assert(SerializableArrayLike<bool[5]>);  // C array of bool
+    static_assert(SerializableArrayLike<TestCArray>);  // C array type alias
     
     // Negative: arrays are NOT other concepts
-    static_assert(!JsonBool<TestArray>);
-    static_assert(!JsonBool<TestCArray>);
-    static_assert(!JsonNumber<TestArray>);
-    static_assert(!JsonNumber<TestCArray>);
-    static_assert(!JsonString<TestArray>);  // array<int>, not array<char>
-    static_assert(!JsonString<TestCArray>);  // C array<int>, not array<char>
-    static_assert(!JsonObject<TestArray>);
-    static_assert(!JsonObject<TestCArray>);
-    static_assert(!JsonParsableMap<TestArray>);
-    static_assert(!JsonParsableMap<TestCArray>);
+    static_assert(!BoolLike<TestArray>);
+    static_assert(!BoolLike<TestCArray>);
+    static_assert(!NumberLike<TestArray>);
+    static_assert(!NumberLike<TestCArray>);
+    static_assert(!StringLike<TestArray>);  // array<int>, not array<char>
+    static_assert(!StringLike<TestCArray>);  // C array<int>, not array<char>
+    static_assert(!ObjectLike<TestArray>);
+    static_assert(!ObjectLike<TestCArray>);
+    static_assert(!ParsableMapLike<TestArray>);
+    static_assert(!ParsableMapLike<TestCArray>);
     static_assert(!JsonSerializableMap<TestArray>);
     static_assert(!JsonSerializableMap<TestCArray>);
     
     // CRITICAL: Arrays are NOT objects
-    static_assert(!JsonObject<TestArray>);
-    static_assert(!JsonObject<TestCArray>);
+    static_assert(!ObjectLike<TestArray>);
+    static_assert(!ObjectLike<TestCArray>);
     
     // CRITICAL: Arrays are NOT maps
-    static_assert(!JsonParsableMap<TestArray>);
-    static_assert(!JsonParsableMap<TestCArray>);
+    static_assert(!ParsableMapLike<TestArray>);
+    static_assert(!ParsableMapLike<TestCArray>);
     
-    // Negative: Other types are NOT JsonParsableArray
-    static_assert(!JsonParsableArray<bool>);
-    static_assert(!JsonParsableArray<int>);
-    static_assert(!JsonParsableArray<double>);
-    static_assert(!JsonParsableArray<TestString>);  // char array is string, not array
-    static_assert(!JsonParsableArray<TestObject>);
-    static_assert(!JsonParsableArray<TestCustomMap>);
-    static_assert(!JsonParsableArray<TestUnorderedMap>);
-    static_assert(!JsonParsableArray<TestMap>);
-    static_assert(!JsonParsableArray<TestOptional>);
-    static_assert(!JsonParsableArray<TestUniquePtr>);
-    static_assert(!JsonParsableArray<TestPointer>);
+    // Negative: Other types are NOT ParsableArrayLike
+    static_assert(!ParsableArrayLike<bool>);
+    static_assert(!ParsableArrayLike<int>);
+    static_assert(!ParsableArrayLike<double>);
+    static_assert(!ParsableArrayLike<TestString>);  // char array is string, not array
+    static_assert(!ParsableArrayLike<TestObject>);
+    static_assert(!ParsableArrayLike<TestCustomMap>);
+    static_assert(!ParsableArrayLike<TestUnorderedMap>);
+    static_assert(!ParsableArrayLike<TestMap>);
+    static_assert(!ParsableArrayLike<TestOptional>);
+    static_assert(!ParsableArrayLike<TestUniquePtr>);
+    static_assert(!ParsableArrayLike<TestPointer>);
 }
 
 // ============================================================================
-// SECTION 6: JsonParsableMap - Must ONLY match map types
+// SECTION 6: ParsableMapLike - Must ONLY match map types
 // ============================================================================
 
 namespace test_map_concept {
-    // Positive: maps ARE JsonParsableMap
-    static_assert(JsonParsableMap<TestCustomMap>);
-    static_assert(JsonParsableMap<TestUnorderedMap>);
-    static_assert(JsonParsableMap<TestMap>);
+    // Positive: maps ARE ParsableMapLike
+    static_assert(ParsableMapLike<TestCustomMap>);
+    static_assert(ParsableMapLike<TestUnorderedMap>);
+    static_assert(ParsableMapLike<TestMap>);
     
     struct AnotherMap {
         using key_type = std::array<char, 16>;
@@ -300,7 +300,7 @@ namespace test_map_concept {
         }
         constexpr void clear() {}
     };
-    static_assert(JsonParsableMap<AnotherMap>);
+    static_assert(ParsableMapLike<AnotherMap>);
     
     // Map with struct value
     struct MapWithStructValue {
@@ -312,45 +312,45 @@ namespace test_map_concept {
         }
         constexpr void clear() {}
     };
-    static_assert(JsonParsableMap<MapWithStructValue>);
+    static_assert(ParsableMapLike<MapWithStructValue>);
     
     // Negative: maps are NOT other concepts
-    static_assert(!JsonBool<TestCustomMap>);
-    static_assert(!JsonBool<TestUnorderedMap>);
-    static_assert(!JsonBool<TestMap>);
-    static_assert(!JsonNumber<TestCustomMap>);
-    static_assert(!JsonString<TestCustomMap>);
-    static_assert(!JsonObject<TestCustomMap>);  // CRITICAL: Maps are NOT objects!
-    static_assert(!JsonParsableArray<TestCustomMap>);
-    static_assert(!JsonParsableArray<TestUnorderedMap>);
-    static_assert(!JsonParsableArray<TestMap>);
-    static_assert(!JsonSerializableArray<TestCustomMap>);
-    static_assert(!JsonSerializableArray<TestUnorderedMap>);
-    static_assert(!JsonSerializableArray<TestMap>);
+    static_assert(!BoolLike<TestCustomMap>);
+    static_assert(!BoolLike<TestUnorderedMap>);
+    static_assert(!BoolLike<TestMap>);
+    static_assert(!NumberLike<TestCustomMap>);
+    static_assert(!StringLike<TestCustomMap>);
+    static_assert(!ObjectLike<TestCustomMap>);  // CRITICAL: Maps are NOT objects!
+    static_assert(!ParsableArrayLike<TestCustomMap>);
+    static_assert(!ParsableArrayLike<TestUnorderedMap>);
+    static_assert(!ParsableArrayLike<TestMap>);
+    static_assert(!SerializableArrayLike<TestCustomMap>);
+    static_assert(!SerializableArrayLike<TestUnorderedMap>);
+    static_assert(!SerializableArrayLike<TestMap>);
     
     // CRITICAL: Maps are NOT objects (this was the bug!)
-    static_assert(!JsonObject<TestCustomMap>);
-    static_assert(!JsonObject<TestUnorderedMap>);
-    static_assert(!JsonObject<TestMap>);
-    static_assert(!JsonObject<AnotherMap>);
-    static_assert(!JsonObject<MapWithStructValue>);
+    static_assert(!ObjectLike<TestCustomMap>);
+    static_assert(!ObjectLike<TestUnorderedMap>);
+    static_assert(!ObjectLike<TestMap>);
+    static_assert(!ObjectLike<AnotherMap>);
+    static_assert(!ObjectLike<MapWithStructValue>);
     
     // CRITICAL: Maps are NOT arrays
-    static_assert(!JsonParsableArray<TestCustomMap>);
-    static_assert(!JsonParsableArray<TestUnorderedMap>);
-    static_assert(!JsonParsableArray<TestMap>);
-    // Negative: Other types are NOT JsonParsableMap
-    static_assert(!JsonParsableMap<bool>);
-    static_assert(!JsonParsableMap<int>);
-    static_assert(!JsonParsableMap<double>);
-    static_assert(!JsonParsableMap<TestString>);
-    static_assert(!JsonParsableMap<TestObject>);  // Objects are not maps
-    static_assert(!JsonParsableMap<TestArray>);
-    static_assert(!JsonParsableMap<TestCArray>);
-    static_assert(!JsonParsableMap<TestOptional>);
-    static_assert(!JsonParsableMap<TestUniquePtr>);
-    static_assert(!JsonParsableMap<TestPointer>);
-    static_assert(!JsonParsableMap<TestUniquePtr>);
+    static_assert(!ParsableArrayLike<TestCustomMap>);
+    static_assert(!ParsableArrayLike<TestUnorderedMap>);
+    static_assert(!ParsableArrayLike<TestMap>);
+    // Negative: Other types are NOT ParsableMapLike
+    static_assert(!ParsableMapLike<bool>);
+    static_assert(!ParsableMapLike<int>);
+    static_assert(!ParsableMapLike<double>);
+    static_assert(!ParsableMapLike<TestString>);
+    static_assert(!ParsableMapLike<TestObject>);  // Objects are not maps
+    static_assert(!ParsableMapLike<TestArray>);
+    static_assert(!ParsableMapLike<TestCArray>);
+    static_assert(!ParsableMapLike<TestOptional>);
+    static_assert(!ParsableMapLike<TestUniquePtr>);
+    static_assert(!ParsableMapLike<TestPointer>);
+    static_assert(!ParsableMapLike<TestUniquePtr>);
     
     // Map with invalid key type (not string or int)
     struct InvalidKeyMap {
@@ -364,10 +364,10 @@ namespace test_map_concept {
     };
     
     // Structurally valid but not a JSON map (keys must be strings)
-    static_assert(!JsonParsableMap<InvalidKeyMap>);
-    static_assert(!JsonParsableValue<InvalidKeyMap>);  // Not parsable (invalid key type)
-    static_assert(!JsonObject<InvalidKeyMap>);  // Also not an object
-    static_assert(!JsonParsableArray<InvalidKeyMap>);  // Also not an array
+    static_assert(!ParsableMapLike<InvalidKeyMap>);
+    static_assert(!ParsableValue<InvalidKeyMap>);  // Not parsable (invalid key type)
+    static_assert(!ObjectLike<InvalidKeyMap>);  // Also not an object
+    static_assert(!ParsableArrayLike<InvalidKeyMap>);  // Also not an array
 
 
      struct IntKeyMap {
@@ -380,10 +380,10 @@ namespace test_map_concept {
         constexpr void clear() {}
     };
 
-    static_assert(JsonParsableMap<IntKeyMap>);
-    static_assert(JsonParsableValue<IntKeyMap>);  // Not parsable (invalid key type)
-    static_assert(!JsonObject<IntKeyMap>);  // Also not an object
-    static_assert(!JsonParsableArray<IntKeyMap>);  // Also not an array
+    static_assert(ParsableMapLike<IntKeyMap>);
+    static_assert(ParsableValue<IntKeyMap>);  // Not parsable (invalid key type)
+    static_assert(!ObjectLike<IntKeyMap>);  // Also not an object
+    static_assert(!ParsableArrayLike<IntKeyMap>);  // Also not an array
 
 }
 
@@ -419,15 +419,15 @@ namespace test_streamer_concepts {
     
     // CRITICAL: ConsumingStreamerLike should be detected as ARRAY
     static_assert(ConsumingStreamerLike<TestConsumer>);
-    static_assert(JsonParsableArray<TestConsumer>);
-    static_assert(JsonParsableValue<TestConsumer>);  // Highest level concept
+    static_assert(ParsableArrayLike<TestConsumer>);
+    static_assert(ParsableValue<TestConsumer>);  // Highest level concept
     
     // ConsumingStreamerLike is NOT other concepts
-    static_assert(!JsonObject<TestConsumer>);
-    static_assert(!JsonParsableMap<TestConsumer>);
-    static_assert(!JsonBool<TestConsumer>);
-    static_assert(!JsonNumber<TestConsumer>);
-    static_assert(!JsonString<TestConsumer>);
+    static_assert(!ObjectLike<TestConsumer>);
+    static_assert(!ParsableMapLike<TestConsumer>);
+    static_assert(!BoolLike<TestConsumer>);
+    static_assert(!NumberLike<TestConsumer>);
+    static_assert(!StringLike<TestConsumer>);
     
     // ProducingStreamerLike - for serialization (array-like)
     template<typename T>
@@ -458,15 +458,15 @@ namespace test_streamer_concepts {
     
     // CRITICAL: ProducingStreamerLike should be detected as ARRAY
     static_assert(ProducingStreamerLike<TestProducer>);
-    static_assert(JsonSerializableArray<TestProducer>);
-    static_assert(JsonSerializableValue<TestProducer>);  // Highest level concept
+    static_assert(SerializableArrayLike<TestProducer>);
+    static_assert(SerializableValue<TestProducer>);  // Highest level concept
     
     // ProducingStreamerLike is NOT other concepts
-    static_assert(!JsonObject<TestProducer>);
+    static_assert(!ObjectLike<TestProducer>);
     static_assert(!JsonSerializableMap<TestProducer>);
-    static_assert(!JsonBool<TestProducer>);
-    static_assert(!JsonNumber<TestProducer>);
-    static_assert(!JsonString<TestProducer>);
+    static_assert(!BoolLike<TestProducer>);
+    static_assert(!NumberLike<TestProducer>);
+    static_assert(!StringLike<TestProducer>);
     
     // Test with complex value_type
     struct Point { int x; int y; };
@@ -474,12 +474,12 @@ namespace test_streamer_concepts {
     using PointConsumer = SimpleConsumer<Point>;
     
     static_assert(ConsumingStreamerLike<PointConsumer>);
-    static_assert(JsonParsableArray<PointConsumer>);
-    static_assert(!JsonObject<PointConsumer>);
+    static_assert(ParsableArrayLike<PointConsumer>);
+    static_assert(!ObjectLike<PointConsumer>);
     
     // IMPORTANT: StreamerLike types use ARRAY interface, not MAP
     // Even though they have different extension point than cursor-based types
-    static_assert(!JsonParsableMap<TestConsumer>);
+    static_assert(!ParsableMapLike<TestConsumer>);
     static_assert(!JsonSerializableMap<TestProducer>);
 }
 
@@ -526,15 +526,15 @@ namespace test_map_streamer_concepts {
     
     // CRITICAL: ConsumingMapStreamerLike should be detected as MAP
     static_assert(ConsumingMapStreamerLike<TestMapConsumer>);
-    static_assert(JsonParsableMap<TestMapConsumer>);
-    static_assert(JsonParsableValue<TestMapConsumer>);  // Highest level concept
+    static_assert(ParsableMapLike<TestMapConsumer>);
+    static_assert(ParsableValue<TestMapConsumer>);  // Highest level concept
     
     // ConsumingMapStreamerLike is NOT other concepts
-    static_assert(!JsonObject<TestMapConsumer>);
-    static_assert(!JsonParsableArray<TestMapConsumer>);
-    static_assert(!JsonBool<TestMapConsumer>);
-    static_assert(!JsonNumber<TestMapConsumer>);
-    static_assert(!JsonString<TestMapConsumer>);
+    static_assert(!ObjectLike<TestMapConsumer>);
+    static_assert(!ParsableArrayLike<TestMapConsumer>);
+    static_assert(!BoolLike<TestMapConsumer>);
+    static_assert(!NumberLike<TestMapConsumer>);
+    static_assert(!StringLike<TestMapConsumer>);
     
     // ProducingMapStreamerLike - for serializing maps
     template<typename K, typename V, std::size_t N>
@@ -566,14 +566,14 @@ namespace test_map_streamer_concepts {
     // CRITICAL: ProducingMapStreamerLike should be detected as MAP
     static_assert(ProducingMapStreamerLike<TestMapProducer>);
     static_assert(JsonSerializableMap<TestMapProducer>);
-    static_assert(JsonSerializableValue<TestMapProducer>);  // Highest level concept
+    static_assert(SerializableValue<TestMapProducer>);  // Highest level concept
     
     // ProducingMapStreamerLike is NOT other concepts
-    static_assert(!JsonObject<TestMapProducer>);
-    static_assert(!JsonSerializableArray<TestMapProducer>);
-    static_assert(!JsonBool<TestMapProducer>);
-    static_assert(!JsonNumber<TestMapProducer>);
-    static_assert(!JsonString<TestMapProducer>);
+    static_assert(!ObjectLike<TestMapProducer>);
+    static_assert(!SerializableArrayLike<TestMapProducer>);
+    static_assert(!BoolLike<TestMapProducer>);
+    static_assert(!NumberLike<TestMapProducer>);
+    static_assert(!StringLike<TestMapProducer>);
     
     // Test with struct value type
     struct Point { int x; int y; };
@@ -581,13 +581,13 @@ namespace test_map_streamer_concepts {
     using PointMapConsumer = SimpleMapConsumer<std::array<char, 16>, Point, 5>;
     
     static_assert(ConsumingMapStreamerLike<PointMapConsumer>);
-    static_assert(JsonParsableMap<PointMapConsumer>);
-    static_assert(!JsonObject<PointMapConsumer>);
-    static_assert(!JsonParsableArray<PointMapConsumer>);
+    static_assert(ParsableMapLike<PointMapConsumer>);
+    static_assert(!ObjectLike<PointMapConsumer>);
+    static_assert(!ParsableArrayLike<PointMapConsumer>);
     
     // CRITICAL: Map streamers use MAP interface, not ARRAY
-    static_assert(!JsonParsableArray<TestMapConsumer>);
-    static_assert(!JsonSerializableArray<TestMapProducer>);
+    static_assert(!ParsableArrayLike<TestMapConsumer>);
+    static_assert(!SerializableArrayLike<TestMapProducer>);
     
     // Test that invalid key types are rejected
     struct InvalidMapConsumer {
@@ -604,7 +604,7 @@ namespace test_map_streamer_concepts {
     
     // Should NOT satisfy ConsumingMapStreamerLike (key is not string)
     static_assert(!ConsumingMapStreamerLike<InvalidMapConsumer>);
-    static_assert(!JsonParsableMap<InvalidMapConsumer>);
+    static_assert(!ParsableMapLike<InvalidMapConsumer>);
     
     // Compare: Array streamers vs Map streamers
     // - Array streamers: value_type is the element
@@ -626,30 +626,30 @@ namespace test_optional_concept {
     // Optionals should match their inner type's concept
     // But are handled specially for null values
     
-    static_assert(JsonNullableParsableValue<std::optional<int>>);
-    static_assert(!JsonNonNullableParsableValue<std::optional<int>>);
+    static_assert(NullableParsableValue<std::optional<int>>);
+    static_assert(!NonNullableParsableValue<std::optional<int>>);
     
-    static_assert(JsonNullableParsableValue<std::optional<bool>>);
-    static_assert(JsonNullableParsableValue<std::optional<TestObject>>);
-    static_assert(JsonNullableParsableValue<std::optional<TestArray>>);
-    // static_assert(JsonNullableParsableValue<std::optional<TestCArray>>); // illegal
+    static_assert(NullableParsableValue<std::optional<bool>>);
+    static_assert(NullableParsableValue<std::optional<TestObject>>);
+    static_assert(NullableParsableValue<std::optional<TestArray>>);
+    // static_assert(NullableParsableValue<std::optional<TestCArray>>); // illegal
     
     // Non-optionals are non-nullable
-    static_assert(JsonNonNullableParsableValue<int>);
-    static_assert(JsonNonNullableParsableValue<bool>);
-    static_assert(JsonNonNullableParsableValue<TestString>);
-    static_assert(JsonNonNullableParsableValue<TestObject>);
-    static_assert(JsonNonNullableParsableValue<TestArray>);
-    static_assert(JsonNonNullableParsableValue<TestCArray>);
-    static_assert(JsonNonNullableParsableValue<TestCustomMap>);
-    static_assert(JsonNonNullableParsableValue<TestUnorderedMap>);
-    static_assert(JsonNonNullableParsableValue<TestMap>);
-    static_assert(!JsonNullableParsableValue<int>);
-    static_assert(!JsonNullableParsableValue<bool>);
-    static_assert(!JsonNullableParsableValue<TestString>);
-    static_assert(!JsonNullableParsableValue<TestObject>);
-    static_assert(!JsonNullableParsableValue<TestArray>);
-    static_assert(!JsonNullableParsableValue<TestCArray>);
+    static_assert(NonNullableParsableValue<int>);
+    static_assert(NonNullableParsableValue<bool>);
+    static_assert(NonNullableParsableValue<TestString>);
+    static_assert(NonNullableParsableValue<TestObject>);
+    static_assert(NonNullableParsableValue<TestArray>);
+    static_assert(NonNullableParsableValue<TestCArray>);
+    static_assert(NonNullableParsableValue<TestCustomMap>);
+    static_assert(NonNullableParsableValue<TestUnorderedMap>);
+    static_assert(NonNullableParsableValue<TestMap>);
+    static_assert(!NullableParsableValue<int>);
+    static_assert(!NullableParsableValue<bool>);
+    static_assert(!NullableParsableValue<TestString>);
+    static_assert(!NullableParsableValue<TestObject>);
+    static_assert(!NullableParsableValue<TestArray>);
+    static_assert(!NullableParsableValue<TestCArray>);
 }
 
 // ============================================================================
@@ -661,12 +661,12 @@ namespace test_classification_matrix {
     template<typename T>
     consteval int count_matching_concepts() {
         int count = 0;
-        if constexpr (JsonBool<T>) count++;
-        if constexpr (JsonNumber<T>) count++;
-        if constexpr (JsonString<T>) count++;
-        if constexpr (JsonObject<T>) count++;
-        if constexpr (JsonParsableArray<T>) count++;
-        if constexpr (JsonParsableMap<T>) count++;
+        if constexpr (BoolLike<T>) count++;
+        if constexpr (NumberLike<T>) count++;
+        if constexpr (StringLike<T>) count++;
+        if constexpr (ObjectLike<T>) count++;
+        if constexpr (ParsableArrayLike<T>) count++;
+        if constexpr (ParsableMapLike<T>) count++;
         return count;
     }
     
@@ -696,15 +696,15 @@ namespace test_edge_cases {
     struct SingleFieldStruct {
         int value;
     };
-    static_assert(JsonObject<SingleFieldStruct>);
-    static_assert(!JsonParsableMap<SingleFieldStruct>);
-    static_assert(!JsonParsableArray<SingleFieldStruct>);
+    static_assert(ObjectLike<SingleFieldStruct>);
+    static_assert(!ParsableMapLike<SingleFieldStruct>);
+    static_assert(!ParsableArrayLike<SingleFieldStruct>);
     
     // Empty struct - still an object
     struct EmptyStruct {};
-    static_assert(JsonObject<EmptyStruct>);
-    static_assert(!JsonParsableMap<EmptyStruct>);
-    static_assert(!JsonParsableArray<EmptyStruct>);
+    static_assert(ObjectLike<EmptyStruct>);
+    static_assert(!ParsableMapLike<EmptyStruct>);
+    static_assert(!ParsableArrayLike<EmptyStruct>);
     
     // Struct with key_type and mapped_type but missing map interface
     // Should still be an OBJECT, not a MAP
@@ -715,29 +715,29 @@ namespace test_edge_cases {
         int y;
     };
     // This doesn't have try_emplace/clear, so it's NOT a map
-    static_assert(!JsonParsableMap<FakeMap>);
-    static_assert(JsonObject<FakeMap>);  // It's just a regular struct
-    static_assert(JsonParsableValue<FakeMap>);  // Parsable as object (highest level)
+    static_assert(!ParsableMapLike<FakeMap>);
+    static_assert(ObjectLike<FakeMap>);  // It's just a regular struct
+    static_assert(ParsableValue<FakeMap>);  // Parsable as object (highest level)
     
     // Array of size 1
     using SingletonArray = std::array<int, 1>;
-    static_assert(JsonParsableArray<SingletonArray>);
-    static_assert(!JsonObject<SingletonArray>);
-    static_assert(!JsonParsableMap<SingletonArray>);
+    static_assert(ParsableArrayLike<SingletonArray>);
+    static_assert(!ObjectLike<SingletonArray>);
+    static_assert(!ParsableMapLike<SingletonArray>);
     
     // Array of size 0
     using EmptyArray = std::array<int, 0>;
-    static_assert(JsonParsableArray<EmptyArray>);
-    static_assert(!JsonObject<EmptyArray>);
-    static_assert(!JsonParsableMap<EmptyArray>);
+    static_assert(ParsableArrayLike<EmptyArray>);
+    static_assert(!ObjectLike<EmptyArray>);
+    static_assert(!ParsableMapLike<EmptyArray>);
     
     // Deeply nested types
     struct DeeplyNested {
         std::array<std::array<std::optional<TestObject>, 3>, 5> data;
     };
-    static_assert(JsonObject<DeeplyNested>);
-    static_assert(!JsonParsableMap<DeeplyNested>);
-    static_assert(!JsonParsableArray<DeeplyNested>);
+    static_assert(ObjectLike<DeeplyNested>);
+    static_assert(!ParsableMapLike<DeeplyNested>);
+    static_assert(!ParsableArrayLike<DeeplyNested>);
 }
 
 // ============================================================================
@@ -749,25 +749,25 @@ namespace test_annotated_types {
     
     // Annotated types should preserve their underlying concept
     using AnnotatedInt = Annotated<int, key<"mykey">>;
-    static_assert(JsonNumber<AnnotatedInt>);
-    static_assert(!JsonBool<AnnotatedInt>);
-    static_assert(!JsonObject<AnnotatedInt>);
+    static_assert(NumberLike<AnnotatedInt>);
+    static_assert(!BoolLike<AnnotatedInt>);
+    static_assert(!ObjectLike<AnnotatedInt>);
     
     using AnnotatedString = Annotated<std::array<char, 32>, key<"name">>;
-    static_assert(JsonString<AnnotatedString>);
-    static_assert(!JsonNumber<AnnotatedString>);
-    static_assert(!JsonObject<AnnotatedString>);
+    static_assert(StringLike<AnnotatedString>);
+    static_assert(!NumberLike<AnnotatedString>);
+    static_assert(!ObjectLike<AnnotatedString>);
     
     using AnnotatedArray = Annotated<std::array<int, 10>, key<"items">>;
-    static_assert(JsonParsableArray<AnnotatedArray>);
-    static_assert(!JsonObject<AnnotatedArray>);
-    static_assert(!JsonParsableMap<AnnotatedArray>);
+    static_assert(ParsableArrayLike<AnnotatedArray>);
+    static_assert(!ObjectLike<AnnotatedArray>);
+    static_assert(!ParsableMapLike<AnnotatedArray>);
     
     using AnnotatedCArray = Annotated<int[10], key<"items">>;
-    static_assert(JsonParsableArray<AnnotatedCArray>);
-    static_assert(JsonSerializableArray<AnnotatedCArray>);
-    static_assert(!JsonObject<AnnotatedCArray>);
-    static_assert(!JsonParsableMap<AnnotatedCArray>);
+    static_assert(ParsableArrayLike<AnnotatedCArray>);
+    static_assert(SerializableArrayLike<AnnotatedCArray>);
+    static_assert(!ObjectLike<AnnotatedCArray>);
+    static_assert(!ParsableMapLike<AnnotatedCArray>);
 }
 
 // ============================================================================

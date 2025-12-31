@@ -101,7 +101,7 @@ struct MapConsumer {
 
 // Verify the high-level interface is recognized
 static_assert(ConsumingMapStreamerLike<MapConsumer<std::array<char, 32>, int, 10>>);
-static_assert(JsonParsableMap<MapConsumer<std::array<char, 32>, int, 10>>);
+static_assert(ParsableMapLike<MapConsumer<std::array<char, 32>, int, 10>>);
 
 // ============================================================================
 // Map Producer - High-Level Interface (ProducingMapStreamerLike)

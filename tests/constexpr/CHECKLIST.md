@@ -86,10 +86,10 @@ Quick reference for tracking test implementation progress.
 ## annotations/ (9 files) - 5/9 COMPLETE
 - [x] test_annotated_key.cpp - `key<"json_name">` remapping (covered in roundtrip tests)
 - [x] test_annotated_as_array.cpp - `as_array` (struct as array) (covered in roundtrip tests)
-- [ ] test_annotated_not_json.cpp - `not_json` (skip field) - NOT NEEDED NOW (covered in roundtrip tests)
-- [x] test_annotated_skip_json.cpp - `skip_json<MaxSkipDepth>` (fast-skip)
-- [x] test_annotated_json_sink.cpp - `json_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
-- [x] test_annotated_float_decimals.cpp - `float_decimals<N>` (serialization precision control)
+- [ ] test_annotated_not_json.cpp - `exclude` (skip field) - NOT NEEDED NOW (covered in roundtrip tests)
+- [x] test_annotated_skip_json.cpp - `skip<MaxSkipDepth>` (fast-skip)
+- [x] test_annotated_json_sink.cpp - `wire_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
+- [ ] test_annotated_float_decimals.cpp - `float_decimals` (serialization precision control via JSON Writer parameter)
 - [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
 - [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
 
@@ -151,14 +151,21 @@ Quick reference for tracking test implementation progress.
 - [x] test_limits_many_fields.cpp - Many fields (50 fields, 30 mixed, nested, array fields)
 - [x] test_limits_many_map_keys.cpp - Many map keys (30 allowed, 20 required, 30 forbidden, combined, binary search threshold)
 
+## fp/ (4 files) ✅ COMPLETE
+- [x] test_fp_boundary_values.cpp - Powers of 2, powers of 10, scientific notation, common decimal fractions (28 tests)
+- [x] test_fp_difficult_cases.cpp - David Gay suite samples, rounding boundaries, 2^53 region, long mantissas (19 tests)
+- [x] test_fp_subnormals.cpp - Subnormal numbers, gradual underflow, DBL_MIN transitions, near-zero (14 tests)
+- [x] test_fp_exponent_extremes.cpp - DBL_MAX/DBL_MIN edge cases, near-overflow/underflow, extreme exponents (18 tests)
+
 ---
 
-**Progress: 80 / 93 tests implemented (86.0%)**
+**Progress: 84 / 97 tests implemented (86.6%)**
 
 **Recent Completions:**
-- ✅ `test_validation_constant.cpp` - Enhanced with float/double constants (epsilon comparison, exact type matching)
-- ✅ `test_validation_range_float.cpp` - Float/double range validation (18 tests)
-- ✅ `test_annotated_float_decimals.cpp` - Serialization precision control (15 tests)
+- ✅ **fp/ category (4 files, 79 tests)** - IEEE-754 boundary values, difficult cases, subnormals, exponent extremes
+- ✅ `test_validation_constant.cpp` - Enhanced with float/double constants
+- ✅ `test_validation_range_float.cpp` - Float/double range validation
+- ✅ `test_annotated_float_decimals.cpp` - Serialization precision control
 
 **🔧 Recent Fixes:**
 - ✅ **Control character escaping** - Serializer properly escapes 0x00-0x1F as `\uXXXX`
@@ -186,10 +193,9 @@ Quick reference for tracking test implementation progress.
 **Options (9 total):**
 - ✅ `key<>` - JSON key remapping (covered in roundtrip tests)
 - ✅ `as_array` - Struct as array (covered in roundtrip tests)
-- ✅ `not_json` - Skip field (covered in roundtrip tests)
-- ✅ `skip_json<>` - Fast-skip JSON value (test_annotated_skip_json.cpp)
-- ✅ `json_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
-- ✅ `float_decimals<>` - Serialization precision control (test_annotated_float_decimals.cpp)
+- ✅ `exclude` - Skip field (covered in roundtrip tests)
+- ✅ `skip<>` - Fast-skip JSON value (test_annotated_skip_json.cpp)
+- ✅ `wire_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
 - [ ] `description<>` - Metadata (optional tests) **NOT NEEDED NOW**
 
 **Completed Categories:**
@@ -201,9 +207,10 @@ Quick reference for tracking test implementation progress.
 - ✅ errors/ JSON path tracking (7/7)
 - ✅ json_spec/ (6/6) - RFC 8259 compliance **COMPLETE**
 - ✅ validation/ (14/14) - All validators covered including float/double **COMPLETE**
-- ✅ annotations/ (5/9) - key, as_array (roundtrip), skip_json, json_sink, float_decimals
+- ✅ annotations/ (5/9) - key, as_array (roundtrip), skip, wire_sink, float_decimals
 - ✅ limits/ (4/4) - Nesting depth, large arrays, many fields, many map keys **COMPLETE**
 - ✅ serialization/ (4/4 files) - Primitives & comprehensive types **COMPLETE**
+- ✅ fp/ (4/4 files) - IEEE-754 correctness: boundary values, difficult cases, subnormals, extremes **COMPLETE**
 
 **In Progress:**
 - errors/ (7/15 files - additional error scenarios pending)

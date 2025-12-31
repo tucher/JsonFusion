@@ -231,7 +231,7 @@ We tried several modes:
 - RapidJSON SAX handler that just counts features/rings/points
 - JsonFusion Parse + Populate into a strongly typed model
 - JsonFusion streaming consumer that counts objects
-- JsonFusion streaming with skip_json on point coordinates
+- JsonFusion streaming with skip on point coordinates
 - JsonFusion streaming with “numbers-tokenizing-only” (scan and validate number text, but skip numeric conversion)
 
 When JsonFusion and RapidJSON do the same semantic work (scan + fully parse all numbers), their performance is in the same ballpark as RapidJSON’s SAX handler. That’s already a good sign: the template machinery isn’t costing you anything at runtime.
@@ -240,15 +240,15 @@ But the interesting part is this:
 
 ```c++
     struct Pt_ {
-        Annotated<float, skip_json> x;
-        Annotated<float, skip_json> y;
+        Annotated<float, skip> x;
+        Annotated<float, skip> y;
     };
     using Point = Annotated<Pt_, as_array>;
 ```
 
 For a task like “just count features/rings/points”, the numeric values are irrelevant. You care about structure, not coordinates.
 
-With skip_json:
+With skip:
 - JsonFusion still enforces structure:
     - `[x, y]` arrays of size 2,
     - nested arrays have the expected shape,
@@ -316,7 +316,7 @@ When the parser is driven by types instead of dynamic metadata, a lot of work ha
 - Which fields are required / optional
 - Constraints (ranges, min/max items, string lengths, etc.)
 - Container kinds (fixed std::array vs dynamic std::vector)
-- Annotations like skip_json or “tokenize-only, no materialization”
+- Annotations like skip or “tokenize-only, no materialization”
 
 At runtime, the parser doesn’t “figure out the schema”, it just:
 - walks the JSON once,
@@ -430,7 +430,7 @@ This makes it a good fit for:
 - firmware that needs JSON for configs or telemetry,
 - systems where you want type safety and validation without carrying a DOM or reflection runtime.
 
-The “types as intent” story is especially important here: in an MCU, you really want to skip all unnecessary work and storage. The skip_json example on canada.json is exactly that philosophy applied to a big dataset:
+The “types as intent” story is especially important here: in an MCU, you really want to skip all unnecessary work and storage. The skip example on canada.json is exactly that philosophy applied to a big dataset:
 - Just by saying “I don’t care about these numbers” in the type system,
 - you let the compiler erase a huge amount of work in the generated parser.
 
@@ -666,12 +666,12 @@ This approach has real upsides, but also real costs.
 - Strong type safety: the struct is the schema.
 - No DOM, no runtime reflection, no virtual dispatch.
 - Static memory usage; very friendly to embedded systems.
-- Ability to express semantic intent (skip_json, ranges, etc.) that drives real optimizations.
+- Ability to express semantic intent (skip, ranges, etc.) that drives real optimizations.
 - Validation and constraints are checked during parsing, not as a separate step.
 
 JsonFusion provides rich error reporting with:
 - Current input iterator (precise byte offset in the JSON stream)
-- JSON path tracking (e.g., `$.statuses[3].user.name`, encoded inside a `JsonPath` object)
+- JSON path tracking (e.g., `$.statuses[3].user.name`, encoded inside a `Path` object)
 - Parse error codes
 - Validator error codes with failed validator option index
 

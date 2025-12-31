@@ -102,7 +102,7 @@ public:
 
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonBool<ObjT>
+    requires static_schema::BoolLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
     // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::bool_parsing_finished>(obj, ctx.validationCtx())) {
@@ -117,7 +117,7 @@ constexpr bool SerializeNonNullValue(const ObjT & obj, Writer & writer, CTX &ctx
 
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonNumber<ObjT>
+    requires static_schema::NumberLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -133,7 +133,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonString<ObjT>
+    requires static_schema::StringLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -166,7 +166,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 }
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonSerializableArray<ObjT>
+    requires static_schema::SerializableArrayLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     using FH   = static_schema::array_read_cursor<ObjT>;
     FH cursor = [&]() {
@@ -251,7 +251,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
         const auto& value = cursor.get_value();
 
         using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
-        if constexpr(static_schema::JsonNullableSerializableValue<typename FH::mapped_type> &&
+        if constexpr(static_schema::NullableSerializableValue<typename FH::mapped_type> &&
                       Opts::template has_option<options::detail::skip_nulls_tag>) {
             if(static_schema::isNull(value)) {
                 res = cursor.read_more();
@@ -312,10 +312,10 @@ constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfInde
     using Meta =  options::detail::annotation_meta_getter<Field>;
     // using FieldOpts    = typename Meta::options;
     using FieldOpts = options::detail::aggregate_field_opts_getter<ObjT, StructIndex>;
-    if constexpr (FieldOpts::template has_option<options::detail::not_json_tag>) {
+    if constexpr (FieldOpts::template has_option<options::detail::exclude_tag>) {
         return true;
     } else {
-        if constexpr(static_schema::JsonNullableSerializableValue<Field> && SkipNulls){
+        if constexpr(static_schema::NullableSerializableValue<Field> && SkipNulls){
             if(static_schema::isNull(introspection::getStructElementByIndex<StructIndex>(structObj))) {
                 jfIndex ++;
                 return true;
@@ -377,11 +377,11 @@ constexpr bool SerializeStructFields(Frame &fr, const ObjT& structObj, Writer & 
         constexpr std::size_t J = ic.value;
         using Field   = introspection::structureElementTypeByIndex<J, ObjT>;
         using FieldOpts = options::detail::aggregate_field_opts_getter<ObjT, J>;
-        if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+        if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
             if constexpr (!skipNulls || AsArray) {
                 actualCount ++;
             } else {
-                if constexpr(static_schema::JsonNullableSerializableValue<Field>){
+                if constexpr(static_schema::NullableSerializableValue<Field>){
                     if(!static_schema::isNull(introspection::getStructElementByIndex<J>(structObj))) {
                         actualCount ++;
                     }
@@ -409,7 +409,7 @@ constexpr bool SerializeStructFields(Frame &fr, const ObjT& structObj, Writer & 
 }
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonObject<ObjT>
+    requires static_schema::ObjectLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     typename Writer::MapFrame fr;
@@ -430,7 +430,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 }
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonObject<ObjT>
+    requires static_schema::ObjectLike<ObjT>
         && Opts::template has_option<options::detail::as_array_tag> // special case for arrays destructuring
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     typename Writer::ArrayFrame fr;
@@ -445,13 +445,13 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
     return true;
 }
 
-template <class FieldOptions, static_schema::JsonSerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires (!static_schema::SerializeTransformer<Field>)
+template <class FieldOptions, static_schema::SerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
+    requires (!static_schema::SerializeTransformerLike<Field>)
 constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
+    if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
         return true;
-    } else if constexpr(FieldOptions::template has_option<options::detail::json_sink_tag>) {
+    } else if constexpr(FieldOptions::template has_option<options::detail::wire_sink_tag>) {
 
         if constexpr(static_schema::DynamicContainerTypeConcept<Field>) {
             if(!writer.output_serialized_value(obj.data(), obj.size())) {
@@ -466,7 +466,7 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
         }
 
         return true;
-    }else if constexpr(static_schema::JsonNullableSerializableValue<Field>) {
+    }else if constexpr(static_schema::NullableSerializableValue<Field>) {
 
         if(static_schema::isNull(obj)) {
             if(!writer.write_null()) {
@@ -479,8 +479,8 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
     return SerializeNonNullValue<FieldOptions>(static_schema::getRef(obj), writer, ctx, userCtx);
 }
 
-template <class FieldOptions, static_schema::JsonSerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::SerializeTransformer<Field>
+template <class FieldOptions, static_schema::SerializableValue Field, writer::WriterLike Writer, class CTX, class UserCtx = void>
+    requires static_schema::SerializeTransformerLike<Field>
 constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
     using ObT = static_schema::serialize_transform_traits<Field>::wire_type;
     ObT ob;
@@ -497,7 +497,7 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
 
 
 
-template <static_schema::JsonSerializableValue InputObjectT, class UserCtx = void, writer::WriterLike Writer>
+template <static_schema::SerializableValue InputObjectT, class UserCtx = void, writer::WriterLike Writer>
 constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, UserCtx * userCtx = nullptr) {
     serializer_details::SerializationContext<typename Writer::iterator_type, typename Writer::error_type> ctx(writer.current());
     using Meta = options::detail::annotation_meta_getter<InputObjectT>;
@@ -512,7 +512,7 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
     return ctx.result();
 }
 
-template <static_schema::JsonSerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void, class Writer = JsonIteratorWriter<It, Sent>>
+template <static_schema::SerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void, class Writer = JsonIteratorWriter<It, Sent>>
 constexpr SerializeResult<It, typename Writer::error_type> Serialize(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx = nullptr) {
     Writer writer(begin, end);
     return SerializeWithWriter(obj, writer, userCtx);
@@ -547,7 +547,7 @@ constexpr bool operator!=(const limitless_sentinel& s,
 }
 }
 
-template<static_schema::JsonSerializableValue InputObjectT, class UserCtx = void>
+template<static_schema::SerializableValue InputObjectT, class UserCtx = void>
 constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ctx = nullptr)
 {
     using io_details::limitless_sentinel;
@@ -563,20 +563,20 @@ constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ct
 
 
 template <class T>
-requires (!static_schema::JsonSerializableValue<T>)
+requires (!static_schema::SerializableValue<T>)
 constexpr auto Serialize(T obj, auto C) {
     static_assert(static_schema::detail::always_false<T>::value,
                   "[[[ JsonFusion ]]] T is not a supported JsonFusion serializable value model type.\n"
-                  "see JsonSerializableValue concept for full rules");
+                  "see SerializableValue concept for full rules");
 }
 
 
 template <class T>
-    requires (!static_schema::JsonSerializableValue<T>)
+    requires (!static_schema::SerializableValue<T>)
 constexpr auto Serialize(T obj, auto C, auto S) {
     static_assert(static_schema::detail::always_false<T>::value,
                   "[[[ JsonFusion ]]] T is not a supported JsonFusion serializable value model type.\n"
-                  "see JsonSerializableValue concept for full rules");
+                  "see SerializableValue concept for full rules");
 }
 
 

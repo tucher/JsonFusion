@@ -4,6 +4,7 @@
 
 ```cpp
 Annotated<T, Validator1, Validator2, Option1, ...> field;
+A<T, Validator1, Validator2, Option1, ...> field; //alias
 ```
 
 ### Validators (Type-Specific Constraints)
@@ -91,11 +92,11 @@ The validator function can use simplified signatures (without `ValidationCtx`). 
 
 #### Field-Level Options
 ```cpp
-key<"jsonName">              // Override JSON key name (use "jsonName" instead of C++ field name)
-not_json                     // Exclude field from JSON serialization/deserialization
+key<"field_name">              // Override JSON key name (use "field_name" instead of C++ field name)
+exclude                     // Exclude field from JSON serialization/deserialization
 description<"text">          // Documentation metadata for schema generation
-skip_json<depth=64>          // Fast-skip this value without underlying JSON, with handling up to `depth` levels
-json_sink<depth=64, max_length=1<<16>          // Capture RAW JSON into underlying string-like object, with fixed maximum nesting level and limited length. Whitespaces are removed. Validates json overall correctness, does not check anything else.
+skip<depth=64>          // Fast-skip this value without underlying JSON, with handling up to `depth` levels
+wire_sink<depth=64, max_length=1<<16>          // Capture RAW JSON into underlying string-like object, with fixed maximum nesting level and limited length. Whitespaces are removed. Validates json overall correctness, does not check anything else.
 ```
 
 #### Struct-Level Options

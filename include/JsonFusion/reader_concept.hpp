@@ -30,7 +30,7 @@ struct IterationStatus {
 };
 
 
-/// ReaderLike concept defines the interface that any JSON reader implementation must satisfy
+/// ReaderLike concept defines the interface that any format reader implementation must satisfy
 /// This allows for alternative reader implementations (e.g., SIMD-based, memory-mapped, etc.)
 /// while maintaining compatibility with the parser infrastructure.
 template<typename R>
@@ -88,7 +88,7 @@ concept ReaderLike = requires(R reader,
     // Skip to end, ensuring only whitespace remains
     { mutable_reader.finish() } -> std::same_as<bool>;
     
-    // Skip entire JSON value (with optional output to sink)
+    // Skip entire value (with optional output to sink)
     { mutable_reader.template skip_value<2>(static_cast<void*>(nullptr), std::numeric_limits<std::size_t>::max()) } -> std::same_as<bool>;
 };
 

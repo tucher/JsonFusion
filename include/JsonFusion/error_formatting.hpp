@@ -54,7 +54,7 @@ std::string& trim(std::string& s, const char* t = ws)
 template <class C, class InpIter, class ReaderError, std::size_t MaxSchemaDepth, bool HasMaps, class DataIter = char*>
 std::string ParseResultToString(const ParseResult<InpIter, ReaderError, MaxSchemaDepth, HasMaps> & res, DataIter inp = {}, const DataIter end = {}, std::size_t window = 40) {
     std::string jsonPath = "$";
-    const auto & jp = res.errorJsonPath();
+    const auto & jp = res.errorPath();
     for(int i = 0; i < jp.currentLength; i ++) {
         if(jp.storage[i].array_index == std::numeric_limits<std::size_t>::max()) {
             jsonPath += "." + std::string(jp.storage[i].field_name);

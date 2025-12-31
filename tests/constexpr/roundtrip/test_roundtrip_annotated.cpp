@@ -39,15 +39,15 @@ static_assert(
     "Round-trip: multiple key<> annotations"
 );
 
-// Test 3: not_json annotation (field skipped in JSON)
+// Test 3: exclude annotation (field skipped in JSON)
 struct WithNotJson {
     int visible;
-    A<int, not_json> hidden;
+    A<int, exclude> hidden;
 };
 
 static_assert(
     TestRoundTripSemantic<WithNotJson>(R"({"visible": 42})"),
-    "Round-trip: not_json annotation (hidden field)"
+    "Round-trip: exclude annotation (hidden field)"
 );
 
 // Test 4: as_array annotation (struct serialized as array)
@@ -100,7 +100,7 @@ static_assert(
 struct WithMixedAnnotations {
     A<int, key<"id">> identifier;
     A<std::string, key<"full-name">> name;
-    A<int, not_json> internal_counter;
+    A<int, exclude> internal_counter;
     A<Point, as_array> position;
 };
 
@@ -110,13 +110,13 @@ static_assert(
         "full-name": "Alice",
         "position": [100, 200]
     })"),
-    "Round-trip: mixed annotations (key<>, not_json, as_array)"
+    "Round-trip: mixed annotations (key<>, exclude, as_array)"
 );
 
 // Test 8: Nested with multiple annotation types
 struct Level2Annotated {
     A<int, key<"val">> value;
-    A<int, not_json> hidden;
+    A<int, exclude> hidden;
 };
 
 struct Level1Annotated {

@@ -31,7 +31,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"x": 42, "flag": "not_bool", "y": 10})",
-        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
+        ParseError::NON_BOOL_IN_BOOL_VALUE,
         "flag"  // Expected path: $.flag
     ),
     "Path tracking: error in middle primitive field"
@@ -76,7 +76,7 @@ static_assert(
 static_assert(
     TestParseErrorWithJsonPath<Outer>(
         R"({"id": 1, "inner": {"value": 42, "enabled": 123}, "count": 10})",
-        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
+        ParseError::NON_BOOL_IN_BOOL_VALUE,
         "inner", "enabled"  // Expected path: $.inner.enabled
     ),
     "Path tracking: error in nested bool field ($.inner.enabled)"
@@ -171,7 +171,7 @@ static_assert([]() constexpr {
 static_assert(
     TestParseErrorWithJsonPath<Flat>(
         R"({"y": 10, "x": 42, "flag": "bad"})",
-        ParseError::NON_BOOL_JSON_IN_BOOL_VALUE,
+        ParseError::NON_BOOL_IN_BOOL_VALUE,
         "flag"  // Expected path: $.flag (order-independent)
     ),
     "Path tracking: field order doesn't matter"
@@ -214,7 +214,7 @@ static_assert(
 );
 
 // ============================================================================
-// Using New Generic JsonPath Comparison (Cleaner API)
+// Using New Generic Path Comparison (Cleaner API)
 // ============================================================================
 
 // Test 15: Compare paths generically - simple field error

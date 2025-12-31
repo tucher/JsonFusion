@@ -15,7 +15,7 @@ struct MyStruct {
 };
 
 template<> struct JsonFusion::Annotated<MyStruct> {
-    using Options = OptionsPack<JsonFusion::options::not_json>;
+    using Options = OptionsPack<JsonFusion::options::exclude>;
 };
 
 using BadAnnotated = JsonFusion::Annotated<int>;
@@ -41,12 +41,12 @@ auto tv = tt.f;
 
 
 
-using MyAnnotatedStruct = JsonFusion::Annotated<MyStruct, JsonFusion::options::not_json>;
+using MyAnnotatedStruct = JsonFusion::Annotated<MyStruct, JsonFusion::options::exclude>;
 
 static_assert(JsonFusion::options::detail::annotation_meta_getter<MyAnnotatedStruct>::options
-              ::template has_option<JsonFusion::options::detail::not_json_tag>);
+              ::template has_option<JsonFusion::options::detail::exclude_tag>);
 static_assert(JsonFusion::options::detail::annotation_meta_getter<MyStruct>::options
-              ::template has_option<JsonFusion::options::detail::not_json_tag>);
+              ::template has_option<JsonFusion::options::detail::exclude_tag>);
 
 
 struct Vec_WithExternalMeta{
@@ -67,7 +67,7 @@ template<> struct JsonFusion::Annotated<Vec_WithExternalMeta> {
 
 template<> struct JsonFusion::AnnotatedField<Vec_WithExternalMeta, 1> {
     using Options = OptionsPack<
-        JsonFusion::options::not_json
+        JsonFusion::options::exclude
         >;
 };
 
@@ -77,13 +77,13 @@ using TstOpts = JsonFusion::options::detail::aggregate_field_opts_getter<Vec_Wit
 
 
 
-static_assert(TstOpts::template has_option<JsonFusion::options::detail::not_json_tag>);
+static_assert(TstOpts::template has_option<JsonFusion::options::detail::exclude_tag>);
 
 template <class ExternalVector = void>
 struct Streamer {
     struct Vector{
         float x;
-        // JsonFusion::Annotated<float, JsonFusion::options::not_json> y;
+        // JsonFusion::Annotated<float, JsonFusion::options::exclude> y;
         float y;
         float z;
     };

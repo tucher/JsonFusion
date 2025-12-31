@@ -14,7 +14,7 @@
 #include "validators.hpp"
 
 #include "struct_introspection.hpp"
-#include "json_path.hpp"
+#include "path.hpp"
 #include "string_search.hpp"
 #include "json.hpp"
 #include "errors.hpp"
@@ -48,7 +48,7 @@ class DeserializationContext {
                   "Either refactor the schema or enable dynamic error stack support via JSONFUSION_ALLOW_DYNAMIC_ERROR_STACK macro.");
 
 
-    using PathT = json_path::JsonPath<SchemaDepth, SchemaHasMaps>;
+    using PathT = path::Path<SchemaDepth, SchemaHasMaps>;
     PathT currentPath;
     using PathElementT = PathT::PathElementT;
 
@@ -105,12 +105,12 @@ public:
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonBool<ObjT>
+    requires static_schema::BoolLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (reader::TryParseStatus st = reader.read_bool(obj); st == reader::TryParseStatus::error) {
         return ctx.withReaderError(reader);
     } else if (st == reader::TryParseStatus::no_match) {
-        return ctx.withParseError(ParseError::NON_BOOL_JSON_IN_BOOL_VALUE, reader);
+        return ctx.withParseError(ParseError::NON_BOOL_IN_BOOL_VALUE, reader);
     }
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -123,7 +123,7 @@ constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserC
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonNumber<ObjT>
+    requires static_schema::NumberLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (reader::TryParseStatus st = reader.template read_number<ObjT>(obj);
                 st == reader::TryParseStatus::error) {
@@ -144,7 +144,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 constexpr std::size_t STRING_CHUNK_SIZE = 64;
 
 template<class Reader, class Cont>
-constexpr bool read_json_string_into(
+constexpr bool read_string_into(
     Reader&      reader,
     Cont&        out,
     std::size_t  max_len,   // validator limit or SIZE_MAX
@@ -317,7 +317,7 @@ constexpr bool read_json_string_into(
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonString<ObjT>
+    requires static_schema::StringLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -335,8 +335,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         char * b = static_schema::static_string_traits<ObjT>::data(obj);
         constexpr std::size_t container_max = static_schema::static_string_traits<ObjT>::max_size(obj);
         constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
-        if(!read_json_string_into(reader, b, effective_max, err, parsedSize)) {
-            // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+        if(!read_string_into(reader, b, effective_max, err, parsedSize)) {
+            // On overflow, parsedSize is not set by read_string_into, so set it to the limit
             if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
                 parsedSize = effective_max;
             }
@@ -354,8 +354,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
         b[parsedSize] = 0;
     } else {
         obj.clear();
-        if(!read_json_string_into(reader, obj, MAX_SIZE, err, parsedSize)) {
-            // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+        if(!read_string_into(reader, obj, MAX_SIZE, err, parsedSize)) {
+            // On overflow, parsedSize is not set by read_string_into, so set it to the limit
             if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
                 parsedSize = MAX_SIZE;
             }
@@ -389,7 +389,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonParsableArray<ObjT>
+    requires static_schema::ParsableArrayLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     typename Tokenizer::ArrayFrame fr;
@@ -484,7 +484,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonParsableMap<ObjT>
+    requires static_schema::ParsableMapLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     typename Tokenizer::MapFrame fr;
@@ -561,8 +561,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
                 constexpr std::size_t container_max = static_schema::static_string_traits<typename FH::key_type>::max_size(key);
                 constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
-                if(!read_json_string_into(reader, b, effective_max, err, parsedSize)) {
-                    // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+                if(!read_string_into(reader, b, effective_max, err, parsedSize)) {
+                    // On overflow, parsedSize is not set by read_string_into, so set it to the limit
                     if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
                         parsedSize = effective_max;
                     }
@@ -579,8 +579,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 }
                 b[parsedSize] = 0;
             } else {
-                if(!read_json_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
-                    // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+                if(!read_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
+                    // On overflow, parsedSize is not set by read_string_into, so set it to the limit
                     if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
                         parsedSize = MAX_SIZE;
                     }
@@ -682,7 +682,7 @@ using StructFieldMeta = options::detail::annotation_meta_getter<
     introspection::structureElementTypeByIndex<StructIndex, StructT>
 >;
 template <class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
-    requires static_schema::JsonObject<ObjT>
+    requires static_schema::ObjectLike<ObjT>
 constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
     bool ok = false;
     (
@@ -721,7 +721,7 @@ constexpr bool parse_struct_field_one(
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonObject<ObjT>
+    requires static_schema::ObjectLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     typename Tokenizer::MapFrame fr;
@@ -781,7 +781,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             char * b = searcher.buffer();
 
             ParseError err{ParseError::NO_ERROR};
-            if(!read_json_string_into(reader, b, effective_max_field_len, err, searcher.current_length(), true)) {
+            if(!read_string_into(reader, b, effective_max_field_len, err, searcher.current_length(), true)) {
                 if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                     return ctx.withParseError(err, reader);
                 } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
@@ -861,7 +861,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 
 template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::JsonObject<ObjT>
+    requires static_schema::ObjectLike<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
 constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
@@ -923,22 +923,22 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     return true;
 }
 
-template <class FieldOptions, static_schema::JsonParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires (!static_schema::ParseTransformer<Field>)
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+    requires (!static_schema::ParseTransformerLike<Field>)
 constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    if constexpr (FieldOptions::template has_option<options::detail::not_json_tag>) {
+    if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
         return false; // cannot parse non-json
-    }else if constexpr (FieldOptions::template has_option<options::detail::skip_json_tag>) {
-        using Opt = FieldOptions::template get_option<options::detail::skip_json_tag>;
+    }else if constexpr (FieldOptions::template has_option<options::detail::skip_tag>) {
+        using Opt = FieldOptions::template get_option<options::detail::skip_tag>;
         if(!reader.template skip_value<Opt::SkipDepthLimit>()) {
             return ctx.withReaderError(reader);
         } else {
             return true;
         }
-    } else if constexpr(FieldOptions::template has_option<options::detail::json_sink_tag>) {
-        using Opt = FieldOptions::template get_option<options::detail::json_sink_tag>;
-        static_assert(static_schema::JsonString<Field>, "json_sink should be used with string-like types");
+    } else if constexpr(FieldOptions::template has_option<options::detail::wire_sink_tag>) {
+        using Opt = FieldOptions::template get_option<options::detail::wire_sink_tag>;
+        static_assert(static_schema::StringLike<Field>, "wire_sink should be used with string-like types");
         if(!reader.template skip_value<Opt::SkipDepthLimit>(std::addressof(field), Opt::MaxStringLength)) {
             return ctx.withReaderError(reader);
         } else {
@@ -946,7 +946,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
         }
     } else {
         if(reader::TryParseStatus r = reader.start_value_and_try_read_null(); r == reader::TryParseStatus::ok) {
-            if constexpr(static_schema::JsonNullableParsableValue<Field>) {
+            if constexpr(static_schema::NullableParsableValue<Field>) {
                 static_schema::setNull(field);
                 return true;
             } else {
@@ -960,8 +960,8 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
     }
 }
 
-template <class FieldOptions, static_schema::JsonParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
-    requires static_schema::ParseTransformer<Field>
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+    requires static_schema::ParseTransformerLike<Field>
 constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using StT = static_schema::parse_transform_traits<Field>::wire_type;
     StT ob;
@@ -979,7 +979,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
 } // namespace parser_details
 
 
-template <static_schema::JsonParsableValue InputObjectT, class UserCtx = void, reader::ReaderLike Reader>
+template <static_schema::ParsableValue InputObjectT, class UserCtx = void, reader::ReaderLike Reader>
 constexpr auto ParseWithReader(InputObjectT & obj, Reader & reader, UserCtx * userCtx = nullptr) {
     using Tr = ModelParsingTraits<InputObjectT>;
     using CtxT = parser_details::DeserializationContext<typename Reader::iterator_type, Tr::SchemaDepth, Tr::SchemaHasMaps, typename Reader::error_type>;
@@ -998,7 +998,7 @@ constexpr auto ParseWithReader(InputObjectT & obj, Reader & reader, UserCtx * us
     return ctx.result();
 }
 
-template <static_schema::JsonParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCtx = void, class Reader = JsonIteratorReader<It, Sent>>
+template <static_schema::ParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCtx = void, class Reader = JsonIteratorReader<It, Sent>>
 constexpr auto Parse(InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
     Reader reader(begin, end);
     return ParseWithReader(obj, reader, userCtx);
@@ -1011,33 +1011,33 @@ constexpr auto Parse(InputObjectT & obj, const ContainterT & c, UserCtx * userCt
     return Parse(obj, c.begin(), c.end(), userCtx);
 }
 
-template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
+template<static_schema::ParsableValue InputObjectT, class UserCtx = void>
 constexpr auto Parse(InputObjectT& obj, std::string_view sv, UserCtx * userCtx = nullptr) {
     return Parse(obj, sv.data(), sv.data() + sv.size(), userCtx);
 }
 
 
 // string front-end TODO
-// template<static_schema::JsonParsableValue InputObjectT, class UserCtx = void>
+// template<static_schema::ParsableValue InputObjectT, class UserCtx = void>
 // constexpr auto Parse(InputObjectT& obj, const std::string & sv, UserCtx * userCtx = nullptr) {
 //     return Parse(obj, sv.data(), sv.data()+ sv.size(), userCtx);
 // }
 
 
 template <class T>
-    requires (!static_schema::JsonParsableValue<T>)
+    requires (!static_schema::ParsableValue<T>)
 constexpr auto  Parse(T obj, auto, auto) {
     static_assert(static_schema::detail::always_false<T>::value,
                   "[[[ JsonFusion ]]] T is not a supported JsonFusion parsable value model type.\n"
-                  "see JsonParsableValue concept for full rules");
+                  "see ParsableValue concept for full rules");
 }
 
 template <class T>
-    requires (!static_schema::JsonParsableValue<T>)
+    requires (!static_schema::ParsableValue<T>)
 constexpr auto Parse(T obj, auto) {
     static_assert(static_schema::detail::always_false<T>::value,
                   "[[[ JsonFusion ]]] T is not a supported JsonFusion parsable value model type.\n"
-                  "see JsonParsableValue concept for full rules");
+                  "see ParsableValue concept for full rules");
 }
 
 

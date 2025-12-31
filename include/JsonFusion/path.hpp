@@ -5,12 +5,12 @@
 #include "options.hpp"
 
 namespace JsonFusion {
-namespace json_path {
+namespace path {
 
 static constexpr std::size_t DefaultInlineKeyCapacity = 256;
 
 constexpr bool allowed_std_string_allocation() {
-#ifdef JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS
+#ifdef JSONFUSION_ALLOW_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS
     return true;
 #else
     return false;
@@ -96,7 +96,7 @@ struct PathElement {
 };
 
 template<std::size_t SchemaDepth, bool schemaHasMaps> // schema depth INCLUDING root
-struct JsonPath {
+struct Path {
     static constexpr std::size_t InlineKeyCapacity = schemaHasMaps ? DefaultInlineKeyCapacity: 0;
 
     using PathElementT = PathElement<InlineKeyCapacity>;
@@ -109,7 +109,7 @@ struct JsonPath {
     std::size_t currentLength = 0;
 
     StorageT storage;
-    constexpr JsonPath () {
+    constexpr Path () {
         currentLength = 0;
     }
 
@@ -130,7 +130,7 @@ struct JsonPath {
     }
 
     template <class ... PathElems>
-    constexpr JsonPath(PathElems ... args) {
+    constexpr Path(PathElems ... args) {
         auto toPathElement = []<class ArgT>(ArgT arg) {
             if constexpr (std::is_convertible_v<ArgT, std::string_view>) {
                 return PathElementT {
@@ -143,7 +143,7 @@ struct JsonPath {
                     std::string_view()
                 };
             } else {
-                static_assert(!sizeof(arg), "Use integer integers or str-compatible segments in JsonPath contruction");
+                static_assert(!sizeof(arg), "Use integer integers or str-compatible segments in Path contruction");
             }
         };
         storage = StorageT {toPathElement(args)...};
@@ -159,7 +159,7 @@ struct JsonPath {
             return true;
         } else {
             if(storage[offs].array_index == std::numeric_limits<std::size_t>::max()) {// struct or map
-                if constexpr (static_schema::JsonParsableMap<T>) {
+                if constexpr (static_schema::ParsableMapLike<T>) {
                     if constexpr (requires {obj.contains( storage[offs].field_name);}) {
                         if(obj.contains(storage[offs].field_name))
                             return visit(obj[storage[offs].field_name], std::forward<Visitor>(v), offs + 1);
@@ -174,11 +174,11 @@ struct JsonPath {
 #endif
                                 return false;
                         } else {
-                            static_assert(!sizeof(T), "Either enable JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS macro or use map-like, which supports std::string_view");
+                            static_assert(!sizeof(T), "Either enable JSONFUSION_ALLOW_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS macro or use map-like, which supports std::string_view");
                             return false;
                         }
                     }
-                } else if constexpr (static_schema::JsonObject<T>) {
+                } else if constexpr (static_schema::ObjectLike<T>) {
 
                     auto try_one = [&](auto ic) {
                         constexpr std::size_t StructIndex = decltype(ic)::value;
@@ -213,7 +213,7 @@ struct JsonPath {
                     return false;
                 }
             } else {  // array
-                if  constexpr (!static_schema::JsonParsableArray<T>) {
+                if  constexpr (!static_schema::ParsableArrayLike<T>) {
 
                     return false;
                 } else {
@@ -234,13 +234,13 @@ struct JsonPath {
             return true;
         } else {
             if(storage[offs].array_index == std::numeric_limits<std::size_t>::max()) {// struct or map
-                if constexpr (static_schema::JsonParsableMap<T>) {
+                if constexpr (static_schema::ParsableMapLike<T>) {
                     using MappedItemOpts    = options::detail::annotation_meta_getter<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>::options;
 
                     return visit_options<
                         AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>
                         >(std::forward<Visitor>(v), MappedItemOpts{}, offs + 1);
-                } else if constexpr (static_schema::JsonObject<T>) {
+                } else if constexpr (static_schema::ObjectLike<T>) {
 
                     auto try_one = [&](auto ic) {
                         constexpr std::size_t StructIndex = decltype(ic)::value;
@@ -275,7 +275,7 @@ struct JsonPath {
                     return false;
                 }
             } else {  // array
-                if  constexpr (!static_schema::JsonParsableArray<T>) {
+                if  constexpr (!static_schema::ParsableArrayLike<T>) {
 
                     return false;
                 } else {
@@ -291,8 +291,8 @@ struct JsonPath {
 
 
 
-template<class C, class Visitor, class JsonPath>
-constexpr bool visit_by_path(C & obj, Visitor && v, const JsonPath & path) {
+template<class C, class Visitor, class Path>
+constexpr bool visit_by_path(C & obj, Visitor && v, const Path & path) {
     return path.visit(obj, std::forward<Visitor>(v));
 }
 

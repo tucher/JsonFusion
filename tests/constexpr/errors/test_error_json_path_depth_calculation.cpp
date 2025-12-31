@@ -198,24 +198,24 @@ static_assert(calc_type_depth<Complex>() == 5, "Complex nesting: depth = 5");
 //
 // When calc_type_depth() returns SCHEMA_UNBOUNDED, JsonFusion:
 // 1. Uses dynamic path storage (std::vector) instead of std::array
-// 2. Requires JSONFUSION_ALLOW_JSON_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS macro
+// 2. Requires JSONFUSION_ALLOW_PATH_STRING_ALLOCATION_FOR_MAP_ACCESS macro
 // 3. Still provides full error reporting with JSON paths
 
 // ============================================================================
-// Edge Cases: not_json fields
+// Edge Cases: exclude fields
 // ============================================================================
 
 struct OnlyNotJson {
-    A<int, options::not_json> hidden;
+    A<int, options::exclude> hidden;
     int dummy;  // At least one parsable field
 };
 
-// not_json fields are ignored in depth calculation
+// exclude fields are ignored in depth calculation
 // depth = 1 (struct) + 1 (dummy primitive) = 2
-static_assert(calc_type_depth<OnlyNotJson>() == 2, "Struct with not_json fields");
+static_assert(calc_type_depth<OnlyNotJson>() == 2, "Struct with exclude fields");
 
 // ============================================================================
-// Depth Calculation Impacts JsonPath Storage Size
+// Depth Calculation Impacts Path Storage Size
 // ============================================================================
 
 // Verify that parser uses the calculated depth for path storage

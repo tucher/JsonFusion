@@ -50,7 +50,7 @@ struct StdMapLikeWrite {
 
 // Verify the interface is recognized by MapWritable concept
 static_assert(MapWritable<StdMapLikeWrite<std::array<char, 16>, int, 10>>);
-static_assert(JsonParsableMap<StdMapLikeWrite<std::array<char, 16>, int, 10>>);
+static_assert(ParsableMapLike<StdMapLikeWrite<std::array<char, 16>, int, 10>>);
 
 // Verify cursor is automatically provided
 static_assert(requires {
@@ -123,9 +123,9 @@ struct ComplexValue {
 using ComplexMapWrite = StdMapLikeWrite<std::array<char, 32>, ComplexValue, 10>;
 using ComplexMapRead = StdMapLikeRead<std::array<char, 32>, ComplexValue, 10>;
 
-static_assert(JsonParsableValue<ComplexValue>);
+static_assert(ParsableValue<ComplexValue>);
 static_assert(MapWritable<ComplexMapWrite>);
-static_assert(JsonParsableMap<ComplexMapWrite>);
+static_assert(ParsableMapLike<ComplexMapWrite>);
 static_assert(MapReadable<ComplexMapRead>);
 static_assert(JsonSerializableMap<ComplexMapRead>);
 
@@ -136,8 +136,8 @@ static_assert(JsonSerializableMap<ComplexMapRead>);
 using InnerMap = StdMapLikeWrite<std::array<char, 16>, int, 10>;
 using NestedMapWrite = StdMapLikeWrite<std::array<char, 32>, InnerMap, 5>;
 
-static_assert(JsonParsableMap<InnerMap>);
-static_assert(JsonParsableMap<NestedMapWrite>);
+static_assert(ParsableMapLike<InnerMap>);
+static_assert(ParsableMapLike<NestedMapWrite>);
 
 // ============================================================================
 // Test 5: Optional Values with std::map Interface
@@ -146,8 +146,8 @@ static_assert(JsonParsableMap<NestedMapWrite>);
 using OptionalMapWrite = StdMapLikeWrite<std::array<char, 32>, std::optional<int>, 10>;
 using OptionalMapRead = StdMapLikeRead<std::array<char, 32>, std::optional<int>, 10>;
 
-static_assert(JsonParsableValue<std::optional<int>>);
-static_assert(JsonParsableMap<OptionalMapWrite>);
+static_assert(ParsableValue<std::optional<int>>);
+static_assert(ParsableMapLike<OptionalMapWrite>);
 static_assert(JsonSerializableMap<OptionalMapRead>);
 
 // ============================================================================
@@ -157,8 +157,8 @@ static_assert(JsonSerializableMap<OptionalMapRead>);
 using ArrayMapWrite = StdMapLikeWrite<std::array<char, 32>, std::array<int, 10>, 5>;
 using ArrayMapRead = StdMapLikeRead<std::array<char, 32>, std::array<int, 10>, 5>;
 
-static_assert(JsonParsableArray<std::array<int, 10>>);
-static_assert(JsonParsableMap<ArrayMapWrite>);
+static_assert(ParsableArrayLike<std::array<int, 10>>);
+static_assert(ParsableMapLike<ArrayMapWrite>);
 static_assert(JsonSerializableMap<ArrayMapRead>);
 
 // ============================================================================
@@ -195,7 +195,7 @@ using BidirectionalMap = StdMapLikeFull<std::array<char, 32>, int, 10>;
 
 static_assert(MapWritable<BidirectionalMap>);
 static_assert(MapReadable<BidirectionalMap>);
-static_assert(JsonParsableMap<BidirectionalMap>);
+static_assert(ParsableMapLike<BidirectionalMap>);
 static_assert(JsonSerializableMap<BidirectionalMap>);
 
 // ============================================================================

@@ -111,7 +111,7 @@ struct WrongResetReturn {
 };
 static_assert(!ConsumingStreamerLike<WrongResetReturn>);
 
-// ===== Invalid: value_type is not JsonParsableValue =====
+// ===== Invalid: value_type is not ParsableValue =====
 struct InvalidValueType {
     using value_type = int*;  // Pointers are not parsable!
     constexpr bool consume(const int*& val) { return true; }

@@ -17,59 +17,59 @@ These tests run **first** in the test suite because if type detection is broken,
 
 ## Test Coverage
 
-### 1. **JsonBool** (Section 1)
-- ✅ `bool` IS `JsonBool`
-- ❌ `bool` is NOT `JsonNumber`, `JsonString`, `JsonObject`, `JsonParsableArray`, `JsonParsableMap`
-- ❌ Other types are NOT `JsonBool`
+### 1. **BoolLike** (Section 1)
+- ✅ `bool` IS `BoolLike`
+- ❌ `bool` is NOT `NumberLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ Other types are NOT `BoolLike`
 
-### 2. **JsonNumber** (Section 2)
-- ✅ All integral types (`int`, `uint32_t`, etc.) ARE `JsonNumber`
-- ✅ All floating types (`float`, `double`) ARE `JsonNumber`
-- ❌ Numbers are NOT `JsonBool`, `JsonString`, `JsonObject`, `JsonParsableArray`, `JsonParsableMap`
-- ❌ Other types are NOT `JsonNumber`
+### 2. **NumberLike** (Section 2)
+- ✅ All integral types (`int`, `uint32_t`, etc.) ARE `NumberLike`
+- ✅ All floating types (`float`, `double`) ARE `NumberLike`
+- ❌ Numbers are NOT `BoolLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ Other types are NOT `NumberLike`
 
-### 3. **JsonString** (Section 3)
-- ✅ `std::array<char, N>` IS `JsonString`
-- ❌ Strings are NOT `JsonBool`, `JsonNumber`, `JsonObject`, `JsonParsableArray`, `JsonParsableMap`
-- ❌ `std::array<int, N>` is NOT `JsonString` (wrong element type)
-- ❌ Other types are NOT `JsonString`
+### 3. **StringLike** (Section 3)
+- ✅ `std::array<char, N>` IS `StringLike`
+- ❌ Strings are NOT `BoolLike`, `NumberLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ `std::array<int, N>` is NOT `StringLike` (wrong element type)
+- ❌ Other types are NOT `StringLike`
 
-### 4. **JsonObject** (Section 4)
-- ✅ Aggregate structs ARE `JsonObject`
-- ❌ Objects are NOT `JsonBool`, `JsonNumber`, `JsonString`, `JsonParsableArray`, `JsonParsableMap`
-- **CRITICAL**: ❌ Maps are NOT `JsonObject`
-- **CRITICAL**: ❌ Arrays are NOT `JsonObject`
-- ❌ Other types are NOT `JsonObject`
+### 4. **ObjectLike** (Section 4)
+- ✅ Aggregate structs ARE `ObjectLike`
+- ❌ Objects are NOT `BoolLike`, `NumberLike`, `StringLike`, `ParsableArrayLike`, `ParsableMapLike`
+- **CRITICAL**: ❌ Maps are NOT `ObjectLike`
+- **CRITICAL**: ❌ Arrays are NOT `ObjectLike`
+- ❌ Other types are NOT `ObjectLike`
 
-### 5. **JsonParsableArray** (Section 5)
-- ✅ `std::array<T, N>` (non-char) ARE `JsonParsableArray`
-- ❌ Arrays are NOT `JsonBool`, `JsonNumber`, `JsonString`, `JsonObject`, `JsonParsableMap`
-- **CRITICAL**: ❌ Arrays are NOT `JsonObject`
-- **CRITICAL**: ❌ Arrays are NOT `JsonParsableMap`
-- ❌ `std::array<char, N>` is NOT `JsonParsableArray` (it's `JsonString`)
-- ❌ Other types are NOT `JsonParsableArray`
+### 5. **ParsableArrayLike** (Section 5)
+- ✅ `std::array<T, N>` (non-char) ARE `ParsableArrayLike`
+- ❌ Arrays are NOT `BoolLike`, `NumberLike`, `StringLike`, `ObjectLike`, `ParsableMapLike`
+- **CRITICAL**: ❌ Arrays are NOT `ObjectLike`
+- **CRITICAL**: ❌ Arrays are NOT `ParsableMapLike`
+- ❌ `std::array<char, N>` is NOT `ParsableArrayLike` (it's `StringLike`)
+- ❌ Other types are NOT `ParsableArrayLike`
 
-### 6. **JsonParsableMap** (Section 6)
-- ✅ Types with `key_type`, `mapped_type`, `try_emplace`, `clear` ARE `JsonParsableMap`
-- ❌ Maps are NOT `JsonBool`, `JsonNumber`, `JsonString`, `JsonObject`, `JsonParsableArray`
-- **CRITICAL**: ❌ Maps are NOT `JsonObject`
-- **CRITICAL**: ❌ Objects are NOT `JsonParsableMap`
-- ❌ Map-like types with non-string keys are NOT `JsonParsableMap`
-- ❌ Other types are NOT `JsonParsableMap`
+### 6. **ParsableMapLike** (Section 6)
+- ✅ Types with `key_type`, `mapped_type`, `try_emplace`, `clear` ARE `ParsableMapLike`
+- ❌ Maps are NOT `BoolLike`, `NumberLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`
+- **CRITICAL**: ❌ Maps are NOT `ObjectLike`
+- **CRITICAL**: ❌ Objects are NOT `ParsableMapLike`
+- ❌ Map-like types with non-string keys are NOT `ParsableMapLike`
+- ❌ Other types are NOT `ParsableMapLike`
 
 ### 7. **Streaming Containers** (Section 7)
 Tests custom consumer types (like `MapConsumer` from `test_map_streaming.cpp`):
 
-- ✅ `MapConsumer` IS `JsonParsableMap`
-- **CRITICAL**: ❌ `MapConsumer` is NOT `JsonObject`
-- ✅ `ArrayConsumer` IS `JsonParsableArray`
-- **CRITICAL**: ❌ `ArrayConsumer` is NOT `JsonObject` or `JsonParsableMap`
+- ✅ `MapConsumer` IS `ParsableMapLike`
+- **CRITICAL**: ❌ `MapConsumer` is NOT `ObjectLike`
+- ✅ `ArrayConsumer` IS `ParsableArrayLike`
+- **CRITICAL**: ❌ `ArrayConsumer` is NOT `ObjectLike` or `ParsableMapLike`
 
 ### 8. **Optional/Nullable Types** (Section 8)
-- ✅ `std::optional<T>` IS `JsonNullableParsableValue`
-- ❌ `std::optional<T>` is NOT `JsonNonNullableParsableValue`
-- ✅ Non-optional types ARE `JsonNonNullableParsableValue`
-- ❌ Non-optional types are NOT `JsonNullableParsableValue`
+- ✅ `std::optional<T>` IS `NullableParsableValue`
+- ❌ `std::optional<T>` is NOT `NonNullableParsableValue`
+- ✅ Non-optional types ARE `NonNullableParsableValue`
+- ❌ Non-optional types are NOT `NullableParsableValue`
 
 ### 9. **Classification Matrix** (Section 9)
 **Verifies mutual exclusivity** using a helper function:
@@ -77,12 +77,12 @@ Tests custom consumer types (like `MapConsumer` from `test_map_streaming.cpp`):
 template<typename T>
 consteval int count_matching_concepts() {
     int count = 0;
-    if constexpr (JsonBool<T>) count++;
-    if constexpr (JsonNumber<T>) count++;
-    if constexpr (JsonString<T>) count++;
-    if constexpr (JsonObject<T>) count++;
-    if constexpr (JsonParsableArray<T>) count++;
-    if constexpr (JsonParsableMap<T>) count++;
+    if constexpr (BoolLike<T>) count++;
+    if constexpr (NumberLike<T>) count++;
+    if constexpr (StringLike<T>) count++;
+    if constexpr (ObjectLike<T>) count++;
+    if constexpr (ParsableArrayLike<T>) count++;
+    if constexpr (ParsableMapLike<T>) count++;
     return count;
 }
 ```
@@ -100,8 +100,8 @@ consteval int count_matching_concepts() {
 
 ### 11. **Annotated Types** (Section 11)
 - Annotated types preserve their underlying concept
-- `Annotated<int, key<"x">>` IS still `JsonNumber`
-- `Annotated<std::array<int, 10>, key<"items">>` IS still `JsonParsableArray`
+- `Annotated<int, key<"x">>` IS still `NumberLike`
+- `Annotated<std::array<int, 10>, key<"items">>` IS still `ParsableArrayLike`
 
 ## Key Insights
 

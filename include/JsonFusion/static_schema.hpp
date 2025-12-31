@@ -442,17 +442,17 @@ struct serialize_transform_traits;
 
 /* ######## Bool type detection ######## */
 template<class C>
-concept JsonBool = std::same_as<AnnotatedValue<C>, bool>;
+concept BoolLike = std::same_as<AnnotatedValue<C>, bool>;
 
 /* ######## Number type detection ######## */
 template<class C>
-concept JsonNumber =
-    !JsonBool<C> &&
+concept NumberLike =
+    !BoolLike<C> &&
     (std::is_integral_v<AnnotatedValue<C>> || std::is_floating_point_v<AnnotatedValue<C>>);
 
 /* ######## String type detection ######## */
 template<class C>
-concept JsonString =
+concept StringLike =
 #if __has_include(<string>)
     // std::same_as<AnnotatedValue<C>, std::string>      ||
 #endif
@@ -501,7 +501,7 @@ template<typename T>
 struct is_json_object {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
+        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (std::ranges::range<U>) {
             return false; // arrays are handled separately
@@ -530,7 +530,7 @@ struct is_json_object {
 
 
 template<class C>
-concept JsonObject = is_json_object<C>::value;
+concept ObjectLike = is_json_object<C>::value;
 
 
 
@@ -551,7 +551,7 @@ template<class T>
 struct is_json_serializable_array {
     static constexpr bool value = []{
         using U = AnnotatedValue<T>;
-        if constexpr (JsonString<T>||JsonBool<T> || JsonNumber<T>)
+        if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else if constexpr(serialize_transform_traits<U>::is_transformer) {
             return false;
@@ -566,12 +566,12 @@ struct is_json_serializable_array {
 };
 
 template<class C>
-concept JsonSerializableArray = is_json_serializable_array<C>::value;
+concept SerializableArrayLike = is_json_serializable_array<C>::value;
 
 template<class T>
 struct is_non_null_json_serializable_value {
     static constexpr bool value = []{
-        if constexpr (JsonBool<T> || JsonNumber<T> || JsonString<T>) {
+        if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -582,7 +582,7 @@ struct is_non_null_json_serializable_value {
             using U = AnnotatedValue<T>;
             if constexpr (MapReadable<U>) {
                 using Cursor = map_read_cursor<U>;
-                return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+                return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_serializable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -613,11 +613,11 @@ struct is_nullable_json_serializable_value {
 
 
 template<class Field>
-concept JsonNullableSerializableValue = is_nullable_json_serializable_value<Field>::value||
+concept NullableSerializableValue = is_nullable_json_serializable_value<Field>::value||
                                         (serialize_transform_traits<Field>::is_transformer && is_nullable_json_serializable_value<typename serialize_transform_traits<Field>::wire_type>::value);
 
 template<class Field>
-concept JsonNonNullableSerializableValue = is_non_null_json_serializable_value<Field>::value ||
+concept NonNullableSerializableValue = is_non_null_json_serializable_value<Field>::value ||
                                            (serialize_transform_traits<Field>::is_transformer && is_non_null_json_serializable_value<typename serialize_transform_traits<Field>::wire_type>::value);
 
 
@@ -628,7 +628,7 @@ struct is_json_serializable_value {
 };
 
 template<class C>
-concept JsonSerializableValue = !input_checks::is_directly_forbidden_v<C> &&  is_json_serializable_value<C>::value;
+concept SerializableValue = !input_checks::is_directly_forbidden_v<C> &&  is_json_serializable_value<C>::value;
 
 template<class T> struct is_json_parsable_value;  // primary declaration
 
@@ -637,7 +637,7 @@ template<class T>
 struct is_json_parsable_array {
     static constexpr bool value = []{
         using U = AnnotatedValue<T>;
-        if constexpr (JsonString<T>||JsonBool<T> || JsonNumber<T>)
+        if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else {
             if constexpr(ArrayWritable<U>) {
@@ -651,12 +651,12 @@ struct is_json_parsable_array {
     }();
 };
 template<class C>
-concept JsonParsableArray = is_json_parsable_array<C>::value;
+concept ParsableArrayLike = is_json_parsable_array<C>::value;
 
 template<class T>
 struct is_non_null_json_parsable_value {
     static constexpr bool value = []{
-        if constexpr (JsonBool<T> || JsonNumber<T> || JsonString<T>) {
+        if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -667,7 +667,7 @@ struct is_non_null_json_parsable_value {
             using U = AnnotatedValue<T>;
             if constexpr (MapWritable<U>) {
                 using Cursor = map_write_cursor<U>;
-                return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+                return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_parsable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -696,12 +696,12 @@ struct is_nullable_json_parsable_value {
 
 
 template<class Field>
-concept JsonNullableParsableValue = is_nullable_json_parsable_value<Field>::value||
+concept NullableParsableValue = is_nullable_json_parsable_value<Field>::value||
                                     (parse_transform_traits<Field>::is_transformer && is_nullable_json_parsable_value<typename parse_transform_traits<Field>::wire_type>::value);
 
 
 template<class Field>
-concept JsonNonNullableParsableValue = is_non_null_json_parsable_value<Field>::value||
+concept NonNullableParsableValue = is_non_null_json_parsable_value<Field>::value||
                                        (parse_transform_traits<Field>::is_transformer && is_non_null_json_parsable_value<typename parse_transform_traits<Field>::wire_type>::value);
 
 
@@ -713,7 +713,7 @@ struct is_json_parsable_value {
 };
 
 template<class C>
-concept JsonParsableValue = !input_checks::is_directly_forbidden_v<C> && is_json_parsable_value<C>::value;
+concept ParsableValue = !input_checks::is_directly_forbidden_v<C> && is_json_parsable_value<C>::value;
 
 /* ######## Map type detection (actual implementations) ######## */
 
@@ -721,13 +721,13 @@ template<typename T>
 struct is_json_parsable_map {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
+        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
         } else if constexpr (MapWritable<U>) {
             using Cursor = map_write_cursor<U>;
-            return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+            return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_parsable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;
@@ -736,19 +736,19 @@ struct is_json_parsable_map {
 };
 
 template<class C>
-concept JsonParsableMap = is_json_parsable_map<C>::value;
+concept ParsableMapLike = is_json_parsable_map<C>::value;
 
 template<typename T>
 struct is_json_serializable_map {
     static constexpr bool value = [] {
         using U = AnnotatedValue<T>;
-        if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>) {
+        if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
         } else if constexpr (MapReadable<U>) {
             using Cursor = map_read_cursor<U>;
-            return (JsonString<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+            return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_serializable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;
@@ -762,24 +762,24 @@ concept JsonSerializableMap = is_json_serializable_map<C>::value;
 /* ######## Generic data access ######## */
 
 
-template <JsonNullableParsableValue Field>
+template <NullableParsableValue Field>
 constexpr void setNull(Field &f) {
     annotation_meta_getter<Field>::getRef(f).reset(); // same for std::optional and std::unique_ptr
 }
 
-template <JsonNullableSerializableValue Field>
+template <NullableSerializableValue Field>
 constexpr bool isNull(const Field &f) {
     if constexpr (is_specialization_of<Field, std::optional>::value) {
         return !annotation_meta_getter<Field>::getRef(f).has_value();
     } else if constexpr (is_specialization_of<Field, std::unique_ptr>::value) {
         return annotation_meta_getter<Field>::getRef(f).get() == nullptr;
     } else {
-        static_assert(false, "JsonNullableSerializableValue must be std::optional or std::unique_ptr");
+        static_assert(false, "NullableSerializableValue must be std::optional or std::unique_ptr");
         return false;
     }
 }
 
-template<JsonNullableParsableValue Field>
+template<NullableParsableValue Field>
 constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     if constexpr (is_specialization_of<typename S::value_t, std::optional>::value) {
@@ -793,24 +793,24 @@ constexpr decltype(auto) getRef(Field & f) {
             opt = std::make_unique<typename S::value_t::element_type>();
         return *opt;
     } else {
-        static_assert(false, "JsonNullableParsableValue must be std::optional or std::unique_ptr");
+        static_assert(false, "NullableParsableValue must be std::optional or std::unique_ptr");
         return false;
     }
 }
 
-template<JsonNullableSerializableValue Field>
+template<NullableSerializableValue Field>
 constexpr decltype(auto) getRef(const Field & f) { // This must be used only after checking for null with isNull
     using S = annotation_meta_getter<Field>;
     return (*S::getRef(f));
 }
 
-template<JsonNonNullableParsableValue Field>
+template<NonNullableParsableValue Field>
 constexpr decltype(auto) getRef(Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
 }
 
-template<JsonNonNullableSerializableValue Field>
+template<NonNullableSerializableValue Field>
 constexpr decltype(auto) getRef(const Field & f) {
     using S = annotation_meta_getter<Field>;
     return (S::getRef(f));
@@ -885,7 +885,7 @@ consteval bool has_valid_consume_member() {
 //Need to always check custom producers and consumers with this concepts, because by default everything will decay to simple json object
 template<class S>
 concept ConsumingStreamerLike =
-        static_schema::JsonParsableValue<typename S::value_type>
+        static_schema::ParsableValue<typename S::value_type>
         && static_schema::consuming_streamer_concept_helpers::has_valid_consume_member<S>()
         && requires(S& s) {
             { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
@@ -900,7 +900,7 @@ concept ConsumingStreamerLike =
 
 template<class S>
 concept ProducingStreamerLike =
-        static_schema::JsonSerializableValue<typename S::value_type>
+        static_schema::SerializableValue<typename S::value_type>
         && requires(S& s, static_schema::AnnotatedValue<typename S::value_type>& v) {
            //if returns stream_read_result::value, the object was filled and need to continue calling "read".
            // If tream_read_result::value, no more data
@@ -935,8 +935,8 @@ concept ConsumingMapStreamerLike =
             { s.reset() } -> std::same_as<void>;
         }
         // Key must be string-like, value must be parsable
-        && static_schema::JsonString<decltype(std::declval<typename S::value_type>().key)>
-        && static_schema::JsonParsableValue<decltype(std::declval<typename S::value_type>().value)>;
+        && static_schema::StringLike<decltype(std::declval<typename S::value_type>().key)>
+        && static_schema::ParsableValue<decltype(std::declval<typename S::value_type>().value)>;
 
 // High-level map producer interface (for serialization)
 // value_type should be a struct/pair with .key and .value members
@@ -952,8 +952,8 @@ concept ProducingMapStreamerLike =
             { s.reset() } -> std::same_as<void>;
         }
         // Key must be string-like, value must be serializable
-        && static_schema::JsonString<decltype(std::declval<typename S::value_type>().key)>
-        && static_schema::JsonSerializableValue<decltype(std::declval<typename S::value_type>().value)>;
+        && static_schema::StringLike<decltype(std::declval<typename S::value_type>().key)>
+        && static_schema::SerializableValue<decltype(std::declval<typename S::value_type>().value)>;
 
 namespace static_schema {
 
@@ -1174,7 +1174,7 @@ template<class T>
 using remove_cvref_t = std::remove_cv_t<std::remove_reference_t<T>>;
 
 template<class T>
-concept ParseTransformer =
+concept ParseTransformerLike =
     requires(remove_cvref_t<T> t,
              const typename remove_cvref_t<T>::wire_type& w)
 {
@@ -1183,7 +1183,7 @@ concept ParseTransformer =
 
     // Must implement: bool transform_from(const wire_type&)
     { t.transform_from(w) } -> std::same_as<bool>;
-} && JsonParsableValue<typename remove_cvref_t<T>::wire_type> ;
+} && ParsableValue<typename remove_cvref_t<T>::wire_type> ;
 
 template<class T, class>
 struct parse_transform_traits {
@@ -1194,7 +1194,7 @@ struct parse_transform_traits {
 template<class T>
 struct parse_transform_traits<
     T,
-    std::enable_if_t<ParseTransformer<T>>
+    std::enable_if_t<ParseTransformerLike<T>>
     >
 {
     static constexpr bool is_transformer = true;
@@ -1206,7 +1206,7 @@ inline constexpr bool is_parse_transformer_v =
     parse_transform_traits<T>::is_transformer;
 
 template<class T>
-concept SerializeTransformer =
+concept SerializeTransformerLike =
     requires(const remove_cvref_t<T> t,
              typename remove_cvref_t<T>::wire_type& w)
 {
@@ -1215,7 +1215,7 @@ concept SerializeTransformer =
 
     // Must implement: bool transform_to(wire_type&) const
     { t.transform_to(w) } -> std::same_as<bool>;
-} && JsonSerializableValue<typename remove_cvref_t<T>::wire_type>;
+} && SerializableValue<typename remove_cvref_t<T>::wire_type>;
 
 template<class T, class >
 struct serialize_transform_traits {
@@ -1226,7 +1226,7 @@ struct serialize_transform_traits {
 template<class T>
 struct serialize_transform_traits<
     T,
-    std::enable_if_t<SerializeTransformer<T>>
+    std::enable_if_t<SerializeTransformerLike<T>>
     >
 {
     static constexpr bool is_transformer = true;
@@ -1243,17 +1243,17 @@ namespace schema_analyzis {
 using namespace static_schema;
 constexpr std::size_t SCHEMA_UNBOUNDED = std::numeric_limits<std::size_t>::max();
 
-template <JsonParsableValue Type, class ... SeenTypes>
+template <ParsableValue Type, class ... SeenTypes>
 consteval std::size_t calc_type_depth() {
     using T = AnnotatedValue<Type>;
 
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return SCHEMA_UNBOUNDED;
     } else {
-        if constexpr(ParseTransformer<T>) {
+        if constexpr(ParseTransformerLike<T>) {
             return  calc_type_depth<typename T::wire_type, SeenTypes...>();
         } else {
-            if constexpr (JsonNullableParsableValue<T>) {
+            if constexpr (NullableParsableValue<T>) {
                 if constexpr (is_specialization_of<T, std::optional>::value) {
                     return calc_type_depth<typename T::value_type, SeenTypes...>();
                 } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
@@ -1263,7 +1263,7 @@ consteval std::size_t calc_type_depth() {
                     return SCHEMA_UNBOUNDED;
                 }
             } else {
-                if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>){
                     return 1;
                 } else { //containers
                     if constexpr(ArrayWritable<T>) {
@@ -1284,7 +1284,7 @@ consteval std::size_t calc_type_depth() {
                             constexpr std::size_t StructIndex = decltype(ic)::value;
                             using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
                             using Opts    = options::detail::annotation_meta_getter<Field>::options;
-                            if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                            if constexpr (Opts::template has_option<options::detail::exclude_tag>) {
                                 return 0;
                             } else {
                                 using FeildT = AnnotatedValue<Field>;
@@ -1312,16 +1312,16 @@ consteval std::size_t calc_type_depth() {
 
 }
 
-template <JsonParsableValue Type, class ... SeenTypes>
+template <ParsableValue Type, class ... SeenTypes>
 consteval std::size_t has_maps() {
     using T = AnnotatedValue<Type>;
     if constexpr ( (std::is_same_v<T, SeenTypes> || ...) ) {
         return false;
     } else {
-        if constexpr(ParseTransformer<T>) {
+        if constexpr(ParseTransformerLike<T>) {
             return  has_maps<typename T::wire_type, SeenTypes...>();
         } else {
-            if constexpr (JsonNullableParsableValue<T>) {
+            if constexpr (NullableParsableValue<T>) {
                 if constexpr (is_specialization_of<T, std::optional>::value) {
                     return has_maps<typename T::value_type, SeenTypes...>();
                 } else if constexpr (is_specialization_of<T, std::unique_ptr>::value) {
@@ -1331,7 +1331,7 @@ consteval std::size_t has_maps() {
                     return SCHEMA_UNBOUNDED;
                 }
             } else {
-                if constexpr (JsonBool<T> || JsonString<T> || JsonNumber<T>){
+                if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>){
                     return false;
                 } else { //containers
                     if constexpr(ArrayWritable<T>) {
@@ -1344,7 +1344,7 @@ consteval std::size_t has_maps() {
                             constexpr std::size_t StructIndex = decltype(ic)::value;
                             using Field   = introspection::structureElementTypeByIndex<StructIndex, T>;
                             using Opts    = options::detail::annotation_meta_getter<Field>::options;
-                            if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+                            if constexpr (Opts::template has_option<options::detail::exclude_tag>) {
                                 return false;
                             } else {
                                 using FeildT = AnnotatedValue<Field>;

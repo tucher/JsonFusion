@@ -61,7 +61,7 @@ struct IntMapConsumer {
 };
 
 static_assert(ConsumingMapStreamerLike<IntMapConsumer>);
-static_assert(JsonParsableMap<IntMapConsumer>);
+static_assert(ParsableMapLike<IntMapConsumer>);
 
 // Test 1: Map consumer as first-class type (direct parsing)
 static_assert(

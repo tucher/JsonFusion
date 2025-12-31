@@ -465,7 +465,7 @@ struct RPCCommand {
         optional<StartJobPayload> start_job;
 
         // purely internal, not in JSON
-        A<std::string, not_json> debug_source;
+        A<std::string, exclude> debug_source;
     };
 
     struct TopLevel {

@@ -158,12 +158,12 @@ struct WithBool {
 };
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": True})", ParseError::NON_BOOL_JSON_IN_BOOL_VALUE),
+    TestParseError<WithBool>(R"({"flag": True})", ParseError::NON_BOOL_IN_BOOL_VALUE),
     "Invalid: capitalized True (should be lowercase)"
 );
 
 static_assert(
-    TestParseError<WithBool>(R"({"flag": TRUE})", ParseError::NON_BOOL_JSON_IN_BOOL_VALUE),
+    TestParseError<WithBool>(R"({"flag": TRUE})", ParseError::NON_BOOL_IN_BOOL_VALUE),
     "Invalid: uppercase TRUE"
 );
 

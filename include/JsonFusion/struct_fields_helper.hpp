@@ -7,7 +7,7 @@ namespace struct_fields_helper {
 template<class T, std::size_t I>
 static consteval bool fieldIsNotJSON() {
     using Opts    = options::detail::aggregate_field_opts_getter<T, I>;
-    if constexpr (Opts::template has_option<options::detail::not_json_tag>) {
+    if constexpr (Opts::template has_option<options::detail::exclude_tag>) {
         return true;
     } else {
         return false;

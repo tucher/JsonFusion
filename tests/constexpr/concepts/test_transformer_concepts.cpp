@@ -34,47 +34,47 @@ struct BypassSerializeTransformer {
 };
 
 // ============================================================================
-// Test: ParseTransformer concept with basic types
+// Test: ParseTransformerLike concept with basic types
 // ============================================================================
 
-// Test: ParseTransformer with int
-static_assert(ParseTransformer<BypassParseTransformer<int>>,
-              "BypassParseTransformer<int> should satisfy ParseTransformer");
+// Test: ParseTransformerLike with int
+static_assert(ParseTransformerLike<BypassParseTransformer<int>>,
+              "BypassParseTransformer<int> should satisfy ParseTransformerLike");
 
-// Test: ParseTransformer with bool
-static_assert(ParseTransformer<BypassParseTransformer<bool>>,
-              "BypassParseTransformer<bool> should satisfy ParseTransformer");
+// Test: ParseTransformerLike with bool
+static_assert(ParseTransformerLike<BypassParseTransformer<bool>>,
+              "BypassParseTransformer<bool> should satisfy ParseTransformerLike");
 
-// Test: ParseTransformer with double
-static_assert(ParseTransformer<BypassParseTransformer<double>>,
-              "BypassParseTransformer<double> should satisfy ParseTransformer");
+// Test: ParseTransformerLike with double
+static_assert(ParseTransformerLike<BypassParseTransformer<double>>,
+              "BypassParseTransformer<double> should satisfy ParseTransformerLike");
 
-// Test: ParseTransformer with std::string
+// Test: ParseTransformerLike with std::string
 #if __has_include(<string>)
-static_assert(ParseTransformer<BypassParseTransformer<std::string>>,
-              "BypassParseTransformer<std::string> should satisfy ParseTransformer");
+static_assert(ParseTransformerLike<BypassParseTransformer<std::string>>,
+              "BypassParseTransformer<std::string> should satisfy ParseTransformerLike");
 #endif
 
 // ============================================================================
-// Test: SerializeTransformer concept with basic types
+// Test: SerializeTransformerLike concept with basic types
 // ============================================================================
 
-// Test: SerializeTransformer with int
-static_assert(SerializeTransformer<BypassSerializeTransformer<int>>,
-              "BypassSerializeTransformer<int> should satisfy SerializeTransformer");
+// Test: SerializeTransformerLike with int
+static_assert(SerializeTransformerLike<BypassSerializeTransformer<int>>,
+              "BypassSerializeTransformer<int> should satisfy SerializeTransformerLike");
 
-// Test: SerializeTransformer with bool
-static_assert(SerializeTransformer<BypassSerializeTransformer<bool>>,
-              "BypassSerializeTransformer<bool> should satisfy SerializeTransformer");
+// Test: SerializeTransformerLike with bool
+static_assert(SerializeTransformerLike<BypassSerializeTransformer<bool>>,
+              "BypassSerializeTransformer<bool> should satisfy SerializeTransformerLike");
 
-// Test: SerializeTransformer with double
-static_assert(SerializeTransformer<BypassSerializeTransformer<double>>,
-              "BypassSerializeTransformer<double> should satisfy SerializeTransformer");
+// Test: SerializeTransformerLike with double
+static_assert(SerializeTransformerLike<BypassSerializeTransformer<double>>,
+              "BypassSerializeTransformer<double> should satisfy SerializeTransformerLike");
 
-// Test: SerializeTransformer with std::string
+// Test: SerializeTransformerLike with std::string
 #if __has_include(<string>)
-static_assert(SerializeTransformer<BypassSerializeTransformer<std::string>>,
-              "BypassSerializeTransformer<std::string> should satisfy SerializeTransformer");
+static_assert(SerializeTransformerLike<BypassSerializeTransformer<std::string>>,
+              "BypassSerializeTransformer<std::string> should satisfy SerializeTransformerLike");
 #endif
 
 // ============================================================================
@@ -89,8 +89,8 @@ struct BadParseTransformer1 {
     // Missing transform_from!
 };
 
-static_assert(!ParseTransformer<BadParseTransformer1<int>>,
-              "Transformer without transform_from should NOT satisfy ParseTransformer");
+static_assert(!ParseTransformerLike<BadParseTransformer1<int>>,
+              "Transformer without transform_from should NOT satisfy ParseTransformerLike");
 
 // Missing wire_type
 template<typename T>
@@ -103,8 +103,8 @@ struct BadParseTransformer2 {
     }
 };
 
-static_assert(!ParseTransformer<BadParseTransformer2<int>>,
-              "Transformer without wire_type should NOT satisfy ParseTransformer");
+static_assert(!ParseTransformerLike<BadParseTransformer2<int>>,
+              "Transformer without wire_type should NOT satisfy ParseTransformerLike");
 
 // Wrong return type for transform_from
 template<typename T>
@@ -116,10 +116,10 @@ struct BadParseTransformer3 {
     }
 };
 
-static_assert(!ParseTransformer<BadParseTransformer3<int>>,
-              "Transformer with wrong return type should NOT satisfy ParseTransformer");
+static_assert(!ParseTransformerLike<BadParseTransformer3<int>>,
+              "Transformer with wrong return type should NOT satisfy ParseTransformerLike");
 
-// Similar negative tests for SerializeTransformer
+// Similar negative tests for SerializeTransformerLike
 template<typename T>
 struct BadSerializeTransformer1 {
     using wire_type = T;
@@ -127,8 +127,8 @@ struct BadSerializeTransformer1 {
     // Missing transform_to!
 };
 
-static_assert(!SerializeTransformer<BadSerializeTransformer1<int>>,
-              "Transformer without transform_to should NOT satisfy SerializeTransformer");
+static_assert(!SerializeTransformerLike<BadSerializeTransformer1<int>>,
+              "Transformer without transform_to should NOT satisfy SerializeTransformerLike");
 
 // ============================================================================
 // Test: parse_transform_traits and serialize_transform_traits
@@ -242,8 +242,8 @@ constexpr bool test_bypass_parse_transformer_array() {
 static_assert(test_bypass_parse_transformer_array(),
               "BypassParseTransformer with std::array should work");
 
-static_assert(ParseTransformer<BypassParseTransformer<std::array<int, 3>>>,
-              "BypassParseTransformer<std::array<int, 3>> should satisfy ParseTransformer");
+static_assert(ParseTransformerLike<BypassParseTransformer<std::array<int, 3>>>,
+              "BypassParseTransformer<std::array<int, 3>> should satisfy ParseTransformerLike");
 
 // ============================================================================
 // Test: Transformers with optional wire types
@@ -267,23 +267,23 @@ constexpr bool test_bypass_parse_transformer_optional() {
 static_assert(test_bypass_parse_transformer_optional(),
               "BypassParseTransformer with std::optional should work");
 
-static_assert(ParseTransformer<BypassParseTransformer<std::optional<int>>>,
-              "BypassParseTransformer<std::optional<int>> should satisfy ParseTransformer");
+static_assert(ParseTransformerLike<BypassParseTransformer<std::optional<int>>>,
+              "BypassParseTransformer<std::optional<int>> should satisfy ParseTransformerLike");
 
 // ============================================================================
 // Test: Nested transformers (transformer as wire_type)
 // ============================================================================
 
-// Test: Nested ParseTransformer - outer transformer's wire_type is another transformer
+// Test: Nested ParseTransformerLike - outer transformer's wire_type is another transformer
 using NestedParseTransformer = BypassParseTransformer<BypassParseTransformer<int>>;
 
-static_assert(ParseTransformer<NestedParseTransformer>,
-              "Nested ParseTransformer (transformer wrapping transformer) should satisfy concept");
+static_assert(ParseTransformerLike<NestedParseTransformer>,
+              "Nested ParseTransformerLike (transformer wrapping transformer) should satisfy concept");
 
 static_assert(std::is_same_v<
                   parse_transform_traits<NestedParseTransformer>::wire_type,
                   BypassParseTransformer<int>>,
-              "Nested ParseTransformer should have inner transformer as wire_type");
+              "Nested ParseTransformerLike should have inner transformer as wire_type");
 
 constexpr bool test_nested_parse_transformer() {
     // Outer transformer holds inner transformer
@@ -302,18 +302,18 @@ constexpr bool test_nested_parse_transformer() {
     return true;
 }
 static_assert(test_nested_parse_transformer(),
-              "Nested ParseTransformer should function correctly");
+              "Nested ParseTransformerLike should function correctly");
 
-// Test: Nested SerializeTransformer - outer transformer's wire_type is another transformer
+// Test: Nested SerializeTransformerLike - outer transformer's wire_type is another transformer
 using NestedSerializeTransformer = BypassSerializeTransformer<BypassSerializeTransformer<int>>;
 
-static_assert(SerializeTransformer<NestedSerializeTransformer>,
-              "Nested SerializeTransformer (transformer wrapping transformer) should satisfy concept");
+static_assert(SerializeTransformerLike<NestedSerializeTransformer>,
+              "Nested SerializeTransformerLike (transformer wrapping transformer) should satisfy concept");
 
 static_assert(std::is_same_v<
                   serialize_transform_traits<NestedSerializeTransformer>::wire_type,
                   BypassSerializeTransformer<int>>,
-              "Nested SerializeTransformer should have inner transformer as wire_type");
+              "Nested SerializeTransformerLike should have inner transformer as wire_type");
 
 constexpr bool test_nested_serialize_transformer() {
     // Outer transformer with inner value
@@ -330,6 +330,6 @@ constexpr bool test_nested_serialize_transformer() {
     return true;
 }
 static_assert(test_nested_serialize_transformer(),
-              "Nested SerializeTransformer should function correctly");
+              "Nested SerializeTransformerLike should function correctly");
 
 

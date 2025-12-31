@@ -24,11 +24,11 @@ namespace transformers {
 template<class... Ts>
 struct VariantOneOf {
     static_assert(
-        (JsonFusion::static_schema::JsonParsableValue<Ts> && ...) &&
-        (JsonFusion::static_schema::JsonSerializableValue<Ts> && ...)
+        (JsonFusion::static_schema::ParsableValue<Ts> && ...) &&
+        (JsonFusion::static_schema::SerializableValue<Ts> && ...)
         ,
         "All variant types should be JsonFusion compatible");
-    using wire_type = A<std::string, options::json_sink<>>;
+    using wire_type = A<std::string, options::wire_sink<>>;
 
     std::variant<Ts...> value;
 

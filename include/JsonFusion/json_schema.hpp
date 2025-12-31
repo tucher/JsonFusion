@@ -71,12 +71,12 @@ constexpr bool write_property_bool(W & writer, typename W::MapFrame& frame, cons
 
 // Forward declaration
 template <typename Type, class... SeenTypes, writer::WriterLike W>
-    requires JsonParsableValue<Type>
+    requires ParsableValue<Type>
 constexpr bool WriteSchemaImpl(W & writer);
 
 // Write schema for boolean types
 template <typename T, writer::WriterLike W>
-    requires JsonBool<T>
+    requires BoolLike<T>
 constexpr bool WriteBoolSchema(W & writer) {
     typename W::MapFrame frame;
     std::size_t size = 1;
@@ -89,7 +89,7 @@ constexpr bool WriteBoolSchema(W & writer) {
 
 // Write schema for string types
 template <typename T, writer::WriterLike W>
-    requires JsonString<T>
+    requires StringLike<T>
 constexpr bool WriteStringSchema(W & writer) {
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
 
@@ -157,7 +157,7 @@ constexpr bool WriteStringSchema(W & writer) {
 
 // Write schema for numeric types
 template <typename T, writer::WriterLike W>
-    requires JsonNumber<T>
+    requires NumberLike<T>
 constexpr bool WriteNumberSchema(W & writer) {
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
 
@@ -217,7 +217,7 @@ constexpr bool WriteNullSchema(W & writer) {
 
 // Write schema for array types
 template <typename T, class... SeenTypes, writer::WriterLike W>
-    requires JsonParsableArray<T>
+    requires ParsableArrayLike<T>
 constexpr bool WriteArraySchema(W & writer) {
     // TODO: Extract validators (min_items, max_items) from options pack
     using ElemT = AnnotatedValue<typename array_write_cursor<AnnotatedValue<T>>::element_type>;
@@ -266,7 +266,7 @@ constexpr bool WriteArraySchema(W & writer) {
 
 // Write schema for map types (additionalProperties pattern)
 template <typename T, class... SeenTypes, writer::WriterLike W>
-    requires JsonParsableMap<T>
+    requires ParsableMapLike<T>
 constexpr bool WriteMapSchema(W & writer) {
     using ElemT = AnnotatedValue<typename map_write_cursor<AnnotatedValue<T>>::mapped_type>;
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
@@ -562,7 +562,7 @@ constexpr bool WriteMapSchema(W & writer) {
 
 // Write schema for object types (structs) as array (tuple)
 template <typename T, class... SeenTypes, writer::WriterLike W>
-    requires JsonObject<T>
+    requires ObjectLike<T>
 constexpr bool WriteObjectSchemaAsArray(W & writer) {
     using UnderlyingT = AnnotatedValue<T>;
     constexpr std::size_t struct_elements_count = introspection::structureElementsCount<UnderlyingT>;
@@ -574,7 +574,7 @@ constexpr bool WriteObjectSchemaAsArray(W & writer) {
             ((([&] constexpr {
                 using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                 using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
-                if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                     ++field_count;
                 }
             })(), ...));
@@ -607,7 +607,7 @@ constexpr bool WriteObjectSchemaAsArray(W & writer) {
                 using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                 using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
                 
-                if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                     if (!first) {
                         if (!writer.advance_after_value(items_frame)) return;
                     }
@@ -638,7 +638,7 @@ constexpr bool WriteObjectSchemaAsArray(W & writer) {
 
 // Write schema for object types (structs)
 template <typename T, class... SeenTypes, writer::WriterLike W>
-    requires JsonObject<T>
+    requires ObjectLike<T>
 constexpr bool WriteObjectSchema(W & writer) {
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
     
@@ -697,7 +697,7 @@ constexpr bool WriteObjectSchema(W & writer) {
                 ((([&] constexpr {
                     using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                     using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
-                    if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                    if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                         // Get field name/index
                         char index_str_buf[32];
                         std::string_view field_name;
@@ -776,7 +776,7 @@ constexpr bool WriteObjectSchema(W & writer) {
             ((([&] constexpr {
                 using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                 using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
-                if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                     ++props_count;
                 }
             })(), ...));
@@ -794,7 +794,7 @@ constexpr bool WriteObjectSchema(W & writer) {
                 using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                 using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
                 
-                if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                     using FieldT = AnnotatedValue<Field>;
                     
                     if (!first) {
@@ -870,7 +870,7 @@ constexpr bool WriteObjectSchema(W & writer) {
                         using Field = introspection::structureElementTypeByIndex<I, UnderlyingT>;
                         using FieldOpts = typename options::detail::annotation_meta_getter<Field>::options;
                         
-                        if constexpr (!FieldOpts::template has_option<options::detail::not_json_tag>) {
+                        if constexpr (!FieldOpts::template has_option<options::detail::exclude_tag>) {
                             // Get field name or index
                             char index_str_buf[32];
                             std::string_view field_name;
@@ -982,7 +982,7 @@ using last_type_t = typename last_type<Types...>::type;
 
 // Main recursive schema writer with cycle detection
 template <typename Type, class... SeenTypes, writer::WriterLike W>
-    requires JsonParsableValue<Type>
+    requires ParsableValue<Type>
 constexpr bool WriteSchemaImpl(W & writer) {
     using T = AnnotatedValue<Type>;
     
@@ -1023,8 +1023,8 @@ constexpr bool WriteSchemaImpl(W & writer) {
     // Check options on the original Type (before unwrapping annotations)
     using OptsOnType = typename options::detail::annotation_meta_getter<Type>::options;
     
-    // Handle json_sink - accepts any JSON value (empty schema)
-    if constexpr (OptsOnType::template has_option<options::detail::json_sink_tag>) {
+    // Handle wire_sink - accepts any JSON value (empty schema)
+    if constexpr (OptsOnType::template has_option<options::detail::wire_sink_tag>) {
         // Empty schema {} allows any JSON value
         typename W::MapFrame frame;
         std::size_t size = 0;
@@ -1035,11 +1035,11 @@ constexpr bool WriteSchemaImpl(W & writer) {
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
     
     // Handle transformers - use their wire type
-    if constexpr (ParseTransformer<T>) {
+    if constexpr (ParseTransformerLike<T>) {
         return WriteSchemaImpl<typename T::wire_type, SeenTypes...>(writer);
     } 
     // Handle nullable types - emit oneOf [schema, null]
-    else if constexpr (JsonNullableParsableValue<T>) {
+    else if constexpr (NullableParsableValue<T>) {
         auto wr = [&]<class InnerT>(InnerT) constexpr {
             typename W::MapFrame frame;
             std::size_t size = 1;
@@ -1071,17 +1071,17 @@ constexpr bool WriteSchemaImpl(W & writer) {
         }
     } 
     // Handle primitive types
-    else if constexpr (JsonBool<T>) {
+    else if constexpr (BoolLike<T>) {
         return WriteBoolSchema<Type>(writer);
-    } else if constexpr (JsonString<T>) {
+    } else if constexpr (StringLike<T>) {
         return WriteStringSchema<Type>(writer);
-    } else if constexpr (JsonNumber<T>) {
+    } else if constexpr (NumberLike<T>) {
         return WriteNumberSchema<Type>(writer);
     }
     // Handle container types
-    else if constexpr (JsonParsableArray<T>) {
+    else if constexpr (ParsableArrayLike<T>) {
         return WriteArraySchema<Type, SeenTypes...>(writer);
-    } else if constexpr (JsonParsableMap<T>) {
+    } else if constexpr (ParsableMapLike<T>) {
         return WriteMapSchema<Type, SeenTypes...>(writer);
     }
     // Handle object types (structs)
@@ -1094,14 +1094,14 @@ constexpr bool WriteSchemaImpl(W & writer) {
 } // namespace detail
 
 /// Write JSON Schema for type T
-/// @tparam T The type to generate schema for (must satisfy JsonParsableValue)
+/// @tparam T The type to generate schema for (must satisfy ParsableValue)
 /// @tparam W The writer type (must satisfy WriterLike concept)
 /// @param writer The writer instance to output JSON Schema to
 /// @param title Optional title for the schema
 /// @param schema_uri Optional $schema URI (defaults to JSON Schema draft 2020-12)
 /// @return true on success, false on write error
 template <typename T, writer::WriterLike W>
-    requires JsonParsableValue<T>
+    requires ParsableValue<T>
 constexpr bool WriteSchema(W & writer, 
                  const char* title = nullptr,
                  const char* schema_uri = "https://json-schema.org/draft/2020-12/schema") {
@@ -1153,7 +1153,7 @@ constexpr bool WriteSchema(W & writer,
 
 // Simplified version without $schema and title wrapper
 template <typename T, writer::WriterLike W>
-    requires JsonParsableValue<T>
+    requires ParsableValue<T>
 constexpr bool WriteSchemaInline(W & writer) {
     return detail::WriteSchemaImpl<T>(writer);
 }

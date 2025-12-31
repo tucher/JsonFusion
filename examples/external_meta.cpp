@@ -1,7 +1,7 @@
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/parser.hpp>
 using JsonFusion::Annotated;
-using JsonFusion::options::as_array, JsonFusion::options::not_json;
+using JsonFusion::options::as_array, JsonFusion::options::exclude;
 #include <iostream>
 #include <format>
 using std::cout;
@@ -20,7 +20,7 @@ template<> struct JsonFusion::Annotated<Vec> {
 
 template<> struct JsonFusion::AnnotatedField<Vec, 1> {
     using Options = OptionsPack<
-        not_json
+        exclude
         >;
 };
 

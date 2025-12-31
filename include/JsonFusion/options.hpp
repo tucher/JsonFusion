@@ -17,7 +17,7 @@ namespace options {
 
 namespace detail {
 
-struct not_json_tag{};
+struct exclude_tag{};
 struct key_tag{};
 struct numeric_key_tag{};
 struct allow_excess_fields_tag{};
@@ -27,35 +27,35 @@ struct description_tag{};
 
 struct as_array_tag {};
 struct indexes_as_keys_tag {};
-struct skip_json_tag {};
-struct json_sink_tag{};
+struct skip_tag {};
+struct wire_sink_tag{};
 struct skip_nulls_tag{};
 }
 
-struct not_json {
-    using tag = detail::not_json_tag;
+struct exclude {
+    using tag = detail::exclude_tag;
     static constexpr std::string_view to_string() {
-        return "not_json";
+        return "exclude";
     }
 };
 
 template<std::size_t MaxSkipDepth=64>
-struct skip_json {
+struct skip {
     static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
-    using tag = detail::skip_json_tag;
+    using tag = detail::skip_tag;
     static constexpr std::string_view to_string() {
-        return "skip_json";
+        return "skip";
     }
 };
 
 
 template<std::size_t MaxSkipDepth=64, std::size_t MaxStringLength_=(1<<15)>
-struct json_sink {
+struct wire_sink {
     static constexpr std::size_t MaxStringLength = MaxStringLength_;
     static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
-    using tag = detail::json_sink_tag;
+    using tag = detail::wire_sink_tag;
     static constexpr std::string_view to_string() {
-        return "json_sink";
+        return "wire_sink";
     }
 };
 

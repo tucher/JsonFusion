@@ -3,7 +3,7 @@
 #include <string_view>
 
 #include "io.hpp"
-#include "json_path.hpp"
+#include "path.hpp"
 #include "errors.hpp"
 
 namespace JsonFusion {
@@ -17,11 +17,11 @@ class ParseResult {
     ValidationResult validationResult;
 
 
-    json_path::JsonPath<SchemaDepth, SchemaHasMaps> currentPath;
+    path::Path<SchemaDepth, SchemaHasMaps> currentPath;
 
 public:
     using iterator_type = InpIter;
-    constexpr ParseResult(ParseError err, ReaderError rerr, ValidationResult schemaErrors, InpIter pos, json_path::JsonPath<SchemaDepth, SchemaHasMaps> jsonP):
+    constexpr ParseResult(ParseError err, ReaderError rerr, ValidationResult schemaErrors, InpIter pos, path::Path<SchemaDepth, SchemaHasMaps> jsonP):
         m_error(err), m_readerError(rerr), m_pos(pos), validationResult(schemaErrors), currentPath(jsonP)
     {}
     constexpr operator bool() const {
@@ -37,7 +37,7 @@ public:
     constexpr ReaderError readerError() const {
         return m_readerError;
     }
-    constexpr const json_path::JsonPath<SchemaDepth, SchemaHasMaps> & errorJsonPath() const {
+    constexpr const path::Path<SchemaDepth, SchemaHasMaps> & errorPath() const {
         return currentPath;
     }
     constexpr ValidationResult validationErrors() const {

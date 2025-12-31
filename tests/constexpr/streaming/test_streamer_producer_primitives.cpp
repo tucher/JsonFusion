@@ -51,7 +51,7 @@ struct IntProducer {
 };
 
 static_assert(ProducingStreamerLike<IntProducer>);
-static_assert(JsonSerializableArray<IntProducer>);
+static_assert(SerializableArrayLike<IntProducer>);
 
 // Test 1: Producer as first-class type (direct serialization)
 static_assert(

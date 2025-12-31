@@ -202,11 +202,11 @@ static_assert(test_multiple_transformed_fields(),
 // Test: Transformed type satisfies transformer concepts
 // ============================================================================
 
-static_assert(static_schema::ParseTransformer<IntAsString>,
-              "Transformed should satisfy ParseTransformer concept");
+static_assert(static_schema::ParseTransformerLike<IntAsString>,
+              "Transformed should satisfy ParseTransformerLike concept");
 
-static_assert(static_schema::SerializeTransformer<IntAsString>,
-              "Transformed should satisfy SerializeTransformer concept");
+static_assert(static_schema::SerializeTransformerLike<IntAsString>,
+              "Transformed should satisfy SerializeTransformerLike concept");
 
 static_assert(std::is_same_v<
                   static_schema::parse_transform_traits<IntAsString>::wire_type,

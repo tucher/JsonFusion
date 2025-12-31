@@ -9,83 +9,83 @@
 using namespace JsonFusion;
 
 // ===== Primitives should be serializable =====
-static_assert(static_schema::JsonSerializableValue<bool>);
-static_assert(static_schema::JsonSerializableValue<int>);
-static_assert(static_schema::JsonSerializableValue<int8_t>);
-static_assert(static_schema::JsonSerializableValue<int16_t>);
-static_assert(static_schema::JsonSerializableValue<int32_t>);
-static_assert(static_schema::JsonSerializableValue<int64_t>);
-static_assert(static_schema::JsonSerializableValue<uint8_t>);
-static_assert(static_schema::JsonSerializableValue<uint16_t>);
-static_assert(static_schema::JsonSerializableValue<uint32_t>);
-static_assert(static_schema::JsonSerializableValue<uint64_t>);
-static_assert(static_schema::JsonSerializableValue<float>);
-static_assert(static_schema::JsonSerializableValue<double>);
+static_assert(static_schema::SerializableValue<bool>);
+static_assert(static_schema::SerializableValue<int>);
+static_assert(static_schema::SerializableValue<int8_t>);
+static_assert(static_schema::SerializableValue<int16_t>);
+static_assert(static_schema::SerializableValue<int32_t>);
+static_assert(static_schema::SerializableValue<int64_t>);
+static_assert(static_schema::SerializableValue<uint8_t>);
+static_assert(static_schema::SerializableValue<uint16_t>);
+static_assert(static_schema::SerializableValue<uint32_t>);
+static_assert(static_schema::SerializableValue<uint64_t>);
+static_assert(static_schema::SerializableValue<float>);
+static_assert(static_schema::SerializableValue<double>);
 
 // ===== Strings should be serializable =====
-static_assert(static_schema::JsonSerializableValue<std::string>);
-static_assert(static_schema::JsonSerializableValue<std::array<char, 32>>);
-static_assert(static_schema::JsonSerializableValue<std::vector<char>>);
+static_assert(static_schema::SerializableValue<std::string>);
+static_assert(static_schema::SerializableValue<std::array<char, 32>>);
+static_assert(static_schema::SerializableValue<std::vector<char>>);
 
 // ===== Aggregates (structs) should be serializable =====
 struct SimpleStruct {
     int x;
     bool flag;
 };
-static_assert(static_schema::JsonSerializableValue<SimpleStruct>);
+static_assert(static_schema::SerializableValue<SimpleStruct>);
 
 struct NestedStruct {
     int id;
     SimpleStruct inner;
 };
-static_assert(static_schema::JsonSerializableValue<NestedStruct>);
+static_assert(static_schema::SerializableValue<NestedStruct>);
 
 // ===== Arrays/containers should be serializable =====
-static_assert(static_schema::JsonSerializableValue<std::vector<int>>);
-static_assert(static_schema::JsonSerializableValue<std::array<int, 10>>);
-static_assert(static_schema::JsonSerializableValue<std::vector<SimpleStruct>>);
+static_assert(static_schema::SerializableValue<std::vector<int>>);
+static_assert(static_schema::SerializableValue<std::array<int, 10>>);
+static_assert(static_schema::SerializableValue<std::vector<SimpleStruct>>);
 
 // ===== Optionals of serializable types should be serializable =====
-static_assert(static_schema::JsonSerializableValue<std::optional<int>>);
-static_assert(static_schema::JsonSerializableValue<std::optional<bool>>);
-static_assert(static_schema::JsonSerializableValue<std::optional<std::string>>);
-static_assert(static_schema::JsonSerializableValue<std::optional<SimpleStruct>>);
-static_assert(static_schema::JsonSerializableValue<std::optional<std::vector<int>>>);
+static_assert(static_schema::SerializableValue<std::optional<int>>);
+static_assert(static_schema::SerializableValue<std::optional<bool>>);
+static_assert(static_schema::SerializableValue<std::optional<std::string>>);
+static_assert(static_schema::SerializableValue<std::optional<SimpleStruct>>);
+static_assert(static_schema::SerializableValue<std::optional<std::vector<int>>>);
 
 // ===== Annotated types should be serializable =====
-static_assert(static_schema::JsonSerializableValue<Annotated<int, validators::range<0, 100>>>);
-static_assert(static_schema::JsonSerializableValue<Annotated<std::string, validators::min_length<1>>>);
+static_assert(static_schema::SerializableValue<Annotated<int, validators::range<0, 100>>>);
+static_assert(static_schema::SerializableValue<Annotated<std::string, validators::min_length<1>>>);
 
 // ===== Things that should NOT be serializable =====
 
 // Pointers
-static_assert(!static_schema::JsonSerializableValue<int*>);
-static_assert(!static_schema::JsonSerializableValue<SimpleStruct*>);
-static_assert(!static_schema::JsonSerializableValue<void*>);
-static_assert(!static_schema::JsonSerializableValue<std::nullptr_t>);
+static_assert(!static_schema::SerializableValue<int*>);
+static_assert(!static_schema::SerializableValue<SimpleStruct*>);
+static_assert(!static_schema::SerializableValue<void*>);
+static_assert(!static_schema::SerializableValue<std::nullptr_t>);
 
 // Member pointers
-static_assert(!static_schema::JsonSerializableValue<int SimpleStruct::*>);
+static_assert(!static_schema::SerializableValue<int SimpleStruct::*>);
 
 // Function types
-static_assert(!static_schema::JsonSerializableValue<void()>);
-static_assert(!static_schema::JsonSerializableValue<int(int)>);
-static_assert(!static_schema::JsonSerializableValue<void(SimpleStruct::*)()>);  // Member function pointer
+static_assert(!static_schema::SerializableValue<void()>);
+static_assert(!static_schema::SerializableValue<int(int)>);
+static_assert(!static_schema::SerializableValue<void(SimpleStruct::*)()>);  // Member function pointer
 
 // Void
-static_assert(!static_schema::JsonSerializableValue<void>);
+static_assert(!static_schema::SerializableValue<void>);
 
 // Nested optionals
-static_assert(!static_schema::JsonSerializableValue<std::optional<std::optional<int>>>);
+static_assert(!static_schema::SerializableValue<std::optional<std::optional<int>>>);
 
 // Optional of non-serializable type
 struct NonAggregate {
     NonAggregate() {}  // Constructor makes it non-aggregate
     int x;
 };
-static_assert(!static_schema::JsonSerializableValue<std::optional<NonAggregate>>);
+static_assert(!static_schema::SerializableValue<std::optional<NonAggregate>>);
 
 // Containers of non-serializable types
-static_assert(!static_schema::JsonSerializableValue<std::vector<int*>>);
-static_assert(!static_schema::JsonSerializableValue<std::vector<void*>>);
+static_assert(!static_schema::SerializableValue<std::vector<int*>>);
+static_assert(!static_schema::SerializableValue<std::vector<void*>>);
 

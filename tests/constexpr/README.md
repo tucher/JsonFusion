@@ -147,7 +147,7 @@ tests/constexpr/
 │
 ├── composite/                # Nested structs, arrays, optionals, unique_ptr
 ├── validation/               # Validation constraints (range, length, items)
-├── annotations/              # Annotated<> options (key, as_array, not_json)
+├── annotations/              # Annotated<> options (key, as_array, exclude)
 ├── streaming/                # Streaming producers & consumers
 ├── json_spec/                # JSON RFC 8259 compliance
 ├── limits/                   # Performance & limits (nesting depth, large arrays, many fields)
@@ -165,7 +165,7 @@ See `CHECKLIST.md` for detailed progress tracking.
 - ✅ Composite types (nested structs, arrays, optionals, unique_ptr)
 - ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode
 - ✅ Validation constraints (range, length, items, not_required, required, allow_excess_fields, map validators)
-- ✅ Annotated<> options (key, as_array, skip_json, json_sink)
+- ✅ Annotated<> options (key, as_array, skip, wire_sink)
 - ✅ Error handling (JSON path tracking, depth calculation)
 - ✅ Streaming (producers & consumers for arrays and maps)
 - ✅ Limits (nesting depth, large arrays, many fields, many map keys)

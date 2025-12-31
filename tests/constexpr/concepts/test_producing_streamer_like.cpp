@@ -97,7 +97,7 @@ struct WrongResetReturn {
 };
 static_assert(!ProducingStreamerLike<WrongResetReturn>);
 
-// ===== Invalid: value_type is not JsonSerializableValue =====
+// ===== Invalid: value_type is not SerializableValue =====
 struct InvalidValueType {
     using value_type = int*;  // Pointers are not serializable!
     constexpr stream_read_result read(int*& val) { return stream_read_result::end; }

@@ -14,12 +14,12 @@ static_assert(TestSerialize(Empty{}, R"({})"));
 static_assert(TestRoundTrip<Empty>(R"({})", Empty{}));
 
 // ============================================================================
-// Struct with only not_json fields (effectively empty)
+// Struct with only exclude fields (effectively empty)
 // ============================================================================
 
 struct OnlyNotJson {
-    A<int, not_json> internal1;
-    A<std::string, not_json> internal2;
+    A<int, exclude> internal1;
+    A<std::string, exclude> internal2;
 };
 
 // Should serialize to empty object
