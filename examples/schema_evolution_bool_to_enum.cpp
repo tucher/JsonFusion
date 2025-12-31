@@ -8,10 +8,11 @@ using namespace JsonFusion;
 using namespace JsonFusion::options;
 
 // ============================================================================
-// Generic Schema Migration Helper
+// Generic Schema Backward Compatibility Helper
 // ============================================================================
 
-/// Generic migration field: accepts OldWireT or NewWireT, stores as StorageT
+/// Generic backward compatible field: accepts OldWireT or NewWireT, stores as StorageT
+// Always serializes as NewWireT (canonical form), even if parsed from OldWireT. 
 /// 
 /// This transformer uses json_sink to capture raw JSON, then tries parsing
 /// as both the old and new wire types. Perfect for schema evolution scenarios.
@@ -20,30 +21,29 @@ using namespace JsonFusion::options;
 ///   OldWireT       - Old JSON wire type (e.g., bool)
 ///   NewWireT       - New JSON wire type (e.g., int)
 ///   StorageT       - Internal storage type (e.g., enum, or same as NewWireT)
-///   OldConvertFn   - Lambda (OldWireT → StorageT)
-///   NewConvertFn   - Lambda (NewWireT → StorageT), often identity
-///   ToWireFn       - Lambda (StorageT → NewWireT) for serialization
+///   OldConvertFn   - Function pointer (OldWireT → StorageT)
+///   NewConvertFn   - Function pointer (NewWireT → StorageT), often identity
+///   ToWireFn       - Function pointer (StorageT → NewWireT) for serialization
 ///   BufferSize     - Size of json_sink buffer
 template<class OldWireT, class NewWireT, class StorageT, 
          auto OldConvertFn, auto NewConvertFn, auto ToWireFn,
          std::size_t BufferSize = 64>
-struct MigrationField {
+struct CompatibleField {
+    //JsonFusion guarantees that fixed sized string-like buffers are null terminated
     using wire_type = A<std::array<char, BufferSize>, json_sink<>>;
     StorageT value{};
     
     constexpr bool transform_from(const std::array<char, BufferSize>& json_buf) {
-        // Try parsing as old wire type
-        OldWireT old_val;
-        if (auto r = Parse(old_val, json_buf.data())) {
-            value = std::invoke(OldConvertFn, old_val);
-            return true;
-        }
-        
-        // Try parsing as new wire type
+        // Try parsing as new wire type first
         NewWireT new_val;
         if (auto r = Parse(new_val, json_buf.data())) {
-            value = std::invoke(NewConvertFn, new_val);
-            return true;
+            return std::invoke(NewConvertFn, new_val, value);
+        }
+
+        // Try parsing as old wire type if new wire type fails, legacy is a fallback.
+        OldWireT old_val;
+        if (auto r = Parse(old_val, json_buf.data())) {
+            return std::invoke(OldConvertFn, old_val, value);
         }
         
         return false;
@@ -69,17 +69,26 @@ struct MigrationField {
 // The schema evolution: bool → enum with multiple states
 enum class State { Disabled = 0, Enabled = 1, Debug = 2 };
 
-// Migration field with 3 distinct types:
+// CompatibleField field with 3 distinct types:
 // - Old JSON: bool (true/false)
 // - New JSON: int (0/1/2)
 // - Storage: type-safe enum
-using BoolOrIntToEnum = MigrationField<
+
+constexpr bool int_to_state(int i, State & out) {
+    if (i < 0 || i > 2) return false;
+    out = static_cast<State>(i); 
+    return true; 
+}
+using BoolOrIntToEnum = CompatibleField<
     bool,   // Old wire: JSON bool
     int,    // New wire: JSON int
     State,  // Storage: C++ enum (type-safe!)
-    [](bool b) { return b ? State::Enabled : State::Disabled; },  // bool → enum
-    [](int i) { return static_cast<State>(i); },                  // int → enum
-    [](State s) { return static_cast<int>(s); }                   // enum → int for serialize
+    [](bool b, State & out) { // bool → enum
+        out = b ? State::Enabled : State::Disabled; 
+        return true; 
+    },
+    int_to_state,
+    [](State s) { return static_cast<int>(s); }  // enum → int for serialize
 >;
 
 
@@ -118,6 +127,8 @@ constexpr bool test_parse_both_types() {
     if (!Parse(config, R"({"name": "service", "enabled": 2})")) return false;
     if (config.enabled != State::Debug) return false;
     
+    // New JSON with int that is out of range
+    if (Parse(config, R"({"name": "service", "enabled": 42})")) return false;
     return true;
 }
 
