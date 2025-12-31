@@ -72,12 +72,25 @@ struct validator_state<options::detail::field_options<OptionsPack<Opts...>>, Sto
     using OptsTuple   = std::tuple<Opts...>;
     using StatesTuple = std::tuple<option_state_t<Opts, Storage>...>;
     StatesTuple states{};
+    
     template<class Tag, class... Args>
     constexpr bool validate(const Storage& storage, ValidationCtx& ctx, const Args&... args) {
         return validate_impl<Tag>(
             std::make_index_sequence<OptsCount>{},
             storage, ctx, args...
         );
+    }
+    
+    // Generic max property aggregation across all validators
+    template<class PropertyTag>
+    static constexpr std::size_t max_property() {
+        return max_property_impl<PropertyTag>(std::make_index_sequence<OptsCount>{});
+    }
+    
+    // Generic min property aggregation across all validators
+    template<class PropertyTag>
+    static constexpr std::size_t min_property() {
+        return min_property_impl<PropertyTag>(std::make_index_sequence<OptsCount>{});
     }
 
 private:
@@ -128,6 +141,32 @@ private:
 
         }
     }
+    
+    // Helper to query a single validator's property
+    template<class PropertyTag, std::size_t Index, class Opt>
+    static constexpr std::size_t get_validator_property() {
+        if constexpr (requires { Opt::template get_property<PropertyTag, Index>(); }) {
+            return Opt::template get_property<PropertyTag, Index>();
+        } else {
+            return 0; // Validator doesn't provide this property
+        }
+    }
+    
+    // Implementation of max_property
+    template<class PropertyTag, std::size_t... I>
+    static constexpr std::size_t max_property_impl(std::index_sequence<I...>) {
+        std::size_t result = 0;
+        ((result = std::max(result, get_validator_property<PropertyTag, I, std::tuple_element_t<I, OptsTuple>>())), ...);
+        return result;
+    }
+    
+    // Implementation of min_property
+    template<class PropertyTag, std::size_t... I>
+    static constexpr std::size_t min_property_impl(std::index_sequence<I...>) {
+        std::size_t result = std::numeric_limits<std::size_t>::max();
+        ((result = std::min(result, get_validator_property<PropertyTag, I, std::tuple_element_t<I, OptsTuple>>())), ...);
+        return (result == std::numeric_limits<std::size_t>::max()) ? 0 : result;
+    }
 };
 
 template<class Storage>
@@ -135,6 +174,17 @@ struct validator_state<options::detail::no_options, Storage> {
     template<class Tag, class Ctx, class... Args>
     constexpr bool validate(const Storage&, Ctx&, const Args&...) {
         return true;
+    }
+    
+    // No validators, so all properties return 0
+    template<class PropertyTag>
+    static constexpr std::size_t max_property() {
+        return 0;
+    }
+    
+    template<class PropertyTag>
+    static constexpr std::size_t min_property() {
+        return 0;
     }
 };
 
@@ -149,13 +199,24 @@ struct number_parsing_finished{};
 struct string_parsing_finished{};
 struct array_item_parsed{};
 struct array_parsing_finished{};
+struct object_field_parsed{};
 struct object_parsing_finished{};
+struct excess_field_occured{};
 struct descrtuctured_object_parsing_finished{};
 struct map_key_finished{};
 struct map_value_parsed{};
 struct map_entry_parsed{};
 struct map_parsing_finished{};
 
+}
+
+// Tags for querying parsing constraint properties from validators
+namespace parsing_constraint_properties_tags {
+    struct max_excess_field_name_length {};
+    // Future properties can be added here:
+    // struct max_string_length {};
+    // struct max_array_items {};
+    // struct buffer_size_hint {};
 }
 
 namespace validators_options_tags {
@@ -169,6 +230,7 @@ namespace validators_options_tags {
     struct string_constant_tag{};
     struct not_required_tag{};
     struct required_tag{};
+    struct forbidden_tag{};
     struct min_properties_tag{};
     struct max_properties_tag{};
     struct min_key_length_tag{};
@@ -549,6 +611,74 @@ struct required {
     }
     static constexpr std::string_view to_string() {
         return "required";
+    }
+};
+
+template <ConstString ... ForbiddenNames>
+struct forbidden {
+    using tag = validators_detail::validators_options_tags::forbidden_tag;
+    static constexpr std::array<std::string_view, sizeof...(ForbiddenNames)> values = []() consteval {
+        std::array<std::string_view, sizeof...(ForbiddenNames)> arr;
+        std::size_t idx = 0;
+        ((arr[idx++] = ForbiddenNames.toStringView()), ...);
+        return arr;
+    }();
+    
+    // Property queries - return max forbidden field name length
+    template<class PropertyTag, std::size_t Index>
+    static constexpr std::size_t get_property() {
+        if constexpr (std::is_same_v<PropertyTag, 
+            validators_detail::parsing_constraint_properties_tags::max_excess_field_name_length>) {
+            // Calculate max forbidden field name length at compile time
+            std::size_t max_len = 0;
+            ((max_len = std::max(max_len, ForbiddenNames.toStringView().size())), ...);
+            return max_len;
+        } else {
+            return 0;
+        }
+    }
+
+    template<class Tag, std::size_t Index, class Storage, class FH>
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::object_field_parsed>
+    static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t arrayIndex, const FH&) {
+        // Note: Unlike 'required', we don't assert that forbidden fields exist in the C++ struct.
+        // The forbidden validator can forbid fields that only appear in JSON (when allow_excess_fields is used).
+        
+        // Builds the forbidden fields mask at compile time: forbiddenMask[i] = true if field i is in forbidden list
+        // This is computed per template instantiation, not at runtime
+        constexpr auto forbiddenMask = []() consteval {
+            std::bitset<FH::fieldsCount> mask{};
+            mask.reset(); // all not forbidden by default
+            // Mark these as forbidden (only if they exist in the struct)
+            ((FH::indexInSortedByName(ForbiddenNames.toStringView()) != -1 
+                ? mask.set(FH::indexInSortedByName(ForbiddenNames.toStringView())) 
+                : mask), ...);
+            return mask;
+        }();
+
+        if (forbiddenMask[arrayIndex]) {
+            ctx.setError(SchemaError::forbidden_fields, Index);
+            return false;
+        }
+        return true;
+    }
+    
+    // Validate excess fields (fields not in C++ struct) - check if they are forbidden
+    template<class Tag, std::size_t Index, class Storage, class FH>
+        requires std::is_same_v<Tag, validators_detail::parsing_events_tags::excess_field_occured>
+    static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::string_view fieldName, const FH&) {
+        // Check if this excess field name matches any forbidden name
+        for (const auto& forbiddenName : values) {
+            if (fieldName == forbiddenName) {
+                ctx.setError(SchemaError::forbidden_fields, Index);
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    static constexpr std::string_view to_string() {
+        return "forbidden";
     }
 };
 

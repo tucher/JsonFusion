@@ -130,6 +130,15 @@ struct TreeModel {
     A<std::vector<TreeModel>, max_items<10>> children;
 };
 
+// Struct with forbidden fields - demonstrates forbidden validator
+struct LegacyAPI_ {
+    std::string username;
+    std::string email;
+    int user_id;
+    // These fields are deprecated/forbidden but we want to allow other excess fields
+};
+using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
+
 int main() {
     std::string schema;
     
@@ -195,6 +204,14 @@ int main() {
     schema.clear();
     WriteSchemaInline<TreeModel, true>(schema);  // Pretty = true
     print_schema("TreeModel Schema (Pretty-Printed)", schema);
+    std::cout << "  ✓ Recursive types with cycle detection (uses $ref)\n";
+    
+    // Example 7: Forbidden fields validator
+    schema.clear();
+    WriteSchemaInline<LegacyAPI, true>(schema);
+    print_schema("LegacyAPI Schema (with Forbidden Fields)", schema);
+    std::cout << "  ✓ forbidden<...> - prohibits specific fields (like deprecated ones)\n";
+    std::cout << "  ✓ Works with allow_excess_fields to accept unknown fields but reject specific ones\n";
 
     std::cout << "\n✅ All validators and options demonstrated!\n";
     std::cout << "See tests/constexpr/json_schema/test_json_schema_combined.cpp for constexpr tests.\n";

@@ -31,6 +31,7 @@ max_items<N>                 // Array must have at most N elements (streaming)
 ```cpp
 not_required<"field1", ...>  // Mark specific fields as optional - allows field to be absent from JSON (struct-level)
 required<"field1", ...>  // Mark specific fields as required - forces field presence in JSON (struct-level)
+forbidden<"field1", ...> // Mark specific fields as forbidden: error on presense
 allow_excess_fields<depth=64>  // Allow unknown JSON fields (don't reject and silently skip up to `depth` values)
 ```
 

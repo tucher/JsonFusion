@@ -147,6 +147,14 @@ struct TreeModel {
     A<std::vector<TreeModel>, max_items<10>> children;
 };
 
+// Struct with forbidden fields - demonstrates forbidden validator
+struct LegacyAPI_ {
+    std::string username;
+    std::string email;
+    int user_id;
+};
+using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
+
 // ============================================================================
 // Tests - Comprehensive Coverage of All Validators and Options
 // ============================================================================
@@ -183,6 +191,11 @@ static_assert(TestSchemaInline<TreeModel>(
     R"({"additionalProperties":false,"type":"object","properties":{"data":{"type":"string"},"children":{"type":"array","maxItems":10,"items":{"$ref":"#"}}}})"
 ));
 
+// Test 7: LegacyAPI - demonstrates forbidden<...> validator for structs
+static_assert(TestSchemaInline<LegacyAPI>(
+    R"({"type":"object","properties":{"username":{"type":"string"},"email":{"type":"string"},"user_id":{"type":"integer"}},"propertyNames":{"not":{"enum":["password","ssn"]}}})"
+));
+
 // ============================================================================
 // Summary of Coverage
 // ============================================================================
@@ -202,6 +215,7 @@ static_assert(TestSchemaInline<TreeModel>(
  * ✓ max_key_length<N>            - maximum map key length
  * ✓ required<"f1", "f2"...>      - explicitly required struct fields
  * ✓ not_required<"f1", "f2"...>  - explicitly optional struct fields (others become required)
+ * ✓ forbidden<"f1", "f2"...>     - forbidden struct fields (like deprecated ones)
  * ✓ required_keys<"k1", "k2"...> - required map keys
  * ✓ allowed_keys<"k1", "k2"...>  - allowed map keys (restrictive)
  * ✓ forbidden_keys<"k1"...>      - forbidden map keys

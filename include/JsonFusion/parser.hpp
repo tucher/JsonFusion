@@ -674,13 +674,22 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             }
 
         } else {
-            string_search::AdaptiveStringSearch<FH::maxFieldNameLength> searcher{
+            // Calculate the max field name length needed for validators (e.g., forbidden fields)
+            using PropertyTag = validators::validators_detail::parsing_constraint_properties_tags::max_excess_field_name_length;
+            constexpr std::size_t max_validator_field_len = 
+                validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTag>();
+            
+            // Use the larger of struct field names or validator requirements
+            constexpr std::size_t effective_max_field_len = 
+                std::max(FH::maxFieldNameLength, max_validator_field_len);
+            
+            string_search::AdaptiveStringSearch<effective_max_field_len> searcher{
                 FH::fieldIndexesToFieldNames.data(), FH::fieldIndexesToFieldNames.data() + FH::fieldIndexesToFieldNames.size()
             };
             char * b = searcher.buffer();
 
             ParseError err{ParseError::NO_ERROR};
-            if(!read_json_string_into(reader, b ,FH::maxFieldNameLength, err, searcher.current_length(), true)) {
+            if(!read_json_string_into(reader, b, effective_max_field_len, err, searcher.current_length(), true)) {
                 if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                     return ctx.withParseError(err, reader);
                 } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
@@ -694,6 +703,18 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
                 arrayIndex = res - FH::fieldIndexesToFieldNames.begin();
                 structIndex = res->originalIndex;
                 key_sv = res->name;
+            } else {
+                // Field not found in struct - it's an excess field
+                // Validate forbidden fields before searcher goes out of scope
+                if(arrayIndex == std::size_t(-1)) {
+                    std::string_view excess_field_name(b, searcher.current_length());
+                    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::excess_field_occured>(obj, ctx.validationCtx(), excess_field_name, FH{})) {
+                        if (!reader.move_to_value(fr)) {
+                            return ctx.withReaderError(reader);
+                        }
+                        return ctx.withSchemaError(reader);
+                    }
+                }
             }
 
         }
@@ -723,6 +744,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             }
 
             parsedFieldsByIndex[arrayIndex] = true;
+            if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_field_parsed>(obj, ctx.validationCtx(), arrayIndex, FH{})) {
+                return ctx.withSchemaError(reader);
+            }
         }
 
         iterStatus = reader.advance_after_value(fr);

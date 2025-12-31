@@ -675,6 +675,9 @@ constexpr bool WriteObjectSchema(W & writer) {
     typename W::MapFrame obj_frame;
     std::size_t obj_prop_count = 2; // "type" and "properties"
     
+    // Check if we have forbidden validator
+    constexpr bool has_forbidden = Opts::template has_option<validators_options_tags::forbidden_tag>;
+    
     // Check if we need "required" array based on validators
     bool has_required_array = false;
     std::size_t required_count = 0;
@@ -741,6 +744,7 @@ constexpr bool WriteObjectSchema(W & writer) {
     // else: no validator means all fields optional (no "required" array)
     
     if (has_required_array) ++obj_prop_count;
+    if (has_forbidden) ++obj_prop_count; // Add propertyNames for forbidden fields
     if constexpr (!Opts::template has_option<options::detail::allow_excess_fields_tag>) {
         ++obj_prop_count;
     }
@@ -916,6 +920,44 @@ constexpr bool WriteObjectSchema(W & writer) {
         }
         
         if (!writer.write_array_end(req_frame)) return false;
+    }
+    
+    // Write propertyNames for forbidden fields
+    if constexpr (has_forbidden) {
+        using ForbiddenOpt = typename Opts::template get_option<validators_options_tags::forbidden_tag>;
+        
+        if (!writer.advance_after_value(obj_frame)) return false;
+        if (!writer.write_string("propertyNames", 13, true)) return false;
+        if (!writer.move_to_value(obj_frame)) return false;
+        
+        // propertyNames: { "not": { "enum": [...] } }
+        typename W::MapFrame prop_names_frame;
+        if (!writer.write_map_begin(1, prop_names_frame)) return false;
+        if (!writer.write_string("not", 3, true)) return false;
+        if (!writer.move_to_value(prop_names_frame)) return false;
+        
+        typename W::MapFrame not_frame;
+        if (!writer.write_map_begin(1, not_frame)) return false;
+        if (!writer.write_string("enum", 4, true)) return false;
+        if (!writer.move_to_value(not_frame)) return false;
+        
+        // Write array of forbidden field names
+        typename W::ArrayFrame forbidden_frame;
+        std::size_t forbidden_count = ForbiddenOpt::values.size();
+        if (!writer.write_array_begin(forbidden_count, forbidden_frame)) return false;
+        
+        bool first = true;
+        for (const auto& forbidden_name : ForbiddenOpt::values) {
+            if (!first) {
+                if (!writer.advance_after_value(forbidden_frame)) return false;
+            }
+            first = false;
+            if (!writer.write_string(forbidden_name.data(), forbidden_name.size(), true)) return false;
+        }
+        
+        if (!writer.write_array_end(forbidden_frame)) return false;
+        if (!writer.write_map_end(not_frame)) return false;
+        if (!writer.write_map_end(prop_names_frame)) return false;
     }
     
     return writer.write_map_end(obj_frame);

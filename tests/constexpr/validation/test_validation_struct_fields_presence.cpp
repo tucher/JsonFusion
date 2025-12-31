@@ -660,3 +660,149 @@ constexpr bool test_single_field_not_required() {
     return result && obj.get().required == 42;
 }
 static_assert(test_single_field_not_required(), "Single field not_required");
+
+// ============================================================================
+// Test: forbidden<> - Specific Fields Are Forbidden
+// ============================================================================
+
+// Test: Basic happy path - no forbidden fields present
+constexpr bool test_forbidden_happy_path() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"old">> obj{};
+    std::string json = R"({"field1": 10, "field2": 20})";  // Only allowed fields
+    auto result = Parse(obj, json);
+    
+    return result && obj.get().field1 == 10 && obj.get().field2 == 20;
+}
+static_assert(test_forbidden_happy_path(), "forbidden: allowed fields work normally");
+
+// Test: forbidden field present - should fail
+constexpr bool test_forbidden_field_present() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"old">> obj{};
+    std::string json = R"({"field1": 10, "old": 100})";  // forbidden field present
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::forbidden_fields;
+}
+static_assert(test_forbidden_field_present(), "forbidden field present causes error");
+
+// Test: Multiple forbidden fields
+constexpr bool test_forbidden_multiple() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"old", "bad">> obj{};
+    std::string json = R"({"field1": 10, "field2": 20})";  // No forbidden fields
+    auto result = Parse(obj, json);
+    
+    return result && obj.get().field1 == 10 && obj.get().field2 == 20;
+}
+static_assert(test_forbidden_multiple(), "multiple forbidden fields - happy path");
+
+// Test: One of multiple forbidden fields present
+constexpr bool test_forbidden_multiple_one_present() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"old", "bad">> obj{};
+    std::string json = R"({"field1": 10, "bad": 99})";  // one forbidden field present
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::forbidden_fields;
+}
+static_assert(test_forbidden_multiple_one_present(), "one of multiple forbidden fields present causes error");
+
+// Test: forbidden with allow_excess_fields - other unknown fields should work
+constexpr bool test_forbidden_with_allow_excess() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"pass">, allow_excess_fields<>> obj{};
+    std::string json = R"({"field1": 10, "field2": 20, "custom": 100})";  // unknown but not forbidden
+    auto result = Parse(obj, json);
+    
+    return result && obj.get().field1 == 10 && obj.get().field2 == 20;
+}
+static_assert(test_forbidden_with_allow_excess(), "forbidden with allow_excess_fields: unknown fields work");
+
+// Test: forbidden with allow_excess_fields but forbidden field present
+constexpr bool test_forbidden_with_allow_excess_forbidden_present() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"pass">, allow_excess_fields<>> obj{};
+    std::string json = R"({"field1": 10, "pass": "secret"})";  // forbidden field present
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::forbidden_fields;
+}
+static_assert(test_forbidden_with_allow_excess_forbidden_present(), "forbidden field present fails even with allow_excess_fields");
+
+// Test: Empty object with forbidden - should succeed (nothing forbidden if nothing present)
+constexpr bool test_forbidden_empty_object() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    Annotated<Test, forbidden<"old">> obj{};
+    std::string json = R"({})";  // empty
+    auto result = Parse(obj, json);
+    
+    return result;
+}
+static_assert(test_forbidden_empty_object(), "forbidden with empty object succeeds");
+
+// Test: Forbidden field that exists in struct (not excess) - should fail
+constexpr bool test_forbidden_struct_field() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    // Forbid a field that actually exists in the struct
+    Annotated<Test, forbidden<"field1">> obj{};
+    std::string json = R"({"field1": 10, "field2": 20})";
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::forbidden_fields;
+}
+static_assert(test_forbidden_struct_field(), "forbidden field that exists in struct causes error");
+
+// Test: Forbidden works without allow_excess_fields for excess fields
+constexpr bool test_forbidden_without_allow_excess() {
+    struct Test {
+        int field1;
+        int field2;
+    };
+    
+    // No allow_excess_fields, but forbidden still catches the field
+    Annotated<Test, forbidden<"old">> obj{};
+    std::string json = R"({"field1": 10, "old": 100})";
+    auto result = Parse(obj, json);
+    
+    // Should fail with forbidden_fields, not EXCESS_FIELD
+    return !result && result.validationErrors().error() == SchemaError::forbidden_fields;
+}
+static_assert(test_forbidden_without_allow_excess(), "forbidden works without allow_excess_fields");
+
+int main() {
+    return 0;
+}
