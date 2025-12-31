@@ -322,21 +322,51 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
-    //TODO extract MAX_SIZE from validators here
-    constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
+    // Query max string length from validators for early rejection
+    using PropertyTag = validators::validators_detail::parsing_constraint_properties_tags::max_string_length;
+    constexpr std::size_t validator_max = 
+        validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTag>();
+    // Read validator_max + 1 to detect if string exceeds the limit
+    constexpr std::size_t MAX_SIZE = (validator_max > 0) ? (validator_max + 1) : std::numeric_limits<std::size_t>::max();
+    
     std::size_t parsedSize = 0;
     ParseError err{ParseError::NO_ERROR};
     if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
         char * b = static_schema::static_string_traits<ObjT>::data(obj);
-        if(!read_json_string_into(reader, b, std::min(
-                                                  static_schema::static_string_traits<ObjT>:: max_size(obj),
-                                MAX_SIZE), err, parsedSize)) {
+        constexpr std::size_t container_max = static_schema::static_string_traits<ObjT>::max_size(obj);
+        constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
+        if(!read_json_string_into(reader, b, effective_max, err, parsedSize)) {
+            // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                parsedSize = effective_max;
+            }
+            // Check if we read enough to detect validator limit exceeded
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
+                // Early rejection: string exceeded validator limit
+                b[parsedSize] = 0;
+                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+                            std::string_view(b, b + parsedSize))) {
+                    return ctx.withSchemaError(reader);
+                }
+            }
             return ctx.withParseError(err, reader);
         }
         b[parsedSize] = 0;
     } else {
         obj.clear();
         if(!read_json_string_into(reader, obj, MAX_SIZE, err, parsedSize)) {
+            // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                parsedSize = MAX_SIZE;
+            }
+            // Check if we read enough to detect validator limit exceeded
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
+                // Early rejection: string exceeded validator limit
+                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
+                            std::string_view(obj.data(), obj.data() + parsedSize))) {
+                    return ctx.withSchemaError(reader);
+                }
+            }
             return ctx.withParseError(err, reader);
         }
     }
@@ -386,8 +416,25 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
     cursor.reset();
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    
+    // Query max array items from validators for early rejection
+    using PropertyTag = validators::validators_detail::parsing_constraint_properties_tags::max_array_items;
+    constexpr std::size_t validator_max_items = 
+        validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTag>();
 
     while(iterStatus.has_value) {
+        // Early rejection: check if we're about to exceed validator limit
+        if constexpr (validator_max_items > 0) {
+            if (parsed_items_count >= validator_max_items) {
+                // We've already parsed max_items, this would be max_items+1
+                // Validate with the exceeded count to trigger the error
+                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::array_item_parsed>(obj, ctx.validationCtx(), parsed_items_count + 1)) {
+                    cursor.finalize(false);
+                    return ctx.withSchemaError(reader);
+                }
+            }
+        }
+        
         stream_write_result alloc_r = cursor.allocate_slot();
         if(alloc_r != stream_write_result::slot_allocated) {
             if(alloc_r == stream_write_result::overflow ) {
@@ -466,8 +513,25 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     cursor.reset();
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
+    
+    // Query max properties from validators for early rejection
+    using PropertyTagProps = validators::validators_detail::parsing_constraint_properties_tags::max_map_properties;
+    constexpr std::size_t validator_max_properties = 
+        validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTagProps>();
 
     while(iterStatus.has_value) {
+        // Early rejection: check if we're about to exceed validator limit for properties count
+        if constexpr (validator_max_properties > 0) {
+            if (parsed_entries_count >= validator_max_properties) {
+                // We've already parsed max_properties, this would be max_properties+1
+                // Validate with the exceeded count to trigger the error
+                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_entry_parsed>(obj, ctx.validationCtx(), parsed_entries_count + 1)) {
+                    cursor.finalize(false);
+                    return ctx.withSchemaError(reader);
+                }
+            }
+        }
+        
         // Allocate key slot
         stream_write_result alloc_r = cursor.allocate_key();
         if(alloc_r != stream_write_result::slot_allocated) {
@@ -485,21 +549,49 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
             // Custom string parsing with incremental key validation
             std::size_t parsedSize = 0;
 
-            //TODO extract MAX_SIZE from validators here
-            constexpr std::size_t MAX_SIZE = std::numeric_limits<std::size_t>::max();
+            // Query max key length from validators for early rejection
+            using PropertyTagKeyLen = validators::validators_detail::parsing_constraint_properties_tags::max_map_key_length;
+            constexpr std::size_t validator_max_key_len = 
+                validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTagKeyLen>();
+            // Read validator_max + 1 to detect if key exceeds the limit
+            constexpr std::size_t MAX_SIZE = (validator_max_key_len > 0) ? (validator_max_key_len + 1) : std::numeric_limits<std::size_t>::max();
 
             ParseError err{ParseError::NO_ERROR};
             if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
                 char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
-                if(!read_json_string_into(reader, b, std::min(
-                                                          static_schema::static_string_traits<typename FH::key_type>::max_size(key),
-
-                    MAX_SIZE), err, parsedSize)) {
+                constexpr std::size_t container_max = static_schema::static_string_traits<typename FH::key_type>::max_size(key);
+                constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
+                if(!read_json_string_into(reader, b, effective_max, err, parsedSize)) {
+                    // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                        parsedSize = effective_max;
+                    }
+                    // Check if we read enough to detect validator limit exceeded
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
+                        // Early rejection: key exceeded validator limit
+                        b[parsedSize] = 0;
+                        std::string_view key_sv_overflow(b, b + parsedSize);
+                        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv_overflow)) {
+                            return ctx.withSchemaError(reader);
+                        }
+                    }
                     return ctx.withParseError(err, reader);
                 }
                 b[parsedSize] = 0;
             } else {
                 if(!read_json_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
+                    // On overflow, parsedSize is not set by read_json_string_into, so set it to the limit
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
+                        parsedSize = MAX_SIZE;
+                    }
+                    // Check if we read enough to detect validator limit exceeded
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
+                        // Early rejection: key exceeded validator limit
+                        std::string_view key_sv_overflow(key.data(), key.data() + parsedSize);
+                        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv_overflow)) {
+                            return ctx.withSchemaError(reader);
+                        }
+                    }
                     return ctx.withParseError(err, reader);
                 }
             }

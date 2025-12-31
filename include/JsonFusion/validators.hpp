@@ -213,10 +213,11 @@ struct map_parsing_finished{};
 // Tags for querying parsing constraint properties from validators
 namespace parsing_constraint_properties_tags {
     struct max_excess_field_name_length {};
-    // Future properties can be added here:
-    // struct max_string_length {};
-    // struct max_array_items {};
-    // struct buffer_size_hint {};
+    // Early rejection properties for upper-bound validators
+    struct max_string_length {};
+    struct max_array_items {};
+    struct max_map_properties {};
+    struct max_map_key_length {};
 }
 
 namespace validators_options_tags {
@@ -481,6 +482,18 @@ template<std::size_t N>
 struct max_length {
     constexpr static std::size_t value = N;
     using tag = validators_detail::validators_options_tags::max_length_tag;
+    
+    // Property query for early rejection
+    template<class PropertyTag, std::size_t Index>
+    static constexpr std::size_t get_property() {
+        if constexpr (std::is_same_v<PropertyTag, 
+            validators_detail::parsing_constraint_properties_tags::max_string_length>) {
+            return N;
+        } else {
+            return 0;
+        }
+    }
+    
     // Final validation after string is fully parsed
     template<class Tag, std::size_t Index, class Storage>
     static constexpr  bool validate(const Storage& str,
@@ -522,6 +535,18 @@ template<std::size_t N>
 struct max_items {
     constexpr static std::size_t value = N;
     using tag = validators_detail::validators_options_tags::max_items_tag;
+    
+    // Property query for early rejection
+    template<class PropertyTag, std::size_t Index>
+    static constexpr std::size_t get_property() {
+        if constexpr (std::is_same_v<PropertyTag, 
+            validators_detail::parsing_constraint_properties_tags::max_array_items>) {
+            return N;
+        } else {
+            return 0;
+        }
+    }
+    
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::array_item_parsed>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx&ctx, std::size_t count) {
@@ -709,6 +734,18 @@ template<std::size_t N>
 struct max_properties {
     static constexpr std::size_t value = N;
     using tag = validators_detail::validators_options_tags::max_properties_tag;
+    
+    // Property query for early rejection
+    template<class PropertyTag, std::size_t Index>
+    static constexpr std::size_t get_property() {
+        if constexpr (std::is_same_v<PropertyTag, 
+            validators_detail::parsing_constraint_properties_tags::max_map_properties>) {
+            return N;
+        } else {
+            return 0;
+        }
+    }
+    
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_entry_parsed>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, std::size_t count) {
@@ -752,6 +789,18 @@ template<std::size_t N>
 struct max_key_length {
     static constexpr std::size_t value = N;
     using tag = validators_detail::validators_options_tags::max_key_length_tag;
+    
+    // Property query for early rejection
+    template<class PropertyTag, std::size_t Index>
+    static constexpr std::size_t get_property() {
+        if constexpr (std::is_same_v<PropertyTag, 
+            validators_detail::parsing_constraint_properties_tags::max_map_key_length>) {
+            return N;
+        } else {
+            return 0;
+        }
+    }
+    
     template<class Tag, std::size_t Index, class Storage>
         requires std::is_same_v<Tag, validators_detail::parsing_events_tags::map_key_finished>
     static constexpr  bool validate(const Storage& val, validators_detail::ValidationCtx& ctx, const std::string_view & key) {
