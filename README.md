@@ -221,7 +221,7 @@ using Point = A<Pt_, as_array>;
 ```
 - On canada.json (2.2 MB numeric-heavy GeoJSON), a hand-written RapidJSON SAX handler that counts 
 features/rings/points serves as the baseline.
-- JsonFusion Streaming with selective skipping is **~30% faster** simply because the type system tells the parser "these values exist, 
+- JsonFusion Streaming with selective skipping is **~40% faster** simply because the type system tells the parser "these values exist, 
 but we don't need them." By annotating coordinate fields with `skip`, JsonFusion skips float parsing entirely while still 
 validating JSON structure.
 
@@ -685,11 +685,11 @@ constraints
 | Benchmark Scenario | JsonFusion vs RapidJSON |
 |-------------------|-------------------------|
 | **Embedded Config (Static)** | **10% slower** |
-| **Embedded Config (Dynamic)** | **25% faster** |
+| **Embedded Config (Dynamic)** | **30% faster** |
 | **Telemetry Samples** | **15% faster** |
-| **RPC Commands** | **40% faster** |
-| **Log Events** | **10% faster** |
-| **Bus Events / Message Payloads** | **25% faster** |
+| **RPC Commands** | **30% faster** |
+| **Log Events** | **5% faster** |
+| **Bus Events / Message Payloads** | **15% faster** |
 | **Metrics / Time-Series** | **10% faster** |
 
 *Tested on Apple M1 Max, macOS 26.1, GCC 14, 1M iterations per scenario. RapidJSON uses DOM + manual populate (typical), or hand-written SAX for static
@@ -728,15 +728,15 @@ JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of
 The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stress test.
 
 **Parse-and-populate** (production use case):
-- JsonFusion (iterator) is 40% slower than RapidJSON (with manual populate)
-- **JsonFusion + yyjson: 50% faster than RapidJSON** - yyjson's optimized numeric parsing shines on this workload
+- JsonFusion (iterator) is 15% slower than RapidJSON (with manual populate)
+- **JsonFusion + yyjson: 65% faster than RapidJSON** - yyjson's optimized numeric parsing shines on this workload
 
 **Streaming for object counting**:
 - Hand-written RapidJSON SAX serves as baseline
-- JsonFusion typed streaming is ~50% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
+- JsonFusion typed streaming is ~80% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
 manual state machines
-- **JsonFusion with selective skipping**: **15% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip` in the model
-- **JsonFusion + yyjson (streaming): 35% faster than RapidJSON SAX** with the same type-safe, generic API
+- **JsonFusion with selective skipping: 40% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip` in the model
+- **JsonFusion + yyjson (streaming): 45% faster than RapidJSON SAX** with the same type-safe, generic API
 
 The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema,
 JsonFusion's declarative skipping works uniformly across any model. With the yyjson backend, you get both performance and composability.
@@ -750,10 +750,10 @@ The twitter.json benchmark tests realistic deeply nested objects with optionals 
 **C++ Library Comparison:**
 
 JsonFusion with yyjson backend delivers full type-safe mapping with validation and is:
-- **35% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for
+- **30% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for
 this setup and data)
 - **45% faster than RapidJSON + manual populate** (eliminates 450+ lines of hand-written mapping code)
-- **With streaming API: 45% faster than reflect-cpp, 55% faster than RapidJSON + manual**
+- **With streaming API: 40% faster than reflect-cpp, 55% faster than RapidJSON + manual**
 - **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by
 trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
 
@@ -761,25 +761,25 @@ trading off streaming flexibility, generic iterators, and other abstractions. Or
 **Cross-Language Comparison:**
 
 For perspective, managed languages on the same benchmark (.NET 9.0.112, OpenJDK 21.0.9):
-- **Java DSL-JSON** (compile-time code generation): ~918 µs — **Faster than reflect-cpp and most C++ approaches!** Shows that compile-time generation
+- **Java DSL-JSON** (compile-time code generation): ~950 µs — **Faster than reflect-cpp and most C++ approaches!** Shows that compile-time generation
 delivers near-native performance even in managed languages.
-- **C# System.Text.Json** (source generation + JIT): ~1533 µs — Slightly slower than RapidJSON + manual C++, but in the same ballpark.
+- **C# System.Text.Json** (source generation + JIT): ~1600 µs — Slightly faster than RapidJSON + manual C++, but in the same ballpark.
 
 This demonstrates that modern managed runtimes can be competitive, especially with compile-time code generation. However, optimized C++ still provides
-advantages: Glaze is 2.6× faster than Java DSL-JSON, JsonFusion + yyjson is 1.1× faster than Java.
+advantages: Glaze is 2.5× faster than Java DSL-JSON, JsonFusion + yyjson is 1.2× faster than Java.
 
-**Performance Summary (twitter.json, parse + populate + validate, same arm64 Ubuntu Linux 24.04 machine, GCC 13.3):**
+**Performance Summary (twitter.json, parse + populate + validate, same arm64 Ubuntu Linux 24.04 machine, GCC 14.3):**
 
 | Library | Language | Approach | Time (µs/iter) |
 |---------|----------|----------|----------------|
-| Glaze | C++ | Hand-optimized, contiguous | ~356 |
-| JsonFusion + yyjson (streaming) | C++ | Pluggable backend, streaming | ~598 |
-| JsonFusion + yyjson | C++ | Pluggable backend | ~821 |
-| **Java DSL-JSON** | **Java** | **Compile-time generation** | **~918** |
-| reflect-cpp + yyjson | C++ | DOM-based, two-pass | ~1306 |
-| JsonFusion (iterator) | C++ | Default, no external deps | ~1489 |
-| **C# System.Text.Json** | **C#** | **Source generation + JIT** | **~1533** |
-| RapidJSON + manual | C++ | DOM + hand-written mapping | ~1829 |
+| Glaze | C++ | Hand-optimized, contiguous | 365 |
+| JsonFusion + yyjson (streaming) | C++ | Pluggable backend, streaming | 690 |
+| JsonFusion + yyjson | C++ | Pluggable backend | 770 |
+| **Java DSL-JSON** | **Java** | **Compile-time generation** | **950** |
+| reflect-cpp + yyjson | C++ | DOM-based, two-pass | 1180 |
+| JsonFusion (iterator) | C++ | Default, no external deps | 1230 |
+| **C# System.Text.Json** | **C#** | **Source generation + JIT** | **1600** |
+| RapidJSON + manual | C++ | DOM + hand-written mapping | 1640 |
 
 📁 **C++ benchmark**: [`benchmarks/twitter_json/`](benchmarks/twitter_json/)  
 📁 **Java benchmark**: [`benchmarks/twitter_json_java/`](benchmarks/twitter_json_java/)  

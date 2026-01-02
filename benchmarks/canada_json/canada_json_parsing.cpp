@@ -275,7 +275,7 @@ int main(int argc, char* argv[]) {
                 std::cerr << std::format("JsonFusion CBOR serialize error") << std::endl;
                 return false;
             } else {
-                final_sz = b-reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
+                final_sz = res.bytesWritten();
                 return true;
             }
 
