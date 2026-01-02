@@ -784,6 +784,9 @@ private:
         }
 
         if (ai == 25) {
+            if (!ensure_bytes()) return false;
+            ++cur_;
+
             std::uint16_t v = 0;
             for(int i = 0; i < 2; i ++) {
                 if (!ensure_bytes()) return false;
@@ -795,6 +798,8 @@ private:
         }
 
         if (ai == 26) {
+            if (!ensure_bytes()) return false;
+            ++cur_;
 
             std::uint32_t v = 0;
             for(int i = 0; i < 4; i ++) {
@@ -808,6 +813,9 @@ private:
         }
 
         if (ai == 27) {
+            if (!ensure_bytes()) return false;
+            ++cur_;
+
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
