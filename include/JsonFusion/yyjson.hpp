@@ -437,10 +437,9 @@ public:
     }
     
     // Create a reader from WireSink
-    // Two cases:
-    // 1. If sink contains node pointer (8 bytes) - extract pointer, non-owned reader
-    // 2. Otherwise - parse as JSON, owned reader
-    static YyjsonReader from_sink(char*& /*unused_it*/, const WireSinkLike auto& sink) {
+    // If sink contains node pointer (8 bytes) - extract pointer, non-owned reader
+    // else error
+    static YyjsonReader from_sink(const WireSinkLike auto& sink) {
         // Check if it's a node pointer (from yyjson capture)
         if (sink.current_size() == sizeof(yyjson_val*)) {
             // Extract node pointer - original document must still be alive!
@@ -449,8 +448,8 @@ public:
             return YyjsonReader(node);
         }
         
-        // Otherwise, parse as JSON (creates owned document)
-        return YyjsonReader(sink.data(), sink.current_size());
+        // TODO error case, should not be here.
+        return YyjsonReader(nullptr, 0);
     }
 
 private:
@@ -578,16 +577,16 @@ public:
         , output_sink_finisher_(nullptr)
     {
         // Create finisher that serializes to string
-        output_sink_finisher_ = [&output](yyjson_mut_doc* doc) -> bool {
+        output_sink_finisher_ = [&output](yyjson_mut_doc* doc) -> std::size_t {
             std::size_t json_len = 0;
             char* json_str = yyjson_mut_write(doc, 0, &json_len);
             if (!json_str) {
-                return false;
+                return -1;
             }
             
             output.assign(json_str, json_len);
             free(json_str);
-            return true;
+            return json_len;
         };
     }
     
@@ -620,7 +619,7 @@ public:
 
     // ========== required API for WriterLike ==========
 
-    iterator_type& current() noexcept {
+    iterator_type current() noexcept {
         return current_;
     }
 
@@ -812,27 +811,39 @@ public:
 
     // ---- finish ----
 
-    bool finish() {
-        if (!ensure_ok()) return false;
-        if (!doc_) return fail(Error::InvalidState);
+    std::size_t finish() {
+        if (!ensure_ok()) return -1;
+        if (!doc_) {
+            fail(Error::InvalidState);
+            return -1;
+        }
 
         if (!root_) {
             yyjson_mut_val* v = yyjson_mut_null(doc_);
-            if (!v) return fail(Error::AllocFailed);
+            if (!v) {
+                fail(Error::AllocFailed);
+                return -1;
+            }
             yyjson_mut_doc_set_root(doc_, v);
             root_ = v;
         }
 
         // If created via from_sink, serialize the document to the sink
-        if (output_sink_finisher_) {
-            if (!output_sink_finisher_(doc_)) {
-                return fail(Error::InvalidState);
-            }
+        if(!output_sink_finisher_) {
+            fail(Error::InvalidState);
+            return -1;
         }
+
+        std::size_t bytesWritten = output_sink_finisher_(doc_);
+        if (bytesWritten == -1) {
+            fail(Error::InvalidState);
+            return -1;
+        }
+
 
         // You *could* assert here that scope_kind_ == Root, but
         // serializer already guarantees balanced begin/end.
-        return true;
+        return bytesWritten;
     }
     
     // Cleanup callback for WireSink containing YyJSON document
@@ -851,19 +862,19 @@ public:
     // O(1) capture: stores pointers, WireSink owns document via cleanup callback
     // Immutable: can output multiple times (copies node each time)
     template<WireSinkLike Sink>
-    static YyjsonWriter from_sink(char*& it, Sink& sink) {
+    static YyjsonWriter from_sink(Sink& sink) {
         YyjsonWriter writer;  // Creates owned document
         writer.owns_doc_ = false;  // Ownership transferred to sink
         
         // Finisher stores [doc*, node*] and sets cleanup
         // WireSink takes ownership via cleanup callback
-        writer.output_sink_finisher_ = [&it, &sink](yyjson_mut_doc* doc) -> bool {
+        writer.output_sink_finisher_ = [&sink](yyjson_mut_doc* doc) -> std::size_t {
             sink.clear();
             
             // Get root node
             yyjson_mut_val* root = yyjson_mut_doc_get_root(doc);
             if (!root) {
-                return false;
+                return -1;
             }
             
             // Check buffer size
@@ -875,19 +886,18 @@ public:
             // Store [doc*, node*] - WireSink takes ownership
             const char* doc_bytes = reinterpret_cast<const char*>(&doc);
             if (!sink.write(doc_bytes, sizeof(yyjson_mut_doc*))) {
-                return false;
+                return -1;
             }
             
             const char* node_bytes = reinterpret_cast<const char*>(&root);
             if (!sink.write(node_bytes, sizeof(yyjson_mut_val*))) {
-                return false;
+                return -1;
             }
             
             // Set cleanup: WireSink will free doc on destruction/clear
             sink.set_cleanup(yyjson_mut_doc_cleanup);
             
-            it = sink.data() + sink.current_size();
-            return true;
+            return needed;
         };
         
         return writer;
@@ -957,7 +967,7 @@ private:
     
     // RAII and sink support
     bool  owns_doc_;           // True if we should free doc_ in destructor
-    std::function<bool(yyjson_mut_doc*)> output_sink_finisher_;  // Finisher lambda for from_sink
+    std::function<std::size_t(yyjson_mut_doc*)> output_sink_finisher_;  // Finisher lambda for from_sink
 
     bool ensure_ok() const noexcept {
         return error_ == Error::None;

@@ -99,7 +99,7 @@ concept ReaderLike = requires(R reader,
     
     // Create a reader from a WireSink (for re-parsing captured data)
     // Static method: R::from_sink(iterator, sink) -> R
-    { R::from_sink(std::declval<char*&>(), std::declval<const WireSink<256>&>()) };
+    { R::from_sink(std::declval<const WireSink<256>&>()) };
 };
 
 /// Type trait to check if a type satisfies ReaderLike at compile time

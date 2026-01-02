@@ -36,9 +36,10 @@ class SerializeResult {
     WriterError m_writerError{};
     OutIter m_pos;
     ValidationResult validationResult;
+    std::size_t m_written = -1;
 public:
-    constexpr SerializeResult(SerializeError err, WriterError werr, ValidationResult schemaErrors, OutIter pos):
-        m_error(err), m_writerError(werr), m_pos(pos), validationResult(schemaErrors)
+    constexpr SerializeResult(SerializeError err, WriterError werr, ValidationResult schemaErrors, OutIter pos, std::size_t wr):
+        m_error(err), m_writerError(werr), m_pos(pos), validationResult(schemaErrors), m_written(wr)
     {}
     constexpr operator bool() const {
         return m_error == SerializeError::NO_ERROR;
@@ -52,6 +53,9 @@ public:
     constexpr WriterError writerError() const {
         return m_writerError;
     }
+    constexpr std::size_t bytesWritten() const {
+        return m_written;
+    }
 };
 
 
@@ -63,11 +67,11 @@ class SerializationContext {
 
     SerializeError error = SerializeError::NO_ERROR;
     WriterError writerError{};
-    OutIter & m_pos;
+    OutIter m_pos;
     validators::validators_detail::ValidationCtx _validationCtx;
-
+    std::size_t m_written = -1;
 public:
-    constexpr SerializationContext(OutIter & it): m_pos(it){}
+    constexpr SerializationContext(OutIter it): m_pos(it){}
     template<class Writer>
     constexpr bool withWriterError(Writer & writer) {
         error = SerializeError::WRITER_ERROR;
@@ -88,7 +92,7 @@ public:
     constexpr SerializeError currentError(){return error;}
 
     constexpr SerializeResult<OutIter, WriterError> result() const {
-        return SerializeResult<OutIter, WriterError>(error, writerError, _validationCtx.result(), m_pos);
+        return SerializeResult<OutIter, WriterError>(error, writerError, _validationCtx.result(), m_pos, m_written);
     }
 
     constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
@@ -96,6 +100,9 @@ public:
         error = SerializeError::SCHEMA_VALIDATION_ERROR;
         m_pos = writer.current();
         return false;
+    }
+    constexpr void setBytesWritten(std::size_t written) {
+        m_written = written;
     }
 
 
@@ -489,16 +496,10 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
         }
     } else {
         auto serializeFn = [&]<class ObjT>(const ObjT& srcObj) constexpr {
-            auto it = ob.data();
-            auto tempWriter = Writer::from_sink(it, ob);
-            auto tempResult = SerializeWithWriter(srcObj, tempWriter, userCtx);
-            if(!tempResult) {
-                
-            } else {
-                std::size_t written = it - ob.data();
-                ob.set_size(written);
-            }
-            return tempResult;
+            auto tempWriter = Writer::from_sink(ob);
+            auto res = SerializeWithWriter(srcObj, tempWriter, userCtx);
+            if(!!res) ob.set_size(res.bytesWritten());
+            return res;
         };
         if(!obj.transform_to(serializeFn)) {
             return ctx.withError(SerializeError::TRANSFORMER_ERROR, writer);
@@ -520,8 +521,11 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
 
     serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), writer, ctx, userCtx);
     if(ctx.currentError() == SerializeError::NO_ERROR) {
-        if(!writer.finish()) {
+        std::size_t bytesWritten = writer.finish();
+        if(bytesWritten == -1) {
             ctx.withWriterError(writer);
+        } else {
+            ctx.setBytesWritten(bytesWritten);
         }
     }
 
@@ -529,7 +533,7 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
 }
 
 template <static_schema::SerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void, class Writer = JsonIteratorWriter<It, Sent>>
-constexpr SerializeResult<It, typename Writer::error_type> Serialize(const InputObjectT & obj, It &begin, const Sent & end, UserCtx * userCtx = nullptr) {
+constexpr SerializeResult<It, typename Writer::error_type> Serialize(const InputObjectT & obj, It begin, const Sent & end, UserCtx * userCtx = nullptr) {
     Writer writer(begin, end);
     return SerializeWithWriter(obj, writer, userCtx);
 }

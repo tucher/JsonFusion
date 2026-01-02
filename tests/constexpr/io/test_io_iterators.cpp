@@ -225,12 +225,12 @@ static_assert([]() constexpr {
     ByteByByteOutputIterator<std::array<char, 256>> out(buffer, 0);
     ByteByByteOutputIterator<std::array<char, 256>> end_sentinel(buffer, buffer.size());
     
-    bool result = JsonFusion::Serialize(obj, out, end_sentinel);
+    auto result = JsonFusion::Serialize(obj, out, end_sentinel);
     // Verify output
     std::string_view expected = R"({"value":42,"flag":true,"text":"test"})";
-    std::string_view actual(buffer.data(), out.position());
+    std::string_view actual(buffer.data(), result.bytesWritten());
     
-    return result && actual == expected;
+    return !!result && actual == expected;
 }());
 
 // Test: Complex nested structure byte-by-byte

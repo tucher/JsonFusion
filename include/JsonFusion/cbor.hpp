@@ -41,7 +41,7 @@ public:
         bool indefinite = false;           // true if indefinite-length map
     };
 
-    constexpr CborReader(It & first, Sent last) noexcept
+    constexpr CborReader(It first, Sent last) noexcept
         : m_errorPos(first), cur_(first), end_(last)
         , err_(ParseError::NO_ERROR)
     {}
@@ -724,14 +724,13 @@ public:
         return true;
     }
 
-    static constexpr auto from_sink(char*& it, const WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.current_size();
-        return CborReader<char*, const char*, MAX_SKIP_NESTING>(it, end);
+    static constexpr auto from_sink(const WireSinkLike auto & sink) {
+        return CborReader<const char*, const char*, MAX_SKIP_NESTING>(sink.data(), sink.data() + sink.current_size());
     }
 
 private:
-    It & m_errorPos;
-    It & cur_;
+    It m_errorPos;
+    It cur_;
     Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
 
     ParseError err_;
@@ -1097,11 +1096,11 @@ public:
         bool        indefinite       = false; // true if indefinite-length map
     };
 
-    constexpr It & current() {
+    constexpr It current() {
         return m_current;
     }
 
-    constexpr explicit CborWriter(It & first, Sent last) noexcept
+    constexpr explicit CborWriter(It first, Sent last) noexcept
         : m_errorPos(first), m_current(first), end_(last)
         , err_(CborWriterError::none)
     {}
@@ -1284,19 +1283,22 @@ public:
         }
         for (std::size_t i = 0; i < size; ++i) {
             if(m_current == end_) {
+                m_bytesWritten += i;
                 setError(CborWriterError::sink_error);
                 return false;
             }
             *m_current ++ = data[i];
         }
+        m_bytesWritten += size;
         return true;
     }
 
     // ========= Finalization =========
 
-    constexpr bool finish() {
+    constexpr std::size_t finish() {
         // Nothing to flush for this simple writer.
-        return (err_ == CborWriterError::none);
+        if (err_ != CborWriterError::none) return -1;
+        return m_bytesWritten;
     }
     
     // WireSink support - outputs raw CBOR bytes from sink
@@ -1308,24 +1310,26 @@ public:
         // Write byte-by-byte (iterator-compatible)
         for (std::size_t i = 0; i < size; ++i) {
             if (m_current == end_) {
+                m_bytesWritten += i;
                 setError(CborWriterError::sink_error);
                 return false;
             }
             *m_current = static_cast<std::uint8_t>(data[i]);
             ++m_current;
         }
+        m_bytesWritten += size;
         
         return true;
     }
 
-    static constexpr auto from_sink(char*& it, WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.max_size();
-        return CborWriter<char*, const char*>(it, end);
+    static constexpr auto from_sink(WireSinkLike auto & sink) {
+        return CborWriter<char*, char*>(sink.data(), sink.data() + sink.max_size());
     }
 
 private:
-    It & m_errorPos;
-    It & m_current;
+    std::size_t m_bytesWritten = 0;
+    It m_errorPos;
+    It m_current;
     Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
     error_type       err_ = CborWriterError::none;
 
@@ -1341,7 +1345,7 @@ private:
             setError(CborWriterError::sink_error);
             return false;
         }
-        *m_current ++ = b;
+        *m_current ++ = b;  m_bytesWritten ++;
         return true;
 
     }
@@ -1350,12 +1354,14 @@ private:
         // Minimal, generic implementation: push_back in a loop.
         for (std::size_t i = 0; i < len; ++i) {
             if(m_current == end_) {
+                m_bytesWritten += i;
                 setError(CborWriterError::sink_error);
                 return false;
             }
             *m_current ++ = data[i];
 
         }
+        m_bytesWritten += len;
         return true;
     }
 

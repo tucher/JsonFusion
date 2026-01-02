@@ -29,7 +29,7 @@ concept WriterLike = requires(R writer,
 
     // ========== Iterator Access ==========
     // Provides access to current position
-    { writer.current() } -> std::same_as<typename R::iterator_type &>;
+    { writer.current() } -> std::same_as<typename R::iterator_type>;
     
     // Returns the current writing error state
     { writer.getError() } -> std::same_as<typename R::error_type>;
@@ -65,8 +65,8 @@ concept WriterLike = requires(R writer,
 
 
     // ========== Utility Operations ==========
-    // Skip to end, ensuring only whitespace remains
-    { mutable_writer.finish() } -> std::same_as<bool>;
+    //write actual data and return bytes written count
+    { mutable_writer.finish() } -> std::same_as<std::size_t>;
     
     // ========== WireSink Operations ==========
     // Output wire sink contents as a value (protocol-agnostic raw data emission)
@@ -75,7 +75,7 @@ concept WriterLike = requires(R writer,
     
     // Create a writer from a WireSink (for serializing to captured buffer)
     // Static method: W::from_sink(iterator, sink) -> W
-    { R::from_sink(std::declval<char*&>(), std::declval<WireSink<256>&>()) };
+    { R::from_sink(std::declval<WireSink<256>&>()) };
   };
 
 /// Type trait to check if a type satisfies WriterLike at compile time

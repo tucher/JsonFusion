@@ -975,13 +975,8 @@ constexpr bool ParseValue(Field & field, Reader & reader, CTX &ctx, UserCtx * us
             }
         } else {
             auto parseFn = [&]<class ObjT>(ObjT& targetObj) constexpr {
-                char * it = ob.data();
-                auto tempReader = Reader::from_sink(it, ob);
-                auto tempResult = ParseWithReader(targetObj, tempReader, userCtx);
-                if(!tempResult) {
-
-                }
-                return tempResult;
+                auto tempReader = Reader::from_sink(ob);
+                return ParseWithReader(targetObj, tempReader, userCtx);
             };
             if(!field.transform_from(parseFn)) {
                 return ctx.withParseError(ParseError::TRANSFORMER_ERROR, reader);

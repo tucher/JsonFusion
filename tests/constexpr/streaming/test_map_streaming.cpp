@@ -300,14 +300,11 @@ constexpr bool test_serialize_simple_map() {
     
     MapProducer<std::array<char, 8>, int, 3> producer(entries, 3);
     
-    std::array<char, 128> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    auto result = Serialize(producer, out, end);
+
+    std::string output;
+    auto result = Serialize(producer, output);
     if (!result) return false;
     
-    std::string_view output(buf.data(), out - buf.data());
     
     // Check that output is valid JSON object
     if (output.empty() || output.front() != '{' || output.back() != '}') return false;
@@ -330,14 +327,9 @@ constexpr bool test_serialize_empty_map() {
     
     MapProducer<std::array<char, 8>, int, 1> producer(entries, 0);  // Count is 0
     
-    std::array<char, 32> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    auto result = Serialize(producer, out, end);
+    std::string output;
+    auto result = Serialize(producer, output);
     if (!result) return false;
-    
-    std::string_view output(buf.data(), out - buf.data());
     
     return output == "{}";
 }
@@ -356,15 +348,12 @@ constexpr bool test_roundtrip_map() {
     
     MapProducer<std::array<char, 8>, int, 2> producer(entries, 2);
     
-    std::array<char, 128> buf{};
-    char* out = buf.data();
-    char* end = out + buf.size();
-    
-    auto ser_result = Serialize(producer, out, end);
+    std::string output;
+    auto ser_result = Serialize(producer, output);
     if (!ser_result) return false;
     
     // Parse back
-    std::string_view json(buf.data(), out - buf.data());
+    std::string_view json(output.data(), output.size());
     MapConsumer<std::array<char, 8>, int, 5> consumer;
     
     auto parse_result = Parse(consumer, json);

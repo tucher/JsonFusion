@@ -47,7 +47,7 @@ public:
 
     using error_type = JsonIteratorReaderError;
 
-    constexpr JsonIteratorReader(It & first, Sent last)
+    constexpr JsonIteratorReader(It first, Sent last)
         : m_error(JsonIteratorReaderError::NO_ERROR), current_(first), end_(last) {}
 
 
@@ -580,9 +580,8 @@ public:
         return m_error;
     }
 
-    static constexpr auto from_sink(char*& it, const WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.current_size();
-        return JsonIteratorReader<char*, const char*, MaxSkipNesting>(it, end);
+    static constexpr auto from_sink(const WireSinkLike auto & sink) {
+        return JsonIteratorReader<const char*, const char*, MaxSkipNesting>(sink.data(), sink.data() + sink.current_size());
     }
 private:
     constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
@@ -917,7 +916,7 @@ private:
     }
 
     JsonIteratorReaderError m_error;
-    It & current_;
+    It current_;
     It m_errorPos;
     Sent end_;
 
@@ -1463,17 +1462,18 @@ public:
         m_error = e;
         m_errorPos = m_current;
     }
-    It & m_errorPos;
-    It & m_current;
+    It m_errorPos;
+    It m_current;
+    std::size_t m_bytesWritten = 0;
     Sent end_;
-    constexpr It & current() {
+    constexpr It current() {
         return m_current;
     }
     std::size_t m_float_decimals=8;
     std::size_t m_indent_level = 0;  // Current indentation level
     std::size_t m_indent_size = 2;   // Spaces per indent level
     
-    constexpr JsonIteratorWriter(It & first, Sent last, std::size_t float_decimals=8, std::size_t indent_size=2)
+    constexpr JsonIteratorWriter(It first, Sent last, std::size_t float_decimals=8, std::size_t indent_size=2)
         : m_error(JsonIteratorWriterError::NO_ERROR), m_errorPos(first), m_current(first), end_(last), m_float_decimals(float_decimals), m_indent_size(indent_size) {}
 
 private:
@@ -1486,15 +1486,19 @@ private:
                 return false;
             }
             *m_current++ = '\n';
+            m_bytesWritten ++;
             
             // Write spaces for indentation
             for (std::size_t i = 0; i < m_indent_level * m_indent_size; ++i) {
                 if (m_current == end_) {
+                    m_bytesWritten += i;
                     setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                     return false;
                 }
                 *m_current++ = ' ';
+
             }
+            m_bytesWritten += m_indent_level * m_indent_size;
         }
         return true;
     }
@@ -1506,7 +1510,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '[';
+        *m_current ++ = '['; m_bytesWritten ++;
         
         if constexpr (Pretty) {
             frame.depth = m_indent_level;
@@ -1520,7 +1524,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current++ = '{';
+        *m_current++ = '{'; m_bytesWritten ++;
         
         if constexpr (Pretty) {
             frame.depth = m_indent_level;
@@ -1535,7 +1539,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = ',';
+        *m_current ++ = ','; m_bytesWritten ++;
         
         if constexpr (Pretty) {
             if (!write_indent()) return false;
@@ -1547,7 +1551,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = ',';
+        *m_current ++ = ','; m_bytesWritten ++;
         
         if constexpr (Pretty) {
             if (!write_indent()) return false;
@@ -1560,7 +1564,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current++ = ':';
+        *m_current++ = ':'; m_bytesWritten ++;
         
         if constexpr (Pretty) {
             // Add space after colon for readability
@@ -1568,7 +1572,7 @@ public:
                 setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                 return false;
             }
-            *m_current++ = ' ';
+            *m_current++ = ' '; m_bytesWritten ++;
         }
 
         return true;
@@ -1581,7 +1585,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"';
+        *m_current ++ = '"'; m_bytesWritten ++;
 
 
         char* p = format_decimal_integer<std::int64_t>(int_key, buf, buf + sizeof(buf));
@@ -1590,14 +1594,14 @@ public:
                 setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                 return false;
             }
-            *m_current++ = *it;
+            *m_current++ = *it; m_bytesWritten ++;
         }
 
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"';
+        *m_current ++ = '"'; m_bytesWritten ++;
 
         return true;
     }
@@ -1612,7 +1616,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = ']';
+        *m_current ++ = ']'; m_bytesWritten ++;
         return true;
     }
     constexpr bool write_map_end(MapFrame& frame) {
@@ -1625,7 +1629,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current++ = '}';
+        *m_current++ = '}'; m_bytesWritten ++;
         return true;
     }
 
@@ -1650,7 +1654,7 @@ public:
                     setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                     return false;
                 }
-                *m_current++ = *it;
+                *m_current++ = *it; m_bytesWritten ++;
             }
             return true;
         } else {
@@ -1676,7 +1680,7 @@ public:
                         setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                         return false;
                     }
-                    *m_current ++ = buf[i];
+                    *m_current ++ = buf[i]; m_bytesWritten ++;
                 }
                 return true;
 
@@ -1689,7 +1693,7 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"';
+        *m_current ++ = '"'; m_bytesWritten ++;
         std::size_t segSize = 0;
         std::size_t counter = 0;
         char toOutEscaped [6] = {0, 0, 0, 0, 0, 0};  // Increased to fit \uXXXX
@@ -1732,7 +1736,7 @@ public:
                     setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                     return false;
                 }
-                *m_current++ = toOutEscaped[i];
+                *m_current++ = toOutEscaped[i]; m_bytesWritten ++;
             }
             counter ++;
         }
@@ -1741,12 +1745,13 @@ public:
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"';
+        *m_current ++ = '"'; m_bytesWritten ++;
         return true;
     }
 
-    constexpr bool finish() {
-        return m_current != end_;
+    constexpr std::size_t finish() {
+        if(m_current == end_) return -1;
+        return m_bytesWritten;
     }
     
     // WireSink support - output raw data from sink to JSON stream
@@ -1760,15 +1765,14 @@ public:
                 setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                 return false;
             }
-            *m_current++ = data[i];
+            *m_current++ = data[i]; m_bytesWritten ++;
         }
         
         return true;
     }
 
-    static constexpr auto from_sink(char*& it, WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.max_size();
-        return JsonIteratorWriter<char*, const char*, Pretty>(it, end);
+    static constexpr auto from_sink(WireSinkLike auto & sink) {
+        return JsonIteratorWriter<char*, char*, Pretty>(sink.data(), sink.data() + sink.max_size());
     }
     constexpr bool serialize_literal(std::string_view lit) {
         for (char c : lit) {
@@ -1776,7 +1780,7 @@ public:
                 setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                 return false;
             }
-            *m_current++ = c;
+            *m_current++ = c; m_bytesWritten ++;
         }
         return true;
     }
