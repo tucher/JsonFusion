@@ -8,6 +8,7 @@
 #include <type_traits>
 
 #include "reader_concept.hpp"
+#include "wire_sink.hpp"
 #include "writer_concept.hpp"
 
 namespace JsonFusion {
@@ -40,18 +41,18 @@ public:
         bool indefinite = false;           // true if indefinite-length map
     };
 
-    CborReader(It & first, Sent last) noexcept
+    constexpr CborReader(It & first, Sent last) noexcept
         : m_errorPos(first), cur_(first), end_(last)
         , err_(ParseError::NO_ERROR)
     {}
 
     // ========== Introspection ==========
 
-    iterator_type current() const noexcept {
+    constexpr iterator_type current() const noexcept {
         return cur_;
     }
 
-    ParseError getError() const noexcept {
+    constexpr ParseError getError() const noexcept {
         return err_;
     }
 
@@ -378,7 +379,7 @@ public:
                 return ret;
             }
 
-            if (*cur_ == 0xFF) {  // Break marker (major 7, ai 31)
+            if (static_cast<std::uint8_t>(*cur_) == 0xFF) {  // Break marker (major 7, ai 31)
                 ++cur_;  // Consume break
                 ret.has_value = false;
                 return ret;
@@ -469,7 +470,7 @@ public:
                 return ret;
             }
 
-            if (*cur_ == 0xFF) {  // Break marker (major 7, ai 31)
+            if (static_cast<std::uint8_t>(*cur_) == 0xFF) {  // Break marker (major 7, ai 31)
                 ++cur_;  // Consume break
                 ret.has_value = false;
                 return ret;
@@ -500,7 +501,7 @@ public:
         return skip_one(0);
     }
 
-    __attribute__((noinline)) bool finish() {
+    __attribute__((noinline)) constexpr bool finish() {
         // CBOR has no insignificant whitespace; if we aren't at the end, it's an error.
         if (cur_ != end_) {
             setError(ParseError::EXCESS_CHARACTERS);
@@ -509,16 +510,222 @@ public:
         return true;
     }
     
-    // WireSink support - stub implementation (TODO: implement later)
+    // Helper: writes bytes to WireSink during skip
     template<WireSinkLike Sink>
-    bool capture_to_sink(Sink& /*sink*/) {
-        // TODO: Implement CBOR wire sink capture
-        setError(ParseError::ILLFORMED_STRING); // Placeholder error
+    struct WireSinkFiller {
+        Sink* sink;
+        bool overflow = false;
+        CborReader* reader;  // Need access to iterator for byte reading
+        
+        constexpr bool consume_byte() {
+            if (overflow) return false;
+            if (!reader->ensure_bytes()) return false;
+            
+            const char ch = static_cast<char>(*reader->cur_);
+            ++reader->cur_;
+            
+            if (!sink->write(&ch, 1)) {
+                overflow = true;
+                return false;
+            }
+            return true;
+        }
+        
+        constexpr bool consume_bytes(std::uint64_t count) {
+            for (std::uint64_t i = 0; i < count; ++i) {
+                if (!consume_byte()) return false;
+            }
+            return true;
+        }
+    };
+    
+    // Skip and capture bytes - used by capture_to_sink
+    template<WireSinkLike Sink>
+    constexpr bool skip_and_capture(WireSinkFiller<Sink>& filler, std::size_t depth) {
+        if (depth > MAX_SKIP_NESTING) {
+            setError(ParseError::SKIPPING_STACK_OVERFLOW);
+            return false;
+        }
+        
+        if (!ensure_bytes()) return false;
+        
+        // Capture initial byte (consume_byte advances cur_)
+        const std::uint8_t ib = *cur_;  // Read BEFORE advancing
+        const std::uint8_t major = ib >> 5;
+        const std::uint8_t ai    = ib & 0x1F;
+        
+        if (!filler.consume_byte()) return false;  // Now advance and capture
+        
+        switch (major) {
+        case 0: // unsigned int
+        case 1: { // negative int
+            // Decode length payload
+            if (ai < 24) {
+                // No additional bytes
+            } else if (ai == 24) {
+                if (!filler.consume_bytes(1)) return false;
+            } else if (ai == 25) {
+                if (!filler.consume_bytes(2)) return false;
+            } else if (ai == 26) {
+                if (!filler.consume_bytes(4)) return false;
+            } else if (ai == 27) {
+                if (!filler.consume_bytes(8)) return false;
+            } else {
+                setError(ParseError::ILLFORMED_VALUE);
+                return false;
+            }
+            return true;
+        }
+        
+        case 2: // byte string
+        case 3: { // text string
+            // Decode length
+            std::uint64_t len;
+            if (!decode_length_with_filler(filler, ai, len)) return false;
+            
+            // Consume string bytes
+            if (!filler.consume_bytes(len)) return false;
+            return true;
+        }
+        
+        case 4: { // array
+            std::uint64_t len;
+            if (!decode_length_with_filler(filler, ai, len)) return false;
+            
+            for (std::uint64_t i = 0; i < len; ++i) {
+                if (!skip_and_capture(filler, depth + 1)) return false;
+            }
+            return true;
+        }
+        
+        case 5: { // map
+            std::uint64_t len;
+            if (!decode_length_with_filler(filler, ai, len)) return false;
+            
+            for (std::uint64_t i = 0; i < len; ++i) {
+                if (!skip_and_capture(filler, depth + 1)) return false; // key
+                if (!skip_and_capture(filler, depth + 1)) return false; // value
+            }
+            return true;
+        }
+        
+        case 6: // tag
+            setError(ParseError::NOT_IMPLEMENTED);
+            return false;
+        
+        case 7: { // simple / float / break
+            if (ai <= 23) {
+                // Simple value, no additional bytes
+            } else if (ai == 24) {
+                if (!filler.consume_bytes(1)) return false;
+            } else if (ai == 25) { // float16
+                if (!filler.consume_bytes(2)) return false;
+            } else if (ai == 26) { // float32
+                if (!filler.consume_bytes(4)) return false;
+            } else if (ai == 27) { // float64
+                if (!filler.consume_bytes(8)) return false;
+            } else {
+                setError(ParseError::ILLFORMED_VALUE);
+                return false;
+            }
+            return true;
+        }
+        
+        default:
+            setError(ParseError::ILLFORMED_VALUE);
+            return false;
+        }
+    }
+    
+    template<WireSinkLike Sink>
+    constexpr bool decode_length_with_filler(WireSinkFiller<Sink>& filler, std::uint8_t ai, std::uint64_t& out) {
+        // Length already encoded in ai or needs additional bytes
+        // Note: initial byte with ai was already consumed by caller
+        if (ai < 24) {
+            out = ai;
+            return true;
+        }
+        
+        if (ai == 24) {
+            if (!filler.consume_byte()) return false;
+            // Read the captured byte from sink (last byte written)
+            char byte;
+            if (!filler.sink->read(&byte, 1, filler.sink->current_size() - 1)) return false;
+            out = static_cast<std::uint8_t>(byte);
+            return true;
+        }
+        
+        if (ai == 25) {
+            std::uint16_t val = 0;
+            std::size_t start_pos = filler.sink->current_size();
+            for (int i = 0; i < 2; ++i) {
+                if (!filler.consume_byte()) return false;
+            }
+            // Read captured bytes
+            for (int i = 0; i < 2; ++i) {
+                char byte;
+                if (!filler.sink->read(&byte, 1, start_pos + i)) return false;
+                val = (val << 8) | static_cast<std::uint8_t>(byte);
+            }
+            out = val;
+            return true;
+        }
+        
+        if (ai == 26) {
+            std::uint32_t val = 0;
+            std::size_t start_pos = filler.sink->current_size();
+            for (int i = 0; i < 4; ++i) {
+                if (!filler.consume_byte()) return false;
+            }
+            // Read captured bytes
+            for (int i = 0; i < 4; ++i) {
+                char byte;
+                if (!filler.sink->read(&byte, 1, start_pos + i)) return false;
+                val = (val << 8) | static_cast<std::uint8_t>(byte);
+            }
+            out = val;
+            return true;
+        }
+        
+        if (ai == 27) {
+            std::uint64_t val = 0;
+            std::size_t start_pos = filler.sink->current_size();
+            for (int i = 0; i < 8; ++i) {
+                if (!filler.consume_byte()) return false;
+            }
+            // Read captured bytes
+            for (int i = 0; i < 8; ++i) {
+                char byte;
+                if (!filler.sink->read(&byte, 1, start_pos + i)) return false;
+                val = (val << 8) | static_cast<std::uint8_t>(byte);
+            }
+            out = val;
+            return true;
+        }
+        
+        setError(ParseError::ILLFORMED_VALUE);
         return false;
+    }
+    
+    // WireSink support - captures raw CBOR bytes
+    template<WireSinkLike Sink>
+    constexpr bool capture_to_sink(Sink& sink) {
+        sink.clear();
+        WireSinkFiller<Sink> filler{&sink, false, this};
+        
+        // Skip value while writing bytes to sink
+        if (!skip_and_capture(filler, 0)) {
+            if (filler.overflow) {
+                setError(ParseError::ILLFORMED_VALUE);  // Sink overflow
+            }
+            return false;
+        }
+        
+        return true;
     }
 
     static constexpr auto from_sink(char*& it, const WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.max_size();
+        auto end = sink.data() + sink.current_size();
         return CborReader<char*, const char*, MAX_SKIP_NESTING>(it, end);
     }
 
@@ -538,13 +745,13 @@ private:
 
     // ---- Helpers ----
 
-    void setError(ParseError e) noexcept {
+    constexpr void setError(ParseError e) noexcept {
         if (err_ == ParseError::NO_ERROR) {
             err_ = e;
         }
     }
 
-    bool ensure_bytes()  noexcept {
+    constexpr bool ensure_bytes()  noexcept {
         if(cur_ == end_) {
             setError(ParseError::UNEXPECTED_END_OF_DATA);
             return false;
@@ -552,14 +759,15 @@ private:
         else return true;
     }
 
-    void reset_value_string_state() noexcept {
+    constexpr void reset_value_string_state() noexcept {
         value_str_len_    = 0;
         value_str_offset_ = 0;
         value_str_active_ = false;
     }
 
     // Decode "length-like" argument (used for strings / arrays / maps).
-    bool decode_length(std::uint8_t ai, std::uint64_t& len) {
+    // Note: All *cur_ dereferences MUST cast to std::uint8_t to avoid sign extension.
+    constexpr bool decode_length(std::uint8_t ai, std::uint64_t& len) {
         if (ai < 24) {
             ++cur_;
             len = ai;
@@ -570,19 +778,16 @@ private:
             if (!ensure_bytes()) return false;
             ++cur_;
             if (!ensure_bytes()) return false;
-            len = *cur_;
+            len = static_cast<std::uint8_t>(*cur_);
             ++cur_;
             return true;
         }
 
         if (ai == 25) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
-
             std::uint16_t v = 0;
             for(int i = 0; i < 2; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                v |= (static_cast<std::uint16_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (1-i)));
                 ++ cur_;
             }
             len = v;
@@ -590,13 +795,11 @@ private:
         }
 
         if (ai == 26) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
 
             std::uint32_t v = 0;
             for(int i = 0; i < 4; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                v |= (static_cast<std::uint32_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (3-i)));
                 ++ cur_;
             }
 
@@ -605,13 +808,10 @@ private:
         }
 
         if (ai == 27) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
-
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
+                v |= (static_cast<std::uint64_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (7-i)));
                 ++ cur_;
 
             }
@@ -626,7 +826,10 @@ private:
     }
 
     // Decode major-type 0/1 integer payload (u64) and advance cur_.
-    bool decode_uint(std::uint8_t ai, std::uint64_t& out) {
+    // Note: All *cur_ dereferences MUST cast to std::uint8_t to avoid sign extension
+    // when iterator value_type is char (signed). Without the cast, values >= 128
+    // would be sign-extended when promoted to larger integer types.
+    constexpr bool decode_uint(std::uint8_t ai, std::uint64_t& out) {
         if (ai < 24) {
             out = ai;
             ++cur_;
@@ -637,7 +840,7 @@ private:
             if (!ensure_bytes()) return false;
             ++cur_;
             if (!ensure_bytes()) return false;
-            out = *cur_;
+            out = static_cast<std::uint8_t>(*cur_);
             ++cur_;
 
             return true;
@@ -645,11 +848,11 @@ private:
 
         if (ai == 25) {
             if (!ensure_bytes()) return false;
-            ++cur_;
+            ++cur_;  // Consume initial byte
             std::uint16_t v = 0;
             for(int i = 0; i < 2; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                v |= (static_cast<std::uint16_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (1-i)));
                 ++ cur_;
             }
             out = v;
@@ -658,12 +861,11 @@ private:
 
         if (ai == 26) {
             if (!ensure_bytes()) return false;
-            ++cur_;
-
+            ++cur_;  // Consume initial byte
             std::uint32_t v = 0;
             for(int i = 0; i < 4; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                v |= (static_cast<std::uint32_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (3-i)));
                 ++ cur_;
             }
 
@@ -673,12 +875,11 @@ private:
 
         if (ai == 27) {
             if (!ensure_bytes()) return false;
-            ++cur_;
-
+            ++cur_;  // Consume initial byte
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
+                v |= (static_cast<std::uint64_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (7-i)));
                 ++ cur_;
             }
 
@@ -689,15 +890,16 @@ private:
         setError(ParseError::ILLFORMED_NUMBER);
         return false;
     }
-
-    bool decode_float(std::uint8_t ai, double& out) {
+    // Decode floating-point values (half, float, double precision).
+    // Note: All *cur_ dereferences MUST cast to std::uint8_t to avoid sign extension.
+    constexpr bool decode_float(std::uint8_t ai, double& out) {
         if (ai == 25) { // half-precision
             if (!ensure_bytes()) return false;
-            ++cur_;
+            ++cur_;  // Consume initial byte
             std::uint16_t v = 0;
             for(int i = 0; i < 2; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint16_t>(*cur_) << (8 * (1-i)));
+                v |= (static_cast<std::uint16_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (1-i)));
                 ++ cur_;
             }
             out = half_to_double(v);
@@ -706,12 +908,11 @@ private:
 
         if (ai == 26) { // float32
             if (!ensure_bytes()) return false;
-            ++cur_;
-
+            ++cur_;  // Consume initial byte
             std::uint32_t v = 0;
             for(int i = 0; i < 4; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(*cur_) << (8 * (3-i)));
+                v |= (static_cast<std::uint32_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (3-i)));
                 ++ cur_;
             }
 
@@ -723,12 +924,11 @@ private:
 
         if (ai == 27) { // float64
             if (!ensure_bytes()) return false;
-            ++cur_;
-
+            ++cur_;  // Consume initial byte
             std::uint64_t v = 0;
             for(int i = 0; i < 8; i ++) {
                 if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint64_t>(*cur_) << (8 * (7-i)));  // Fixed: uint64_t
+                v |= (static_cast<std::uint64_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (7-i)));
                 ++ cur_;
             }
 
@@ -742,7 +942,7 @@ private:
         return false;
     }
 
-    static double half_to_double(std::uint16_t h) {
+    constexpr static double half_to_double(std::uint16_t h) {
         std::uint16_t sign = (h >> 15) & 0x1;
         std::uint16_t exp  = (h >> 10) & 0x1F;
         std::uint16_t frac = h & 0x3FF;
@@ -766,7 +966,7 @@ private:
         }
     }
 
-    bool skip_one(std::size_t depth) {
+    constexpr bool skip_one(std::size_t depth) {
         if (depth > MAX_SKIP_NESTING) {
             setError(ParseError::SKIPPING_STACK_OVERFLOW);
             return false;
@@ -893,18 +1093,18 @@ public:
         return m_current;
     }
 
-    explicit CborWriter(It & first, Sent last) noexcept
+    constexpr explicit CborWriter(It & first, Sent last) noexcept
         : m_errorPos(first), m_current(first), end_(last)
         , err_(CborWriterError::none)
     {}
 
     // ========= Introspection =========
 
-    error_type getError() const noexcept { return err_; }
+    constexpr error_type getError() const noexcept { return err_; }
 
     // ========= Containers =========
 
-    __attribute__((noinline)) bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_array_begin(const std::size_t& size, ArrayFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
             // Indefinite-length array (0x9F = major 4, ai 31)
             if (!write_byte(0x9F)) {
@@ -927,7 +1127,7 @@ public:
         return true;
     }
 
-    __attribute__((noinline)) bool write_array_end(ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_array_end(ArrayFrame& frame) {
         if (frame.indefinite) {
             // Write break marker (0xFF = major 7, ai 31)
             return write_byte(0xFF);
@@ -947,7 +1147,7 @@ public:
         return true;
     }
 
-    __attribute__((noinline)) bool write_map_begin(const std::size_t& size, MapFrame& frame) {
+    __attribute__((noinline)) constexpr  bool write_map_begin(const std::size_t& size, MapFrame& frame) {
         if (size == std::numeric_limits<std::size_t>::max()) {
             // Indefinite-length map (0xBF = major 5, ai 31)
             if (!write_byte(0xBF)) {
@@ -972,7 +1172,7 @@ public:
         return true;
     }
 
-    __attribute__((noinline)) bool write_map_end(MapFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_map_end(MapFrame& frame) {
         if (frame.indefinite) {
             // Write break marker (0xFF = major 7, ai 31)
             return write_byte(0xFF);
@@ -991,7 +1191,7 @@ public:
     }
 
     // After finishing an array element / a map value
-    bool advance_after_value(ArrayFrame& frame) {
+    constexpr bool advance_after_value(ArrayFrame& frame) {
         if (!frame.indefinite && frame.written >= frame.expected_size) {
             setError(CborWriterError::invalid_argument);
             return false;
@@ -1000,7 +1200,7 @@ public:
         return true;
     }
 
-    __attribute__((noinline)) bool advance_after_value(MapFrame& frame) {
+    __attribute__((noinline)) constexpr bool advance_after_value(MapFrame& frame) {
         // We should have just written a *value*, not a key
         if (frame.expecting_key) {
             setError(CborWriterError::invalid_argument);
@@ -1016,7 +1216,7 @@ public:
     }
 
     // Move from key → value within a map
-    bool move_to_value(MapFrame& frame) {
+    constexpr bool move_to_value(MapFrame& frame) {
         if (!frame.expecting_key) {
             // We were already at value; misused API
             setError(CborWriterError::invalid_argument);
@@ -1028,24 +1228,24 @@ public:
     }
 
     // For indexes_as_keys: write `index` as a CBOR integer key.
-    bool write_key_as_index(const std::size_t& idx) {
+    constexpr bool write_key_as_index(const std::size_t& idx) {
         return write_number(idx);
     }
 
     // ========= Primitive values =========
 
-    __attribute__((noinline)) bool write_null() {
+    __attribute__((noinline)) constexpr bool write_null() {
         // CBOR simple value "null" is major 7, additional info 22 => 0xF6
         return write_byte(0xF6);
     }
 
-    __attribute__((noinline)) bool write_bool(const bool& b) {
+    __attribute__((noinline)) constexpr bool write_bool(const bool& b) {
         // false: 0xF4, true: 0xF5
         return write_byte(b ? 0xF5 : 0xF4);
     }
 
     template<class NumberT>
-    __attribute__((noinline)) bool write_number(const NumberT& n) {
+    __attribute__((noinline)) constexpr bool write_number(const NumberT& n) {
         if constexpr (std::is_integral_v<NumberT>) {
             return write_integral(n);
         }  else if constexpr (std::is_floating_point_v<NumberT>) {
@@ -1061,7 +1261,7 @@ public:
         }
     }
 
-    __attribute__((noinline)) bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
+    __attribute__((noinline)) constexpr bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
         // Major type 3 = text string, argument = length in bytes
         if(null_terminated) {
             size = 0;
@@ -1074,26 +1274,44 @@ public:
         if (!write_major_type_with_length(/*major=*/3, size)) {
             return false;
         }
-        return write_bytes(reinterpret_cast<const std::uint8_t*>(data), size);
+        for (std::size_t i = 0; i < size; ++i) {
+            if(m_current == end_) {
+                setError(CborWriterError::sink_error);
+                return false;
+            }
+            *m_current ++ = data[i];
+        }
+        return true;
     }
 
     // ========= Finalization =========
 
-    bool finish() {
+    constexpr bool finish() {
         // Nothing to flush for this simple writer.
         return (err_ == CborWriterError::none);
     }
     
-    // WireSink support - stub implementation (TODO: implement later)
+    // WireSink support - outputs raw CBOR bytes from sink
     template<WireSinkLike Sink>
-    bool output_from_sink(const Sink& /*sink*/) {
-        // TODO: Implement CBOR wire sink output
-        setError(CborWriterError::buffer_overflow); // Placeholder error
-        return false;
+    constexpr bool output_from_sink(const Sink& sink) {
+        std::size_t size = sink.current_size();
+        const char* data = sink.data();
+        
+        // Write byte-by-byte (iterator-compatible)
+        for (std::size_t i = 0; i < size; ++i) {
+            if (m_current == end_) {
+                setError(CborWriterError::sink_error);
+                return false;
+            }
+            *m_current = static_cast<std::uint8_t>(data[i]);
+            ++m_current;
+        }
+        
+        return true;
     }
 
     static constexpr auto from_sink(char*& it, WireSinkLike auto & sink) {
-        auto end = sink.data() + sink.current_size();
+        auto end = sink.data() + sink.max_size();
         return CborWriter<char*, const char*>(it, end);
     }
 
@@ -1103,14 +1321,14 @@ private:
     Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
     error_type       err_ = CborWriterError::none;
 
-    void setError(error_type e) noexcept {
+    constexpr void setError(error_type e) noexcept {
         if (err_ == CborWriterError::none) {
             err_ = e;
             m_errorPos = m_current;
         }
     }
 
-    bool write_byte(std::uint8_t b) {
+    constexpr bool write_byte(std::uint8_t b) {
         if(m_current == end_) {
             setError(CborWriterError::sink_error);
             return false;
@@ -1120,10 +1338,8 @@ private:
 
     }
 
-    bool write_bytes(const std::uint8_t* data, std::size_t len) {
+    constexpr bool write_bytes(const std::uint8_t* data, std::size_t len) {
         // Minimal, generic implementation: push_back in a loop.
-        // If OutputContainer supports insert, you can specialize later.
-
         for (std::size_t i = 0; i < len; ++i) {
             if(m_current == end_) {
                 setError(CborWriterError::sink_error);
@@ -1133,12 +1349,11 @@ private:
 
         }
         return true;
-
     }
 
     // ======== CBOR helpers ========
 
-    bool write_major_type_with_length(std::uint8_t major, std::uint64_t length) {
+    constexpr bool write_major_type_with_length(std::uint8_t major, std::uint64_t length) {
         // Encode "major type N, argument = length" as per RFC 8949.
         if (length <= 23) {
             // Small argument in low 5 bits.
@@ -1182,7 +1397,7 @@ private:
     }
 
     template<class Int>
-    bool write_integral(Int value) {
+    constexpr bool write_integral(Int value) {
         static_assert(std::is_integral_v<Int>, "write_integral requires integral type");
 
         using Signed   = std::conditional_t<std::is_signed_v<Int>, Int, std::int64_t>;
@@ -1202,17 +1417,17 @@ private:
         }
     }
 
-    bool write_unsigned(std::uint64_t v) {
+    constexpr bool write_unsigned(std::uint64_t v) {
         // major type 0
         return write_major_type_with_uint(/*major=*/0, v);
     }
 
-    bool write_negative(std::uint64_t n) {
+    constexpr bool write_negative(std::uint64_t n) {
         // major type 1, n encodes -1 - n
         return write_major_type_with_uint(/*major=*/1, n);
     }
 
-    bool write_major_type_with_uint(std::uint8_t major, std::uint64_t v) {
+    constexpr bool write_major_type_with_uint(std::uint8_t major, std::uint64_t v) {
         if (v <= 23u) {
             std::uint8_t ib = static_cast<std::uint8_t>((major << 5) | static_cast<std::uint8_t>(v));
             return write_byte(ib);
@@ -1253,7 +1468,7 @@ private:
         }
     }
 
-    bool write_float32(float f) {
+    constexpr bool write_float32(float f) {
         std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 26u); // 0xFA
         if (!write_byte(ib)) return false;
 
@@ -1270,7 +1485,7 @@ private:
         return write_bytes(buf, 4);
     }
 
-    bool write_float64(double d) {
+    constexpr bool write_float64(double d) {
         std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 27u); // 0xFB
         if (!write_byte(ib)) return false;
 

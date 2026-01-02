@@ -54,7 +54,7 @@ struct VariantOneOf {
     }
 
     constexpr bool transform_to(const auto & serializeFn) const {
-        return  std::visit([&wire](const auto& v) {
+        return  std::visit([&](const auto& v) {
             return !!serializeFn(v);
         }, value);
     }
