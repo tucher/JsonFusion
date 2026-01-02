@@ -96,6 +96,10 @@ concept ReaderLike = requires(R reader,
     // Capture current value to a wire sink (protocol-agnostic raw data capture)
     { mutable_reader.capture_to_sink(std::declval<WireSink<256>&>()) } -> std::same_as<bool>;
     { mutable_reader.capture_to_sink(std::declval<WireSink<1024, true>&>()) } -> std::same_as<bool>;
+    
+    // Create a reader from a WireSink (for re-parsing captured data)
+    // Static method: R::from_sink(iterator, sink) -> R
+    { R::from_sink(std::declval<char*&>(), std::declval<const WireSink<256>&>()) };
 };
 
 /// Type trait to check if a type satisfies ReaderLike at compile time

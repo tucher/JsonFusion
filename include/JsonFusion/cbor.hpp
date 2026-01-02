@@ -497,7 +497,7 @@ public:
 
     __attribute__((noinline)) constexpr bool skip_value()
     {
-        return skip_one<MAX_SKIP_NESTING>(0);
+        return skip_one(0);
     }
 
     __attribute__((noinline)) bool finish() {
@@ -515,6 +515,11 @@ public:
         // TODO: Implement CBOR wire sink capture
         setError(ParseError::ILLFORMED_STRING); // Placeholder error
         return false;
+    }
+
+    static constexpr auto from_sink(char*& it, const WireSinkLike auto & sink) {
+        auto end = sink.data() + sink.max_size();
+        return CborReader<char*, const char*, MAX_SKIP_NESTING>(it, end);
     }
 
 private:
@@ -802,7 +807,7 @@ private:
                 return false;
             }
             for (std::uint64_t i = 0; i < len; ++i) {
-                if (!skip_one<MAX_SKIP_NESTING>(depth + 1)) {
+                if (!skip_one(depth + 1)) {
                     return false;
                 }
             }
@@ -815,8 +820,8 @@ private:
                 return false;
             }
             for (std::uint64_t i = 0; i < len; ++i) {
-                if (!skip_one<MAX_SKIP_NESTING>(depth + 1)) return false; // key
-                if (!skip_one<MAX_SKIP_NESTING>(depth + 1)) return false; // value
+                if (!skip_one(depth + 1)) return false; // key
+                if (!skip_one(depth + 1)) return false; // value
             }
             return true;
         }
@@ -1085,6 +1090,11 @@ public:
         // TODO: Implement CBOR wire sink output
         setError(CborWriterError::buffer_overflow); // Placeholder error
         return false;
+    }
+
+    static constexpr auto from_sink(char*& it, WireSinkLike auto & sink) {
+        auto end = sink.data() + sink.current_size();
+        return CborWriter<char*, const char*>(it, end);
     }
 
 private:

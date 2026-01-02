@@ -4,9 +4,7 @@
 #include <JsonFusion/generic_transformers.hpp>
 #include <JsonFusion/options.hpp>
 #include <JsonFusion/static_schema.hpp>
-#include <JsonFusion/parser.hpp>
-#include <JsonFusion/serializer.hpp>
-
+#include <JsonFusion/wire_sink.hpp>
 
 namespace JsonFusion {
 namespace transformers {
@@ -32,11 +30,11 @@ struct VariantOneOf {
 
     std::variant<Ts...> value;
 
-    constexpr bool transform_from(const wire_type& sink) {
+    constexpr bool transform_from(const auto & parseFn) {
         std::size_t matched_counter = 0;
         std::variant<Ts...> temp;
         auto try_one = [&](auto c) {
-            bool matched = !!Parse(temp.template emplace<c.value>(), sink);
+            bool matched = !!parseFn(temp.template emplace<c.value>());
             if(matched) {
                 matched_counter ++;
                 if(matched_counter == 1) {
@@ -55,9 +53,9 @@ struct VariantOneOf {
         }
     }
 
-    constexpr bool transform_to(wire_type& wire) const {
+    constexpr bool transform_to(const auto & serializeFn) const {
         return  std::visit([&wire](const auto& v) {
-            return !!Serialize(v, wire);
+            return !!serializeFn(v);
         }, value);
     }
 };

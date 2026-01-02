@@ -879,22 +879,9 @@ same interface:
 ```cpp
 #include <JsonFusion/yyjson_reader.hpp>
 
-yyjson_read_err err{};
-yyjson_doc* doc = yyjson_read_opts(
-    const_cast<char*>(copy.data()),
-    copy.size(),
-    0,
-    nullptr,
-    &err
-);
-yyjson_val* root = yyjson_doc_get_root(doc);
-
-JsonFusion::YyjsonReader reader(root);
-
 TwitterData model;
-
+JsonFusion::YyjsonReader reader(input.data(), input.size())
 auto res = JsonFusion::ParseWithReader(model, reader);
-yyjson_doc_free(doc);  // yyjson allocates memory internally!
 ```
 
 This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine.

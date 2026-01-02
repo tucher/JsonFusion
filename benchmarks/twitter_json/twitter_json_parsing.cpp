@@ -146,17 +146,9 @@ int main(int argc, char* argv[]) {
             benchmark("JsonFusion parsing + populating (yyjson backend)", iterations, [&]() {
                 std::string copy = json_data;
 
-                yyjson_read_err err;
-                yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                                   copy.size(), 0, NULL, &err);
-                if (!doc) {
-                    throw std::string(err.msg);
-                }
-                yyjson_val* root = yyjson_doc_get_root(doc);
-                YyjsonReader reader(root);
 
+                YyjsonReader reader(copy.data(), copy.size());
                 auto res = JsonFusion::ParseWithReader(model, reader);
-                yyjson_doc_free(doc);
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                     throw std::runtime_error(std::format("JsonFusion parse error"));
@@ -180,17 +172,9 @@ int main(int argc, char* argv[]) {
             benchmark("JsonFusion streaming (yyjson backend)", iterations, [&]() {
                 std::string copy = json_data;
 
-                yyjson_read_err err;
-                yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                                   copy.size(), 0, NULL, &err);
-                if (!doc) {
-                    throw std::string(err.msg);
-                }
-                yyjson_val* root = yyjson_doc_get_root(doc);
-                YyjsonReader reader(root);
-
+                YyjsonReader reader(copy.data(), copy.size());
                 auto res = JsonFusion::ParseWithReader(streamModel, reader);
-                yyjson_doc_free(doc);
+
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterDataStream>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                     throw std::runtime_error(std::format("JsonFusion parse error"));
@@ -253,27 +237,13 @@ int main(int argc, char* argv[]) {
 
             benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
 
-                yyjson_read_err err;
-                yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-                if (!doc) {
-                    return false;
-                }
-                YyjsonWriter writer(doc);
+                YyjsonWriter writer(serialize_buffer);
                 auto res = JsonFusion::SerializeWithWriter(model, writer);
                 if( !res) {
                     std::cerr << std::format("JsonFusion serialize error") << std::endl;
-                    yyjson_mut_doc_free(doc);
                     return false;
                 } else {
-                    size_t len = 0;
-                    char* json = yyjson_mut_write(doc, 0, &len);
-                    if (!json) {
-                        throw std::runtime_error(std::format("yyson yyjson_mut_write error"));
-                        return false;
-                    }
-                    std::free(json);
-                    final_size = len;
-                    yyjson_mut_doc_free(doc);
+                    final_size = serialize_buffer.size();
                     return true;
                 }
                 return false;

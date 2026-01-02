@@ -72,6 +72,10 @@ concept WriterLike = requires(R writer,
     // Output wire sink contents as a value (protocol-agnostic raw data emission)
     { mutable_writer.output_from_sink(std::declval<const WireSink<256>&>()) } -> std::same_as<bool>;
     { mutable_writer.output_from_sink(std::declval<const WireSink<1024, true>&>()) } -> std::same_as<bool>;
+    
+    // Create a writer from a WireSink (for serializing to captured buffer)
+    // Static method: W::from_sink(iterator, sink) -> W
+    { R::from_sink(std::declval<char*&>(), std::declval<WireSink<256>&>()) };
   };
 
 /// Type trait to check if a type satisfies WriterLike at compile time

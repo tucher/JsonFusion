@@ -149,17 +149,8 @@ int main(int argc, char* argv[]) {
         benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
             std::string copy = json_data;
 
-            yyjson_read_err err;
-            yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                               copy.size(), 0, NULL, &err);
-            if (!doc) {
-                return false;
-            }
-            yyjson_val* root = yyjson_doc_get_root(doc);
-            YyjsonReader reader(root);
-
+            YyjsonReader reader(copy.data(), copy.size());
             auto res = ParseWithReader(canada, reader);
-            yyjson_doc_free(doc);
             if (!res) {
                 std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -178,16 +169,9 @@ int main(int argc, char* argv[]) {
 
             canada.features.set_jsonfusion_context(&stats);
 
-            yyjson_read_err err;
-            yyjson_doc* doc = yyjson_read_opts(const_cast<char*>(copy.data()),
-                                               copy.size(), 0, NULL, &err);
-            if (!doc) {
-                return false;
-            }
-            yyjson_val* root = yyjson_doc_get_root(doc);
-            YyjsonReader reader(root);
+            YyjsonReader reader(copy.data(), copy.size());
             auto res = ParseWithReader(canada, reader, &stats);
-            yyjson_doc_free(doc);
+
             if (!res) {
                 std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -252,26 +236,12 @@ int main(int argc, char* argv[]) {
     {
         std::size_t final_size = 0;
         benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
-
-            yyjson_read_err err;
-            yyjson_mut_doc* doc = yyjson_mut_doc_new(nullptr);
-            if (!doc) {
-                return false;
-            }
-            YyjsonWriter writer(doc);
+            YyjsonWriter writer(serialize_buffer);
             auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer);
             if( !res) {
                 std::cerr << std::format("JsonFusion serialize error") << std::endl;
-                yyjson_mut_doc_free(doc);
                 return false;
             } else {
-                size_t len = 0;
-                char* json = yyjson_mut_write(doc, 0, &len);
-                if (!json) return false;
-                std::free(json);
-                final_size = len;
-                yyjson_mut_doc_free(doc);
-
                 return true;
             }
             return false;

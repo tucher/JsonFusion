@@ -13,22 +13,35 @@ namespace JsonFusion {
 // WireSinkLike Concept
 // ============================================================================
 
+/// Cleanup callback type for protocol-specific resource management.
+/// The callback receives the buffer data and size, allowing it to:
+/// - Decode pointers/handles stored in the buffer
+/// - Free associated resources (e.g., DOM documents)
+/// - Perform any other cleanup needed
+/// 
+/// constexpr-compatible via function pointer (not std::function).
+using WireSinkCleanupFn = void(*)(char* data, std::size_t size);
+
 /// Concept for types that can act as wire format capture buffers.
 /// Wire sinks are protocol-agnostic byte buffers that capture raw wire data
 /// during parsing and emit it during serialization.
 /// 
 /// Different readers/writers may store different data:
-/// - JSON: compact text bytes
-/// - CBOR: binary CBOR bytes (as char sequence)
-/// - DOM readers: node handles/pointers (reinterpreted as char sequence)
-/// - Streaming: file offsets + lengths
+/// - JSON: compact text bytes (no cleanup needed)
+/// - CBOR: binary CBOR bytes (no cleanup needed)
+/// - DOM readers: node handles/pointers + document ownership (cleanup frees doc)
+/// - Streaming: file offsets + lengths (no cleanup needed)
 /// 
 /// Storage is `char` for constexpr compatibility and direct string_view conversion.
 /// Binary protocols can still use char storage - bytes are bytes.
+/// 
+/// Lifecycle: WireSink owns its data and calls cleanup (if set) on destruction,
+/// ensuring RAII semantics for any protocol-specific resources.
 template<typename T>
 concept WireSinkLike = requires(T& sink, const T& csink, 
                                  const char* data, char* out,
-                                 std::size_t size, std::size_t offset) {
+                                 std::size_t size, std::size_t offset,
+                                 WireSinkCleanupFn cleanup) {
     { sink.write(data, size) } -> std::same_as<bool>;
     { csink.read(out, size, offset) } -> std::same_as<bool>;
     { csink.max_size() } -> std::convertible_to<std::size_t>;
@@ -37,6 +50,7 @@ concept WireSinkLike = requires(T& sink, const T& csink,
     { sink.set_size(size) } -> std::same_as<bool>;
     { csink.data() } -> std::same_as<const char*>;
     { sink.data() } -> std::same_as<char*>;
+    { sink.set_cleanup(cleanup) } -> std::same_as<void>;
 };
 
 // ============================================================================
@@ -70,9 +84,46 @@ template<std::size_t MaxSize>
 class WireSink<MaxSize, false> {
     std::array<char, MaxSize> data_{};
     std::size_t size_ = 0;
+    WireSinkCleanupFn cleanup_ = nullptr;
     
 public:
     constexpr WireSink() = default;
+    
+    /// Destructor: calls cleanup if set (for protocol-specific resource management)
+    constexpr ~WireSink() {
+        if (cleanup_) {
+            cleanup_(data_.data(), size_);
+        }
+    }
+    
+    // Non-copyable (owns resources), movable
+    WireSink(const WireSink&) = delete;
+    WireSink& operator=(const WireSink&) = delete;
+    
+    constexpr WireSink(WireSink&& other) noexcept 
+        : data_(std::move(other.data_))
+        , size_(other.size_)
+        , cleanup_(other.cleanup_)
+    {
+        other.size_ = 0;
+        other.cleanup_ = nullptr;  // Transfer ownership
+    }
+    
+    constexpr WireSink& operator=(WireSink&& other) noexcept {
+        if (this != &other) {
+            // Clean up current resources
+            if (cleanup_) {
+                cleanup_(data_.data(), size_);
+            }
+            // Transfer from other
+            data_ = std::move(other.data_);
+            size_ = other.size_;
+            cleanup_ = other.cleanup_;
+            other.size_ = 0;
+            other.cleanup_ = nullptr;
+        }
+        return *this;
+    }
     
     /// Write bytes to the end of the buffer
     /// Returns false if buffer would overflow
@@ -106,8 +157,19 @@ public:
     }
     
     /// Clear buffer (reset size to 0, does not overwrite data)
-    constexpr void clear() { 
+    constexpr void clear() {
+        // Run cleanup before clearing (if set)
+        if (cleanup_) {
+            cleanup_(data_.data(), size_);
+            cleanup_ = nullptr;  // Don't run again
+        }
         size_ = 0; 
+    }
+    
+    /// Set cleanup callback for protocol-specific resource management
+    /// The callback will be called on destruction or clear()
+    constexpr void set_cleanup(WireSinkCleanupFn fn) {
+        cleanup_ = fn;
     }
     
     /// Set the current size (for direct buffer manipulation via data())
@@ -139,9 +201,42 @@ public:
 template<std::size_t MaxSize>
 class WireSink<MaxSize, true> {
     std::vector<char> data_;
+    WireSinkCleanupFn cleanup_ = nullptr;
     
 public:
     constexpr WireSink() = default;
+    
+    /// Destructor: calls cleanup if set (for protocol-specific resource management)
+    constexpr ~WireSink() {
+        if (cleanup_) {
+            cleanup_(data_.data(), data_.size());
+        }
+    }
+    
+    // Non-copyable (owns resources), movable
+    WireSink(const WireSink&) = delete;
+    WireSink& operator=(const WireSink&) = delete;
+    
+    constexpr WireSink(WireSink&& other) noexcept 
+        : data_(std::move(other.data_))
+        , cleanup_(other.cleanup_)
+    {
+        other.cleanup_ = nullptr;  // Transfer ownership
+    }
+    
+    constexpr WireSink& operator=(WireSink&& other) noexcept {
+        if (this != &other) {
+            // Clean up current resources
+            if (cleanup_) {
+                cleanup_(data_.data(), data_.size());
+            }
+            // Transfer from other
+            data_ = std::move(other.data_);
+            cleanup_ = other.cleanup_;
+            other.cleanup_ = nullptr;
+        }
+        return *this;
+    }
     
     /// Write bytes to the end of the buffer
     /// Returns false if adding bytes would exceed MaxSize limit
@@ -174,8 +269,19 @@ public:
     }
     
     /// Clear buffer (deallocates memory)
-    constexpr void clear() { 
+    constexpr void clear() {
+        // Run cleanup before clearing (if set)
+        if (cleanup_) {
+            cleanup_(data_.data(), data_.size());
+            cleanup_ = nullptr;  // Don't run again
+        }
         data_.clear(); 
+    }
+    
+    /// Set cleanup callback for protocol-specific resource management
+    /// The callback will be called on destruction or clear()
+    constexpr void set_cleanup(WireSinkCleanupFn fn) {
+        cleanup_ = fn;
     }
     
     /// Set the current size (for direct buffer manipulation via data())

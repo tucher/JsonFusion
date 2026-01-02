@@ -579,6 +579,11 @@ public:
     __attribute__((noinline)) constexpr JsonIteratorReaderError getError() const {
         return m_error;
     }
+
+    static constexpr auto from_sink(char*& it, const WireSinkLike auto & sink) {
+        auto end = sink.data() + sink.current_size();
+        return JsonIteratorReader<char*, const char*, MaxSkipNesting>(it, end);
+    }
 private:
     constexpr  bool read_number_token(char (&buf)[fp_to_str_detail::NumberBufSize],
                                      std::size_t& index,
@@ -1761,6 +1766,10 @@ public:
         return true;
     }
 
+    static constexpr auto from_sink(char*& it, WireSinkLike auto & sink) {
+        auto end = sink.data() + sink.max_size();
+        return JsonIteratorWriter<char*, const char*, Pretty>(it, end);
+    }
     constexpr bool serialize_literal(std::string_view lit) {
         for (char c : lit) {
             if (m_current == end_) {

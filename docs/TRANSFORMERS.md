@@ -224,6 +224,85 @@ struct MapReduceField;
 - Count entries matching a condition
 - Aggregate metrics from a map
 
+### 4. WireSink as wire_type (Protocol-Agnostic Transformers)
+
+**Purpose**: Capture raw protocol data without committing to a specific wire format.
+
+When `wire_type` is `WireSinkLike`, the transformer receives **callables** instead of wire objects:
+
+```cpp
+struct CompatibleField {
+    using wire_type = WireSink<1024>;
+    StoredT value;
+    
+    bool transform_from(const auto& parseFn) {
+        // parseFn is callable: bool(T& obj)
+        // Attempts to parse into any type using pre-configured reader
+        NewType new_val;
+        if (parseFn(new_val)) {
+            value = convert(new_val);
+            return true;
+        }
+        
+        // Fallback to old format
+        OldType old_val;
+        if (parseFn(old_val)) {
+            value = convert_legacy(old_val);
+            return true;
+        }
+        return false;
+    }
+    
+    bool transform_to(const auto& serializeFn) const {
+        // serializeFn is callable: bool(const T& obj)
+        // Serializes using pre-configured writer
+        NewType wire_val = convert(value);
+        return serializeFn(wire_val);
+    }
+};
+```
+
+**How it works**:
+
+**Parse path**:
+```cpp
+// 1. Reader calls capture_to_sink(WireSink)
+//    - JSON: stores raw bytes
+//    - YyJSON: stores node pointer (O(1))
+// 2. Parser calls transform_from(parseFn)
+//    - parseFn = [&](T& obj) { 
+//        auto reader = Reader::from_sink(sink);
+//        return ParseWithReader(obj, reader);
+//      }
+// 3. Transformer tries multiple wire formats
+```
+
+**Serialize path**:
+```cpp
+// 1. Parser calls transform_to(serializeFn)
+//    - serializeFn = [&](const T& obj) {
+//        auto writer = Writer::from_sink(sink);
+//        auto result = SerializeWithWriter(obj, writer);
+//        writer.finish();  // Populates sink
+//        return result;
+//      }
+// 2. Transformer produces wire format
+// 3. Writer calls output_from_sink(WireSink)
+//    - JSON: copies raw bytes
+//    - YyJSON: copies DOM node (O(n)), sink owns document via RAII
+```
+
+**Key properties**:
+- Protocol-agnostic: same transformer works with JSON, YyJSON, CBOR
+- O(1) for DOM: YyJSON stores `[doc*, node*]` handles
+- RAII: WireSink cleanup callback manages resources (e.g., frees yyjson documents)
+- Immutable: WireSink reusable, multiple `output_from_sink` calls allowed
+
+**Use cases**:
+- Schema evolution (try new format, fall back to old)
+- Multi-version compatibility
+- Format migrations with backward compatibility
+
 ## Full Composability
 
 Because `wire_type` can be **any** `ParsableValue`, transformers compose naturally:

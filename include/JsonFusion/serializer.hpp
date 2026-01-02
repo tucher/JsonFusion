@@ -481,12 +481,32 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
     using ObT = static_schema::serialize_transform_traits<Field>::wire_type;
     ObT ob;
     using Meta = options::detail::annotation_meta_getter<ObT>;
-    if(!obj.transform_to(ob)) {
-        return ctx.withError(SerializeError::TRANSFORMER_ERROR, writer);
+    if constexpr(!WireSinkLike<ObT>) {
+        if(!obj.transform_to(ob)) {
+            return ctx.withError(SerializeError::TRANSFORMER_ERROR, writer);
+        } else {
+            return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), writer, ctx, userCtx);
+        }
     } else {
-        return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), writer, ctx, userCtx);
-    }
+        auto serializeFn = [&]<class ObjT>(const ObjT& srcObj) constexpr {
+            auto it = ob.data();
+            auto tempWriter = Writer::from_sink(it, ob);
+            auto tempResult = SerializeWithWriter(srcObj, tempWriter, userCtx);
+            if(!tempResult) {
+                
+            } else {
+                std::size_t written = it - ob.data();
+                ob.set_size(written);
+            }
+            return tempResult;
+        };
+        if(!obj.transform_to(serializeFn)) {
+            return ctx.withError(SerializeError::TRANSFORMER_ERROR, writer);
+        } else {
+            return serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(ob), writer, ctx, userCtx);
+        }
 
+    }
 }
 
 } // namespace serializer_details

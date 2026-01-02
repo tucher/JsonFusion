@@ -105,9 +105,9 @@ public:
 };
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::BoolLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT & obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (reader::TryParseStatus st = reader.read_bool(obj); st == reader::TryParseStatus::error) {
         return ctx.withReaderError(reader);
     } else if (st == reader::TryParseStatus::no_match) {
@@ -123,9 +123,9 @@ constexpr bool ParseNonNullValue(ObjT & obj, Tokenizer & reader, CTX &ctx, UserC
 }
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::NumberLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     if (reader::TryParseStatus st = reader.template read_number<ObjT>(obj);
                 st == reader::TryParseStatus::error) {
         return ctx.withReaderError(reader);
@@ -317,9 +317,9 @@ constexpr bool read_string_into(
 }
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::StringLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
 
@@ -389,11 +389,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ParsableArrayLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    typename Tokenizer::ArrayFrame fr;
+    typename Reader::ArrayFrame fr;
     reader::IterationStatus iterStatus = reader.read_array_begin(fr);
     if(iterStatus.status == reader::TryParseStatus::no_match) {
         return ctx.withParseError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader);
@@ -484,11 +484,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 }
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ParsableMapLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    typename Tokenizer::MapFrame fr;
+    typename Reader::MapFrame fr;
 
     reader::IterationStatus iterStatus = reader.read_map_begin(fr);
     if(iterStatus.status == reader::TryParseStatus::no_match) {
@@ -682,9 +682,9 @@ template<class StructT, std::size_t StructIndex>
 using StructFieldMeta = options::detail::annotation_meta_getter<
     introspection::structureElementTypeByIndex<StructIndex, StructT>
 >;
-template <class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx, std::size_t... StructIndex>
+template <class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx, std::size_t... StructIndex>
     requires static_schema::ObjectLike<ObjT>
-constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
+constexpr bool ParseStructField(ObjT& structObj, Reader & reader, CTX &ctx, std::index_sequence<StructIndex...>, std::size_t requiredIndex, UserCtx * userCtx = nullptr) {
     bool ok = false;
     (
         (requiredIndex == StructIndex
@@ -705,10 +705,10 @@ constexpr bool ParseStructField(ObjT& structObj, Tokenizer & reader, CTX &ctx, s
     return ok;
 }
 
-template<std::size_t I, class ObjT, class Tokenizer, class CTX, class UserCtx>
+template<std::size_t I, class ObjT, class Reader, class CTX, class UserCtx>
 constexpr bool parse_struct_field_one(
     ObjT& structObj,
-    Tokenizer& reader,
+    Reader& reader,
     CTX& ctx,
     UserCtx* userCtx)
 {
@@ -721,11 +721,11 @@ constexpr bool parse_struct_field_one(
 }
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ObjectLike<ObjT>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    typename Tokenizer::MapFrame fr;
+    typename Reader::MapFrame fr;
 
     reader::IterationStatus iterStatus = reader.read_map_begin(fr);
     if(iterStatus.status == reader::TryParseStatus::no_match) {
@@ -859,12 +859,12 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
 
 
-template <class Opts, class ObjT, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ObjectLike<ObjT>
              &&
              Opts::template has_option<options::detail::as_array_tag>
-constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
-    typename Tokenizer::ArrayFrame fr;
+constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+    typename Reader::ArrayFrame fr;
     reader::IterationStatus iterStatus = reader.read_array_begin(fr);
     if(iterStatus.status == reader::TryParseStatus::no_match) {
         return ctx.withParseError(ParseError::NON_ARRAY_IN_ARRAY_LIKE_VALUE, reader);
@@ -922,9 +922,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
     return true;
 }
 
-template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires (!static_schema::ParseTransformerLike<Field> && !WireSinkLike<Field>)
-constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseValue(Field & field, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
         return false; // cannot parse non-json
@@ -951,9 +951,9 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
 }
 
 // WireSink: First-class wire format capture
-template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires WireSinkLike<Field>
-constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseValue(Field & field, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     field.clear();
     if (!reader.capture_to_sink(field)) {
         return ctx.withReaderError(reader);
@@ -961,16 +961,31 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
     return true;
 }
 
-template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Tokenizer, class CTX, class UserCtx = void>
+template <class FieldOptions, static_schema::ParsableValue Field, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ParseTransformerLike<Field>
-constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
+constexpr bool ParseValue(Field & field, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
     using StT = static_schema::parse_transform_traits<Field>::wire_type;
     StT ob;
     using Meta = options::detail::annotation_meta_getter<StT>;
     bool r = parser_details::ParseValue<typename Meta::options>(Meta::getRef(ob), reader, ctx, userCtx);
     if(r) {
-        if(!field.transform_from(ob)) {
-            return ctx.withParseError(ParseError::TRANSFORMER_ERROR, reader);
+        if constexpr(!WireSinkLike<StT>) {
+            if(!field.transform_from(ob)) {
+                return ctx.withParseError(ParseError::TRANSFORMER_ERROR, reader);
+            }
+        } else {
+            auto parseFn = [&]<class ObjT>(ObjT& targetObj) constexpr {
+                char * it = ob.data();
+                auto tempReader = Reader::from_sink(it, ob);
+                auto tempResult = ParseWithReader(targetObj, tempReader, userCtx);
+                if(!tempResult) {
+
+                }
+                return tempResult;
+            };
+            if(!field.transform_from(parseFn)) {
+                return ctx.withParseError(ParseError::TRANSFORMER_ERROR, reader);
+            }
         }
     }
     return r;
