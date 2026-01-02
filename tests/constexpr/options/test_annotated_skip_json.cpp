@@ -10,14 +10,14 @@ using namespace JsonFusion::options;
 using namespace TestHelpers;
 
 // ============================================================================
-// Test: skip<> - Field Not Filled
+// Test: skip - Field Not Filled
 // ============================================================================
 
 // Test: skip on int - field remains default-initialized
 constexpr bool test_skip_json_int_not_filled() {
     struct Test {
         int regular;
-        Annotated<int, skip<>> skipped;
+        Annotated<int, skip> skipped;
     };
     
     Test obj{};
@@ -44,7 +44,7 @@ static_assert(test_skip_json_int_not_filled(), "skip on int - field not filled")
 constexpr bool test_skip_json_string_not_filled() {
     struct Test {
         std::string regular;
-        Annotated<std::string, skip<>> skipped;
+        Annotated<std::string, skip> skipped;
     };
     
     Test obj{};
@@ -70,7 +70,7 @@ constexpr bool test_skip_json_nested_object_not_filled() {
     
     struct Test {
         Inner regular;
-        Annotated<Inner, skip<>> skipped;
+        Annotated<Inner, skip> skipped;
     };
     
     Test obj{};
@@ -92,7 +92,7 @@ static_assert(test_skip_json_nested_object_not_filled(), "skip on nested object 
 constexpr bool test_skip_json_array_not_filled() {
     struct Test {
         std::vector<int> regular;
-        Annotated<std::vector<int>, skip<>> skipped;
+        Annotated<std::vector<int>, skip> skipped;
     };
     
     Test obj{};
@@ -114,7 +114,7 @@ static_assert(test_skip_json_array_not_filled(), "skip on array - field not fill
 constexpr bool test_skip_json_bool_not_filled() {
     struct Test {
         bool regular;
-        Annotated<bool, skip<>> skipped;
+        Annotated<bool, skip> skipped;
     };
     
     Test obj{};
@@ -132,35 +132,11 @@ constexpr bool test_skip_json_bool_not_filled() {
 }
 static_assert(test_skip_json_bool_not_filled(), "skip on bool - field not filled");
 
-// Test: skip with custom depth limit
-constexpr bool test_skip_json_custom_depth() {
-    struct Test {
-        Annotated<int, skip<2>> skipped;
-    };
-    
-    Test obj{};
-    obj.skipped.get() = 999;
-    
-    // Simple value should work fine
-    std::string json1 = R"({"skipped": 42})";
-    auto result1 = Parse(obj, json1);
-    if (!result1) return false;
-    if (obj.skipped.get() != 999) return false;
-    
-    // Nested object within depth limit should work
-    std::string json2 = R"({"skipped": {"a": 1}})";
-    auto result2 = Parse(obj, json2);
-    if (!result2) return false;
-    if (obj.skipped.get() != 999) return false;
-    
-    return true;
-}
-static_assert(test_skip_json_custom_depth(), "skip with custom depth limit");
 
 // Test: skip - JSON structure is still validated
 constexpr bool test_skip_json_validates_json() {
     struct Test {
-        Annotated<int, skip<>> skipped;
+        Annotated<int, skip> skipped;
     };
     
     Test obj{};
@@ -184,8 +160,8 @@ static_assert(test_skip_json_validates_json(), "skip still validates JSON struct
 constexpr bool test_skip_json_multiple_fields() {
     struct Test {
         int regular;
-        Annotated<int, skip<>> skipped1;
-        Annotated<std::string, skip<>> skipped2;
+        Annotated<int, skip> skipped1;
+        Annotated<std::string, skip> skipped2;
         bool regular2;
     };
     

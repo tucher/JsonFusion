@@ -89,8 +89,8 @@ concept ReaderLike = requires(R reader,
     // Skip to end, ensuring only whitespace remains
     { mutable_reader.finish() } -> std::same_as<bool>;
     
-    // Skip entire value (with optional output to sink)
-    { mutable_reader.template skip_value<2>(static_cast<void*>(nullptr), std::numeric_limits<std::size_t>::max()) } -> std::same_as<bool>;
+    // Skip entire value (without capturing)
+    { mutable_reader.skip_value() } -> std::same_as<bool>;
     
     // ========== WireSink Operations ==========
     // Capture current value to a wire sink (protocol-agnostic raw data capture)

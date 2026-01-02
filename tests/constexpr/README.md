@@ -165,12 +165,13 @@ See `CHECKLIST.md` for detailed progress tracking.
 - ✅ Composite types (nested structs, arrays, optionals, unique_ptr)
 - ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode
 - ✅ Validation constraints (range, length, items, not_required, required, allow_excess_fields, map validators)
-- ✅ Annotated<> options (key, as_array, skip, wire_sink)
+- ✅ Annotated<> options (key, as_array, skip)
 - ✅ Error handling (JSON path tracking, depth calculation)
 - ✅ Streaming (producers & consumers for arrays and maps)
 - ✅ Limits (nesting depth, large arrays, many fields, many map keys)
 - 🔲 Additional error handling tests
 - 🔲 Additional serialization tests
+- ✅ WireSink
 
 
 ## Examples

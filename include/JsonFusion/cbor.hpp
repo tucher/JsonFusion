@@ -12,7 +12,7 @@
 
 namespace JsonFusion {
 
-template<class It, class Sent>
+template<class It, class Sent, std::size_t MAX_SKIP_NESTING=64>
 class CborReader {
 public:
     enum class ParseError {
@@ -495,9 +495,7 @@ public:
 
     // ========== Utility Operations ==========
 
-    template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    __attribute__((noinline)) constexpr bool skip_value(OutputSinkContainer* = nullptr,
-                                   std::size_t          = std::numeric_limits<std::size_t>::max())
+    __attribute__((noinline)) constexpr bool skip_value()
     {
         return skip_one<MAX_SKIP_NESTING>(0);
     }
@@ -763,7 +761,6 @@ private:
         }
     }
 
-    template<std::size_t MAX_SKIP_NESTING>
     bool skip_one(std::size_t depth) {
         if (depth > MAX_SKIP_NESTING) {
             setError(ParseError::SKIPPING_STACK_OVERFLOW);

@@ -12,6 +12,7 @@
 #include "static_schema.hpp"
 #include "options.hpp"
 #include "validators.hpp"
+#include "wire_sink.hpp"
 
 #include "struct_introspection.hpp"
 #include "path.hpp"
@@ -816,9 +817,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Tokenizer & reader, CTX &ctx, UserCt
 
         if(arrayIndex == std::size_t(-1)) {
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
-                using Opt = typename Opts::template get_option<options::detail::allow_excess_fields_tag>;
-
-                if(!reader.template skip_value<Opt::SkipDepthLimit>()) {
+                if(!reader.template skip_value()) {
                     return ctx.withReaderError(reader);
                 }
             } else {
@@ -930,16 +929,7 @@ constexpr bool ParseValue(Field & field, Tokenizer & reader, CTX &ctx, UserCtx *
     if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
         return false; // cannot parse non-json
     }else if constexpr (FieldOptions::template has_option<options::detail::skip_tag>) {
-        using Opt = FieldOptions::template get_option<options::detail::skip_tag>;
-        if(!reader.template skip_value<Opt::SkipDepthLimit>()) {
-            return ctx.withReaderError(reader);
-        } else {
-            return true;
-        }
-    } else if constexpr(FieldOptions::template has_option<options::detail::wire_sink_tag>) {
-        using Opt = FieldOptions::template get_option<options::detail::wire_sink_tag>;
-        static_assert(static_schema::StringLike<Field>, "wire_sink should be used with string-like types");
-        if(!reader.template skip_value<Opt::SkipDepthLimit>(std::addressof(field), Opt::MaxStringLength)) {
+        if(!reader.skip_value()) {
             return ctx.withReaderError(reader);
         } else {
             return true;
@@ -1025,6 +1015,11 @@ constexpr auto Parse(InputObjectT & obj, const ContainterT & c, UserCtx * userCt
 template<static_schema::ParsableValue InputObjectT, class UserCtx = void>
 constexpr auto Parse(InputObjectT& obj, std::string_view sv, UserCtx * userCtx = nullptr) {
     return Parse(obj, sv.data(), sv.data() + sv.size(), userCtx);
+}
+
+template<static_schema::ParsableValue InputObjectT, WireSinkLike Sink, class UserCtx = void>
+constexpr auto Parse(InputObjectT& obj, const Sink& sink, UserCtx * userCtx = nullptr) {
+    return Parse(obj, sink.data(), sink.data() + sink.current_size(), userCtx);
 }
 
 

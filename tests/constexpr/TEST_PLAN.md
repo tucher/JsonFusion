@@ -319,7 +319,7 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
   - Error when required field is missing
 
 - `test_validation_allow_excess_fields.cpp`
-  - `allow_excess_fields<>` at struct level
+  - `allow_excess_fields` at struct level
   - Unknown JSON fields are allowed (not rejected)
   - Unknown fields are silently skipped
   - Error when unknown field exceeds depth limit
@@ -416,15 +416,15 @@ This document outlines comprehensive test coverage for JsonFusion's compile-time
 ### 5.4 skip
 
 - `test_annotated_skip_json.cpp`
-  - `skip<MaxSkipDepth>` - Fast-skip JSON value without parsing
+  - `skip` - Fast-skip JSON value without parsing
   - Handles nested structures up to `MaxSkipDepth` levels
   - Performance optimization for unused fields
   - Depth limit behavior when exceeded
 
-### 5.7 wire_sink
+### 5.7 WireSink
 
-- `test_annotated_json_sink.cpp`
-  - `wire_sink<MaxSkipDepth, MaxStringLength>` - Capture raw JSON as string
+- `test_wire_sink_json_integration.cpp`
+  - `WireSink` - Capture raw JSON as string
   - Deferred parsing or pass-through scenarios
   - String length limit behavior
   - Depth limit behavior

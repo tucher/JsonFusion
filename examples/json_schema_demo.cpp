@@ -87,9 +87,6 @@ struct Address {
     
     // Option: exclude - excluded from schema and serialization
     A<std::string, exclude> internal_id;
-    
-    // Option: wire_sink - accepts any JSON value
-    A<std::string, wire_sink<>> metadata;
 };
 
 // Structure with arrays and optional fields
@@ -109,7 +106,7 @@ struct Configuration_ {
     A<std::string, string_constant<"configuration">> object_type;
     A<int, constant<14>> version;
 };
-using Configuration = A<Configuration_, not_required<"settings">, allow_excess_fields<>>;
+using Configuration = A<Configuration_, not_required<"settings">, allow_excess_fields>;
 
 // Option: indexes_as_keys with int_key<N> - for CBOR-style numeric keys
 struct IndexedData_ {
@@ -138,22 +135,17 @@ struct LegacyAPI_ {
     int user_id;
     // These fields are deprecated/forbidden but we want to allow other excess fields
 };
-using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
+using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields>;
 
 // Struct demonstrating new WireSink types (first-class wire capture)
 struct WireSinkExample {
     int id;
     std::string name;
     
-    // NEW: WireSink<MaxSize> - first-class wire format capture
     // Static buffer with max 1024 bytes
     WireSink<1024> raw_data_static;
     
-    // NEW: WireSink<MaxSize, dynamic=true> - dynamic buffer bounded by MaxSize
     WireSink<2048, true> raw_data_dynamic;
-    
-    // OLD: wire_sink<> annotation (deprecated but still supported)
-    A<std::string, wire_sink<>> metadata_old_style;
     
     std::optional<std::string> description;
 };
@@ -166,7 +158,7 @@ int main() {
     std::cout << "\nThis demo showcases ALL validators and options available in JsonFusion.\n";
     std::cout << "Generated schemas conform to JSON Schema Draft 2020-12.\n\n";
     
-    // Example 1: Address - String validators, enums, as_array, key<>, exclude, wire_sink
+    // Example 1: Address - String validators, enums, as_array, key<>, exclude
     WriteSchemaInline<Address>(schema);
     print_schema("Address Schema (Inline)", schema);
     std::cout << "  ✓ min_length, max_length - string length constraints\n";
@@ -174,7 +166,6 @@ int main() {
     std::cout << "  ✓ key<> - custom JSON property name\n";
     std::cout << "  ✓ as_array - tuple-like array schema (prefixItems)\n";
     std::cout << "  ✓ exclude - field excluded from schema\n";
-    std::cout << "  ✓ wire_sink - accepts any JSON value\n";
     
     // Example 2: Person - Numeric validators, arrays, optional, required
     schema.clear();
@@ -239,7 +230,6 @@ int main() {
     std::cout << "  ✓ WireSink<MaxSize> - first-class wire capture type (static buffer)\n";
     std::cout << "  ✓ WireSink<MaxSize, dynamic=true> - first-class wire capture (dynamic buffer)\n";
     std::cout << "  ✓ Both generate empty schema {} (accept any JSON value)\n";
-    std::cout << "  ✓ OLD: wire_sink<> annotation still supported (deprecated)\n";
     std::cout << "  Note: WireSink captures raw protocol data, useful for unknown schemas\n";
 
     std::cout << "\n✅ All validators and options demonstrated!\n";

@@ -732,7 +732,7 @@ constexpr bool test_forbidden_with_allow_excess() {
         int field2;
     };
     
-    Annotated<Test, forbidden<"pass">, allow_excess_fields<>> obj{};
+    Annotated<Test, forbidden<"pass">, allow_excess_fields> obj{};
     std::string json = R"({"field1": 10, "field2": 20, "custom": 100})";  // unknown but not forbidden
     auto result = Parse(obj, json);
     
@@ -747,7 +747,7 @@ constexpr bool test_forbidden_with_allow_excess_forbidden_present() {
         int field2;
     };
     
-    Annotated<Test, forbidden<"pass">, allow_excess_fields<>> obj{};
+    Annotated<Test, forbidden<"pass">, allow_excess_fields> obj{};
     std::string json = R"({"field1": 10, "pass": "secret"})";  // forbidden field present
     auto result = Parse(obj, json);
     

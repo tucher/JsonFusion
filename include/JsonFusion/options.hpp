@@ -28,7 +28,6 @@ struct description_tag{};
 struct as_array_tag {};
 struct indexes_as_keys_tag {};
 struct skip_tag {};
-struct wire_sink_tag{};
 struct skip_nulls_tag{};
 }
 
@@ -39,23 +38,10 @@ struct exclude {
     }
 };
 
-template<std::size_t MaxSkipDepth=64>
 struct skip {
-    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::skip_tag;
     static constexpr std::string_view to_string() {
         return "skip";
-    }
-};
-
-
-template<std::size_t MaxSkipDepth=64, std::size_t MaxStringLength_=(1<<15)>
-struct wire_sink {
-    static constexpr std::size_t MaxStringLength = MaxStringLength_;
-    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
-    using tag = detail::wire_sink_tag;
-    static constexpr std::string_view to_string() {
-        return "wire_sink";
     }
 };
 
@@ -114,9 +100,7 @@ struct skip_nulls {
     }
 };
 
-template<std::size_t MaxSkipDepth=64>
 struct allow_excess_fields{
-    static constexpr std::size_t SkipDepthLimit = MaxSkipDepth;
     using tag = detail::allow_excess_fields_tag;
     static constexpr std::string_view to_string() {
         return "allow_excess_fields";

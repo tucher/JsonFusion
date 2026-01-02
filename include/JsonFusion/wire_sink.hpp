@@ -19,20 +19,24 @@ namespace JsonFusion {
 /// 
 /// Different readers/writers may store different data:
 /// - JSON: compact text bytes
-/// - CBOR: binary CBOR bytes
-/// - DOM readers: node handles/pointers
+/// - CBOR: binary CBOR bytes (as char sequence)
+/// - DOM readers: node handles/pointers (reinterpreted as char sequence)
 /// - Streaming: file offsets + lengths
+/// 
+/// Storage is `char` for constexpr compatibility and direct string_view conversion.
+/// Binary protocols can still use char storage - bytes are bytes.
 template<typename T>
 concept WireSinkLike = requires(T& sink, const T& csink, 
-                                 const std::uint8_t* data, std::uint8_t* out,
+                                 const char* data, char* out,
                                  std::size_t size, std::size_t offset) {
     { sink.write(data, size) } -> std::same_as<bool>;
     { csink.read(out, size, offset) } -> std::same_as<bool>;
     { csink.max_size() } -> std::convertible_to<std::size_t>;
     { csink.current_size() } -> std::convertible_to<std::size_t>;
     { sink.clear() } -> std::same_as<void>;
-    { csink.data() } -> std::same_as<const std::uint8_t*>;
-    { sink.data() } -> std::same_as<std::uint8_t*>;
+    { sink.set_size(size) } -> std::same_as<bool>;
+    { csink.data() } -> std::same_as<const char*>;
+    { sink.data() } -> std::same_as<char*>;
 };
 
 // ============================================================================
@@ -64,7 +68,7 @@ class WireSink;
 
 template<std::size_t MaxSize>
 class WireSink<MaxSize, false> {
-    std::array<std::uint8_t, MaxSize> data_{};
+    std::array<char, MaxSize> data_{};
     std::size_t size_ = 0;
     
 public:
@@ -72,7 +76,7 @@ public:
     
     /// Write bytes to the end of the buffer
     /// Returns false if buffer would overflow
-    constexpr bool write(const std::uint8_t* bytes, std::size_t count) {
+    constexpr bool write(const char* bytes, std::size_t count) {
         if (size_ + count > MaxSize) {
             return false; // Buffer overflow
         }
@@ -83,7 +87,7 @@ public:
     
     /// Read bytes from the buffer at given offset
     /// Returns false if read would exceed current size
-    constexpr bool read(std::uint8_t* out, std::size_t count, std::size_t offset) const {
+    constexpr bool read(char* out, std::size_t count, std::size_t offset) const {
         if (offset + count > size_) {
             return false; // Read beyond current data
         }
@@ -106,15 +110,24 @@ public:
         size_ = 0; 
     }
     
+    /// Set the current size (for direct buffer manipulation via data())
+    /// Use this after writing directly to data() pointer to update the tracked size
+    /// Returns false if new_size exceeds MaxSize
+    constexpr bool set_size(std::size_t new_size) {
+        if (new_size > MaxSize) return false;
+        size_ = new_size;
+        return true;
+    }
+    
     // ---- Convenience access methods ----
     
     /// Direct access to underlying buffer (read-only)
-    constexpr const std::uint8_t* data() const { 
+    constexpr const char* data() const { 
         return data_.data(); 
     }
     
     /// Direct access to underlying buffer (mutable)
-    constexpr std::uint8_t* data() { 
+    constexpr char* data() { 
         return data_.data(); 
     }
 };
@@ -125,14 +138,14 @@ public:
 
 template<std::size_t MaxSize>
 class WireSink<MaxSize, true> {
-    std::vector<std::uint8_t> data_;
+    std::vector<char> data_;
     
 public:
     constexpr WireSink() = default;
     
     /// Write bytes to the end of the buffer
     /// Returns false if adding bytes would exceed MaxSize limit
-    constexpr bool write(const std::uint8_t* bytes, std::size_t count) {
+    constexpr bool write(const char* bytes, std::size_t count) {
         if (data_.size() + count > MaxSize) {
             return false; // Would exceed maximum size
         }
@@ -142,7 +155,7 @@ public:
     
     /// Read bytes from the buffer at given offset
     /// Returns false if read would exceed current size
-    constexpr bool read(std::uint8_t* out, std::size_t count, std::size_t offset) const {
+    constexpr bool read(char* out, std::size_t count, std::size_t offset) const {
         if (offset + count > data_.size()) {
             return false; // Read beyond current data
         }
@@ -165,15 +178,24 @@ public:
         data_.clear(); 
     }
     
+    /// Set the current size (for direct buffer manipulation via data())
+    /// Use this after writing directly to data() pointer to update the tracked size
+    /// Returns false if new_size exceeds MaxSize or requires reallocation that would exceed MaxSize
+    constexpr bool set_size(std::size_t new_size) {
+        if (new_size > MaxSize) return false;
+        data_.resize(new_size);
+        return true;
+    }
+    
     // ---- Convenience access methods ----
     
     /// Direct access to underlying buffer (read-only)
-    constexpr const std::uint8_t* data() const { 
+    constexpr const char* data() const { 
         return data_.data(); 
     }
     
     /// Direct access to underlying buffer (mutable)
-    constexpr std::uint8_t* data() { 
+    constexpr char* data() { 
         return data_.data(); 
     }
 };

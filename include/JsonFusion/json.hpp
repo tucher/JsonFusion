@@ -31,12 +31,12 @@ enum class JsonIteratorReaderError {
     ILLFORMED_STRING,
     ILLFORMED_NUMBER,
     ILLFORMED_ARRAY,
-    JSON_SINK_OVERFLOW,
+    WIRE_SINK_OVERFLOW,
     SKIPPING_STACK_OVERFLOW,
     NUMERIC_VALUE_IS_OUT_OF_STORAGE_TYPE_RANGE
 };
 
-template<class It, class Sent>
+template<class It, class Sent, std::size_t MaxSkipNesting = 64>
 class JsonIteratorReader {
 public:
     using iterator_type = It;
@@ -115,12 +115,21 @@ public:
         return true;
     }
     
-    // WireSink support - stub implementation (TODO: implement in Step 4)
+    // WireSink support - capture raw JSON value into sink
     template<WireSinkLike Sink>
-    constexpr bool capture_to_sink(Sink& /*sink*/) {
-        // TODO: Implement wire sink capture
-        setError(JsonIteratorReaderError::ILLFORMED_STRING); // Placeholder error
-        return false;
+    constexpr bool capture_to_sink(Sink& sink) {
+        sink.clear();
+        WireSinkFiller<Sink> filler{&sink, false};
+        
+        if (!skip_json_value_internal<MaxSkipNesting>(filler)) {
+            if (filler.overflow) {
+                setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
+            }
+            // Error already set by skip_json_value_internal if not overflow
+            return false;
+        }
+        
+        return true;
     }
 
 
@@ -563,21 +572,9 @@ public:
     }
 
 
-    template <std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    __attribute__((noinline)) constexpr bool skip_value(OutputSinkContainer * outputContainer = nullptr, std::size_t MaxStringLength = std::numeric_limits<std::size_t>::max()) {
-        if constexpr(std::is_same_v<OutputSinkContainer, void>) {
-            NoOpFiller filler{};
-            return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
-        } else if constexpr(detail::DynamicContainerTypeConcept<OutputSinkContainer>) {
-            DynContainerFiller filler{outputContainer, MaxStringLength};
-            outputContainer->clear();
-            return skip_json_value_internal<MAX_SKIP_NESTING>(filler);
-        } else {
-            StContainerFiller filler{outputContainer->data(), std::min(MaxStringLength, outputContainer->size())};
-            auto r = skip_json_value_internal<MAX_SKIP_NESTING>(filler);
-
-            return r;
-        }
+    __attribute__((noinline)) constexpr bool skip_value() {
+        NoOpFiller filler{};
+        return skip_json_value_internal<MaxSkipNesting>(filler);
     }
     __attribute__((noinline)) constexpr JsonIteratorReaderError getError() const {
         return m_error;
@@ -735,7 +732,7 @@ private:
                     return false;
                 }
                 if (!filler(*current_)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -751,7 +748,7 @@ private:
                 }
 
                 if (!filler(*current_)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -821,7 +818,7 @@ private:
         }
         // mirror the opening delimiter
         if (!filler(c)) {
-            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+            setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
             return false;
         }
         ++current_; // skip first '{' or '['
@@ -849,7 +846,7 @@ private:
                     return false;
                 }
                 if (!filler(ch))  {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -861,7 +858,7 @@ private:
                     return false;
                 }
                 if(!filler(ch)) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -894,7 +891,7 @@ private:
                 } else {
                     // punctuation: mirror and advance
                     if (!filler(ch))  {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                        setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -1132,6 +1129,26 @@ private:
         constexpr void finish(){}
     };
 
+    template<WireSinkLike Sink>
+    struct WireSinkFiller {
+        Sink* sink;
+        bool overflow = false;
+        
+        constexpr bool operator()(char ch) {
+            if (overflow) return false;
+            
+            if (!sink->write(&ch, 1)) {
+                overflow = true;
+                return false;
+            }
+            return true;
+        }
+        
+        constexpr void finish() {
+            // WireSink already tracks size internally
+        }
+    };
+
     template<class Filler>
     constexpr bool skip_string_raw_via_filler(Filler& f) {
         // Copy raw JSON string (with escapes) char-by-char through filler
@@ -1143,7 +1160,7 @@ private:
             return false;
         }
         if (!f('"')) {
-            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+            setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
             return false;
         }
         ++current_;
@@ -1160,7 +1177,7 @@ private:
             // Closing quote
             if (c == '"') {
                 if (!f('"')) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -1170,7 +1187,7 @@ private:
             // Escape sequence
             if (c == '\\') {
                 if (!f('\\')) {
-                    setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                    setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                     return false;
                 }
                 ++current_;
@@ -1193,7 +1210,7 @@ private:
                 case 'n':
                 case 't':
                     if (!f(esc)) {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                        setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -1202,7 +1219,7 @@ private:
                 case 'u': {
                     // Unicode escape: \uXXXX (and potentially surrogate pair)
                     if (!f('u')) {
-                        setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                        setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                         return false;
                     }
                     ++current_;
@@ -1221,7 +1238,7 @@ private:
                         }
                         hex[i] = h;
                         if (!f(h)) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                            setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
@@ -1249,7 +1266,7 @@ private:
                             return false;
                         }
                         if (!f('\\')) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                            setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
@@ -1259,7 +1276,7 @@ private:
                             return false;
                         }
                         if (!f('u')) {
-                            setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                            setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                             return false;
                         }
                         ++current_;
@@ -1287,7 +1304,7 @@ private:
                             u2 = static_cast<std::uint16_t>((u2 << 4) | v);
                             
                             if (!f(h)) {
-                                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                                setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                                 return false;
                             }
                             ++current_;
@@ -1321,7 +1338,7 @@ private:
             
             // Normal character - just copy
             if (!f(c)) {
-                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                 return false;
             }
             ++current_;
@@ -1364,7 +1381,7 @@ private:
             std::size_t remaining = max_len - total;
             if (remaining == 0) {
                 // Overflow: we hit the max_len but reader still has string data
-                setError(JsonIteratorReaderError::JSON_SINK_OVERFLOW);
+                setError(JsonIteratorReaderError::WIRE_SINK_OVERFLOW);
                 return false;
             }
 
@@ -1412,7 +1429,7 @@ private:
 
 
 };
-static_assert(JsonFusion::reader::ReaderLike<JsonIteratorReader<char*, char*>>);
+static_assert(JsonFusion::reader::ReaderLike<JsonIteratorReader<char*, char*, 64>>);
 
 enum class JsonIteratorWriterError {
     NO_ERROR,
@@ -1661,20 +1678,6 @@ public:
             }
         }
     }
-    constexpr bool output_serialized_value(const char * data, std::size_t size, bool null_ended = false) {
-        for(std::size_t i = 0; i < size; i ++) {
-            if(m_current == end_) {
-                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
-                return false;
-            }
-            if(data[i] == 0) {
-                break;
-            }
-            *m_current ++ = data[i];
-        }
-        return true;
-
-    }
     __attribute__((noinline)) constexpr bool write_string(const char * data, std::size_t size, bool null_ended = false) {
 
         if(m_current == end_) {
@@ -1741,12 +1744,21 @@ public:
         return m_current != end_;
     }
     
-    // WireSink support - stub implementation (TODO: implement in Step 4)
+    // WireSink support - output raw data from sink to JSON stream
     template<WireSinkLike Sink>
-    constexpr bool output_from_sink(const Sink& /*sink*/) {
-        // TODO: Implement wire sink output
-        setError(JsonIteratorWriterError::OUTPUT_OVERFLOW); // Placeholder error
-        return false;
+    constexpr bool output_from_sink(const Sink& sink) {
+        const std::size_t size = sink.current_size();
+        const char* data = sink.data();
+        
+        for (std::size_t i = 0; i < size; ++i) {
+            if (m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
+            }
+            *m_current++ = data[i];
+        }
+        
+        return true;
     }
 
     constexpr bool serialize_literal(std::string_view lit) {

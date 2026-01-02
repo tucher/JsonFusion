@@ -18,6 +18,7 @@
 #include "io.hpp"
 
 #include "json.hpp"
+#include "wire_sink.hpp"
 
 namespace JsonFusion {
 
@@ -451,22 +452,7 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
 
     if constexpr (FieldOptions::template has_option<options::detail::exclude_tag>) {
         return true;
-    } else if constexpr(FieldOptions::template has_option<options::detail::wire_sink_tag>) {
-
-        if constexpr(static_schema::DynamicContainerTypeConcept<Field>) {
-            if(!writer.output_serialized_value(obj.data(), obj.size())) {
-                return ctx.withWriterError(writer);
-            }
-
-        } else {
-            if(!writer.output_serialized_value(static_schema::static_string_traits<Field>::data(obj),
-                                     static_schema::static_string_traits<Field>::max_size(obj), true)) {
-                return ctx.withWriterError(writer);
-            }
-        }
-
-        return true;
-    }else if constexpr(static_schema::NullableSerializableValue<Field>) {
+    } else if constexpr(static_schema::NullableSerializableValue<Field>) {
 
         if(static_schema::isNull(obj)) {
             if(!writer.write_null()) {
@@ -570,6 +556,19 @@ constexpr auto Serialize(const InputObjectT& obj, std::string& out, UserCtx * ct
     return Serialize(obj, it, end, ctx);  // calls the iterator-based core
 }
 #endif
+
+template<static_schema::SerializableValue InputObjectT, WireSinkLike Sink, class UserCtx = void>
+constexpr auto Serialize(const InputObjectT& obj, Sink& sink, UserCtx * userCtx = nullptr) {
+    sink.clear();
+    auto it = sink.data();
+    auto end = sink.data() + sink.max_size();
+    auto result = Serialize(obj, it, end, userCtx);
+    if (result) {  // operator bool() checks for success
+        std::size_t written = it - sink.data();
+        sink.set_size(written);
+    }
+    return result;
+}
 
 
 template <class T>

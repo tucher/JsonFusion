@@ -142,7 +142,7 @@ how it is usually done in Python, Java, Go, etc..
 input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
 compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
 and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
-- **Escape hatches**: Use `wire_sink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing).
+- **Escape hatches**: Use `WireSink<>` to capture raw JSON text when structure is unknown at compile time (plugins, pass-through, deferred parsing).
 JsonFusion validates JSON correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.
 
 ## Design Goals (and Tradeoffs)
@@ -214,15 +214,15 @@ Your type definitions aren't just schema—they're compile-time instructions to 
 Assume you want to count primitives in GeoJSON data, but don't need actual values. With JsonFusion you model coordinates pair as
 ```cpp
 struct Pt_ {
-    A<float, skip<>> x;
-    A<float, skip<>> y;
+    A<float, skip> x;
+    A<float, skip> y;
 };
 using Point = A<Pt_, as_array>;
 ```
 - On canada.json (2.2 MB numeric-heavy GeoJSON), a hand-written RapidJSON SAX handler that counts 
 features/rings/points serves as the baseline.
 - JsonFusion Streaming with selective skipping is **~30% faster** simply because the type system tells the parser "these values exist, 
-but we don't need them." By annotating coordinate fields with `skip<>`, JsonFusion skips float parsing entirely while still 
+but we don't need them." By annotating coordinate fields with `skip`, JsonFusion skips float parsing entirely while still 
 validating JSON structure.
 
 RapidJSON-like APIs have no way to express that intent without custom low-level parsing code; JsonFusion does it 
@@ -481,7 +481,7 @@ See [`examples/external_meta.cpp`](examples/external_meta.cpp) for a complete ex
 JsonFusion provides validators (runtime constraints) and options (metadata/behavior control):
 
 - **Validators**: `range<>`, `min_length<>`, `max_length<>`, `enum_values<>`, `min_items<>`, `max_items<>`, `constant<>`, and more
-- **Options**: `key<>`, `exclude`, `skip<>`, `wire_sink<>`, `as_array`, `allow_excess_fields<>`, and more
+- **Options**: `key<>`, `exclude`, `skip`, `as_array`, `allow_excess_fields`, and more
 
 See the complete reference: [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md)
 
@@ -735,7 +735,7 @@ The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stre
 - Hand-written RapidJSON SAX serves as baseline
 - JsonFusion typed streaming is ~50% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
 manual state machines
-- **JsonFusion with selective skipping**: **15% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip<>` in the model
+- **JsonFusion with selective skipping**: **15% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip` in the model
 - **JsonFusion + yyjson (streaming): 35% faster than RapidJSON SAX** with the same type-safe, generic API
 
 The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema,
@@ -849,7 +849,7 @@ JsonFusion::Serialize(event, json);
 - **Zero-overhead**: All transformations resolve at compile time
 - **Type-safe**: Errors caught during compilation
 
-**Schema evolution:** Transformers can handle type migrations (e.g., `bool` → `int`) in a generic, reusable way by capturing raw JSON with `wire_sink<>` and trying multiple parse attempts. See [`examples/schema_evolution_bool_to_enum.cpp`](examples/schema_evolution_bool_to_enum.cpp) for example.
+**Schema evolution:** Transformers can handle type migrations (e.g., `bool` → `int`) in a generic, reusable way by capturing raw JSON with `WireSink<>` and trying multiple parse attempts. See [`examples/schema_evolution_bool_to_enum.cpp`](examples/schema_evolution_bool_to_enum.cpp) for example.
 
 📖 **Full guide**: [docs/TRANSFORMERS.md](docs/TRANSFORMERS.md) covers:
 - Core concepts (`ParseTransformerLike`, `SerializeTransformerLike`)
@@ -1173,7 +1173,7 @@ JsonFusion models can be automatically expressed as [JSON Schema](https://json-s
 
 **Features:**
 - ✅ All validators mapped to JSON Schema constraints (`range`, `min_length`, `enum_values`, etc.)
-- ✅ All options supported (`key<>`, `as_array`, `indexes_as_keys`, `wire_sink`, etc.)
+- ✅ All options supported (`key<>`, `as_array`, `indexes_as_keys`, `WireSink`, etc.)
 - ✅ Nullable types (`std::optional`, `std::unique_ptr`) generate `oneOf` with `null`
 - ✅ Recursive types with self-references to root schema (e.g., trees, linked lists) use `{"$ref": "#"}`
 - ✅ Zero runtime overhead - pure compile-time type introspection

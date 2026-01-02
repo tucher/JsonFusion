@@ -19,13 +19,13 @@ constexpr bool test_static_wire_sink_write_read() {
     if (sink.max_size() != 256) return false;
     
     // Write some data
-    const std::uint8_t data[] = {0x01, 0x02, 0x03, 0x04, 0x05};
+    const char data[] = {0x01, 0x02, 0x03, 0x04, 0x05};
     if (!sink.write(data, 5)) return false;
     
     if (sink.current_size() != 5) return false;
     
     // Read it back
-    std::uint8_t buffer[5] = {};
+    char buffer[5] = {};
     if (!sink.read(buffer, 5, 0)) return false;
     
     // Verify
@@ -41,7 +41,7 @@ static_assert(test_static_wire_sink_write_read(), "Static WireSink write/read fa
 constexpr bool test_static_wire_sink_overflow() {
     WireSink<10> sink;  // Small buffer
     
-    const std::uint8_t data[20] = {};
+    const char data[20] = {};
     
     // Writing 20 bytes to 10-byte buffer should fail
     if (sink.write(data, 20)) return false;
@@ -61,7 +61,7 @@ static_assert(test_static_wire_sink_overflow(), "Static WireSink overflow protec
 constexpr bool test_static_wire_sink_clear() {
     WireSink<256> sink;
     
-    const std::uint8_t data[] = {0xAA, 0xBB, 0xCC};
+    const char data[] = {char(0xAA), char(0xBB), char(0xCC)};
     sink.write(data, 3);
     
     if (sink.current_size() != 3) return false;
@@ -79,40 +79,37 @@ constexpr bool test_static_wire_sink_clear() {
 static_assert(test_static_wire_sink_clear(), "Static WireSink clear failed");
 
 // Test: Static WireSink - direct data() access
-// Note: Can't be constexpr due to reinterpret_cast limitation in C++20
-bool test_static_wire_sink_data_access() {
+constexpr bool test_static_wire_sink_data_access() {
     WireSink<256> sink;
     
     // Write JSON-like text
     const char json[] = R"({"key":"value"})";
-    const auto* bytes = reinterpret_cast<const std::uint8_t*>(json);
-    const std::size_t len = std::char_traits<char>::length(json);
     
-    if (!sink.write(bytes, len)) return false;
+    if (!sink.write(json, sizeof(json))) return false;
     
     // Access via data()
-    const std::uint8_t* data = sink.data();
-    if (sink.current_size() != len) return false;
+    const char* data = sink.data();
+    if (sink.current_size() != sizeof(json)) return false;
     
     // Verify content
-    for (std::size_t i = 0; i < len; ++i) {
-        if (data[i] != bytes[i]) return false;
+    for (std::size_t i = 0; i < sizeof(json); ++i) {
+        if (data[i] != json[i]) return false;
     }
     
     return true;
 }
 // Runtime test only due to reinterpret_cast
-// static_assert(test_static_wire_sink_data_access(), "Static WireSink data access failed");
+static_assert(test_static_wire_sink_data_access(), "Static WireSink data access failed");
 
 // Test: Static WireSink - read with offset
 constexpr bool test_static_wire_sink_read_offset() {
     WireSink<256> sink;
     
-    const std::uint8_t data[] = {0x00, 0x11, 0x22, 0x33, 0x44};
+    const char data[] = {0x00, 0x11, 0x22, 0x33, 0x44};
     sink.write(data, 5);
     
     // Read from middle
-    std::uint8_t buffer[2] = {};
+    char buffer[2] = {};
     if (!sink.read(buffer, 2, 2)) return false;  // Read 2 bytes from offset 2
     
     if (buffer[0] != 0x22) return false;
@@ -134,13 +131,13 @@ constexpr bool test_dynamic_wire_sink_basic() {
     if (sink.max_size() != 1024) return false;
     
     // Write data
-    const std::uint8_t data[] = {0xDE, 0xAD, 0xBE, 0xEF};
+    const char data[] = {char(0xDE), char(0xAD), char(0xBE), char(0xEF)};
     if (!sink.write(data, 4)) return false;
     
     if (sink.current_size() != 4) return false;
     
     // Read back
-    std::uint8_t buffer[4] = {};
+    char buffer[4] = {};
     if (!sink.read(buffer, 4, 0)) return false;
     
     for (std::size_t i = 0; i < 4; ++i) {
@@ -156,7 +153,7 @@ constexpr bool test_dynamic_wire_sink_max_size() {
     WireSink<100, true> sink;  // Max 100 bytes
     
     // Write 50 bytes - should succeed
-    std::uint8_t data[50] = {};
+    char data[50] = {};
     if (!sink.write(data, 50)) return false;
     
     // Write another 50 bytes - should succeed (total = 100)
@@ -174,7 +171,7 @@ static_assert(test_dynamic_wire_sink_max_size(), "Dynamic WireSink max size enfo
 constexpr bool test_dynamic_wire_sink_clear() {
     WireSink<1024, true> sink;
     
-    const std::uint8_t data[100] = {};
+    const char data[100] = {};
     sink.write(data, 100);
     
     if (sink.current_size() != 100) return false;
@@ -194,19 +191,19 @@ static_assert(test_dynamic_wire_sink_clear(), "Dynamic WireSink clear failed");
 constexpr bool test_data_method() {
     WireSink<256> sink;
     
-    const std::uint8_t data[] = {0xAA, 0xBB, 0xCC};
+    const char data[] = {char(0xAA), char(0xBB), char(0xCC)};
     sink.write(data, 3);
     
     // Test const data()
     const auto& csink = sink;
-    const std::uint8_t* cdata = csink.data();
-    if (cdata[0] != 0xAA) return false;
-    if (cdata[1] != 0xBB) return false;
-    if (cdata[2] != 0xCC) return false;
+    const char* cdata = csink.data();
+    if (cdata[0] != char(0xAA)) return false;
+    if (cdata[1] != char(0xBB)) return false;
+    if (cdata[2] != char(0xCC)) return false;
     
     // Test mutable data()
-    std::uint8_t* mdata = sink.data();
-    if (mdata[0] != 0xAA) return false;
+    char* mdata = sink.data();
+    if (mdata[0] != char(0xAA)) return false;
     
     return true;
 }
@@ -222,9 +219,9 @@ constexpr bool test_incremental_writes() {
     WireSink<256> sink;
     
     // Write in small chunks
-    const std::uint8_t chunk1[] = {0x01, 0x02};
-    const std::uint8_t chunk2[] = {0x03, 0x04, 0x05};
-    const std::uint8_t chunk3[] = {0x06};
+    const char chunk1[] = {0x01, 0x02};
+    const char chunk2[] = {0x03, 0x04, 0x05};
+    const char chunk3[] = {0x06};
     
     if (!sink.write(chunk1, 2)) return false;
     if (sink.current_size() != 2) return false;
@@ -236,7 +233,7 @@ constexpr bool test_incremental_writes() {
     if (sink.current_size() != 6) return false;
     
     // Verify all data
-    std::uint8_t buffer[6] = {};
+    char buffer[6] = {};
     if (!sink.read(buffer, 6, 0)) return false;
     
     if (buffer[0] != 0x01) return false;

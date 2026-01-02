@@ -28,15 +28,15 @@ struct VariantOneOf {
         (JsonFusion::static_schema::SerializableValue<Ts> && ...)
         ,
         "All variant types should be JsonFusion compatible");
-    using wire_type = A<std::string, options::wire_sink<>>;
+    using wire_type = WireSink<32768>; // 32KB default buffer for variant parsing
 
     std::variant<Ts...> value;
 
-    constexpr bool transform_from(const std::string& data) {
+    constexpr bool transform_from(const wire_type& sink) {
         std::size_t matched_counter = 0;
         std::variant<Ts...> temp;
         auto try_one = [&](auto c) {
-            bool matched = !!Parse(temp.template emplace<c.value>(), data);
+            bool matched = !!Parse(temp.template emplace<c.value>(), sink);
             if(matched) {
                 matched_counter ++;
                 if(matched_counter == 1) {
@@ -55,7 +55,7 @@ struct VariantOneOf {
         }
     }
 
-    constexpr bool transform_to(std::string& wire) const {
+    constexpr bool transform_to(wire_type& wire) const {
         return  std::visit([&wire](const auto& v) {
             return !!Serialize(v, wire);
         }, value);

@@ -78,7 +78,7 @@ Quick reference for tracking test implementation progress.
 - [x] test_validation_string_length.cpp - `min_length<>`, `max_length<>`
 - [x] test_validation_array_items.cpp - `min_items<>`, `max_items<>`
 - [x] test_validation_struct_fields_presence.cpp - `not_required<>`/`required<>` (object-level)
-- [x] test_validation_allow_excess_fields.cpp - `allow_excess_fields<>` (struct-level)
+- [x] test_validation_allow_excess_fields.cpp - `allow_excess_fields` (struct-level)
 - [x] test_validation_combined_string.cpp - Multiple string validators
 - [x] test_validation_combined_array.cpp - Multiple array validators
 - [x] test_validation_combined_map.cpp - Multiple map validators
@@ -87,8 +87,8 @@ Quick reference for tracking test implementation progress.
 - [x] test_annotated_key.cpp - `key<"json_name">` remapping (covered in roundtrip tests)
 - [x] test_annotated_as_array.cpp - `as_array` (struct as array) (covered in roundtrip tests)
 - [ ] test_annotated_not_json.cpp - `exclude` (skip field) - NOT NEEDED NOW (covered in roundtrip tests)
-- [x] test_annotated_skip_json.cpp - `skip<MaxSkipDepth>` (fast-skip)
-- [x] test_annotated_json_sink.cpp - `wire_sink<MaxSkipDepth, MaxStringLength>` (capture raw JSON)
+- [x] test_annotated_skip_json.cpp - `skip` (fast-skip)
+- [x] test_wire_sink_json_integration.cpp - `WireSink<S, D>` (capture raw JSON)
 - [ ] test_annotated_float_decimals.cpp - `float_decimals` (serialization precision control via JSON Writer parameter)
 - [ ] test_annotated_description.cpp - `description<"text">` (metadata, optional) - NOT NEEDED NOW
 - [ ] test_annotated_combinations.cpp - Multiple options together - NOT NEEDED NOW
@@ -188,14 +188,13 @@ Quick reference for tracking test implementation progress.
 - ✅ `min_length<>`, `max_length<>` - String length (test_validation_string_length.cpp)
 - ✅ `min_items<>`, `max_items<>` - Array item count (test_validation_array_items.cpp)
 - ✅ `not_required<>`, `required<>` - Object-level field presence validation (test_validation_struct_fields_presence.cpp)
-- ✅ `allow_excess_fields<>` - Allow unknown JSON fields (test_validation_allow_excess_fields.cpp)
+- ✅ `allow_excess_fields` - Allow unknown JSON fields (test_validation_allow_excess_fields.cpp)
 
 **Options (9 total):**
 - ✅ `key<>` - JSON key remapping (covered in roundtrip tests)
 - ✅ `as_array` - Struct as array (covered in roundtrip tests)
 - ✅ `exclude` - Skip field (covered in roundtrip tests)
-- ✅ `skip<>` - Fast-skip JSON value (test_annotated_skip_json.cpp)
-- ✅ `wire_sink<>` - Capture raw JSON as string or fixed-sized string-like array (test_annotated_json_sink.cpp)
+- ✅ `skip` - Fast-skip JSON value (test_annotated_skip_json.cpp)
 - [ ] `description<>` - Metadata (optional tests) **NOT NEEDED NOW**
 
 **Completed Categories:**
@@ -207,11 +206,11 @@ Quick reference for tracking test implementation progress.
 - ✅ errors/ JSON path tracking (7/7)
 - ✅ json_spec/ (6/6) - RFC 8259 compliance **COMPLETE**
 - ✅ validation/ (14/14) - All validators covered including float/double **COMPLETE**
-- ✅ annotations/ (5/9) - key, as_array (roundtrip), skip, wire_sink, float_decimals
+- ✅ annotations/ (5/9) - key, as_array (roundtrip), skip, float_decimals
 - ✅ limits/ (4/4) - Nesting depth, large arrays, many fields, many map keys **COMPLETE**
 - ✅ serialization/ (4/4 files) - Primitives & comprehensive types **COMPLETE**
 - ✅ fp/ (4/4 files) - IEEE-754 correctness: boundary values, difficult cases, subnormals, extremes **COMPLETE**
-
+- ✅ WireSink
 **In Progress:**
 - errors/ (7/15 files - additional error scenarios pending)
 - composite/ edge cases (5 files pending)

@@ -14,7 +14,7 @@ using namespace JsonFusion::options;
 /// Generic backward compatible field: accepts OldWireT or NewWireT, stores as StorageT
 // Always serializes as NewWireT (canonical form), even if parsed from OldWireT. 
 /// 
-/// This transformer uses wire_sink to capture raw JSON, then tries parsing
+/// This transformer uses WireSink to capture raw JSON, then tries parsing
 /// as both the old and new wire types. Perfect for schema evolution scenarios.
 ///
 /// Template parameters:
@@ -24,36 +24,34 @@ using namespace JsonFusion::options;
 ///   OldConvertFn   - Function pointer (OldWireT → StorageT)
 ///   NewConvertFn   - Function pointer (NewWireT → StorageT), often identity
 ///   ToWireFn       - Function pointer (StorageT → NewWireT) for serialization
-///   BufferSize     - Size of wire_sink buffer
+///   BufferSize     - Size of WireSink buffer
 template<class OldWireT, class NewWireT, class StorageT, 
          auto OldConvertFn, auto NewConvertFn, auto ToWireFn,
          std::size_t BufferSize = 64>
 struct CompatibleField {
-    //JsonFusion guarantees that fixed sized string-like buffers are null terminated
-    using wire_type = A<std::array<char, BufferSize>, wire_sink<>>;
+    using wire_type = WireSink<BufferSize>;
     StorageT value{};
     
-    constexpr bool transform_from(const std::array<char, BufferSize>& json_buf) {
+    constexpr bool transform_from(const WireSink<BufferSize>& sink) {
         // Try parsing as new wire type first
         NewWireT new_val;
-        if (auto r = Parse(new_val, json_buf.data())) {
+        if (auto r = Parse(new_val, sink)) {
             return std::invoke(NewConvertFn, new_val, value);
         }
 
         // Try parsing as old wire type if new wire type fails, legacy is a fallback.
         OldWireT old_val;
-        if (auto r = Parse(old_val, json_buf.data())) {
+        if (auto r = Parse(old_val, sink)) {
             return std::invoke(OldConvertFn, old_val, value);
         }
         
         return false;
     }
     
-    constexpr bool transform_to(std::array<char, BufferSize>& out) const {
-        // Convert storage to wire, then serialize
+    constexpr bool transform_to(WireSink<BufferSize>& out) const {
+        // Convert storage to wire, then serialize directly to WireSink
         NewWireT wire_val = std::invoke(ToWireFn, value);
-        auto it = out.begin();
-        return !!Serialize(wire_val, it, out.end());
+        return !!Serialize(wire_val, out);
     }
     
     // Ergonomics: implicit conversions and comparisons

@@ -93,9 +93,6 @@ struct Address {
     
     // Option: exclude - excluded from schema and serialization
     A<std::string, exclude> internal_id;
-    
-    // Option: wire_sink - accepts any JSON value
-    A<std::string, wire_sink<>> metadata;
 };
 
 // Structure with arrays and optional fields
@@ -128,8 +125,8 @@ struct Configuration_ {
     A<int, constant<14>> version;
 };
 // Validator: not_required<...> - specifies fields that are NOT required (all others become required)
-// Option: allow_excess_fields<> - allows additional properties not defined in schema
-using Configuration = A<Configuration_, not_required<"settings">, allow_excess_fields<>>;
+// Option: allow_excess_fields - allows additional properties not defined in schema
+using Configuration = A<Configuration_, not_required<"settings">, allow_excess_fields>;
 
 // Option: indexes_as_keys with int_key<N> - for CBOR-style numeric keys
 struct IndexedData_ {
@@ -154,7 +151,7 @@ struct LegacyAPI_ {
     std::string email;
     int user_id;
 };
-using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields<>>;
+using LegacyAPI = A<LegacyAPI_, forbidden<"password", "ssn">, allow_excess_fields>;
 
 // Struct demonstrating new WireSink types (first-class wire capture)
 struct WireSinkExample {
@@ -167,9 +164,6 @@ struct WireSinkExample {
     // NEW: WireSink<MaxSize, dynamic=true> - dynamic buffer bounded by MaxSize
     WireSink<2048, true> raw_data_dynamic;
     
-    // OLD: wire_sink<> annotation (deprecated but still supported)
-    A<std::string, wire_sink<>> metadata_old_style;
-    
     std::optional<std::string> description;
 };
 
@@ -177,25 +171,25 @@ struct WireSinkExample {
 // Tests - Comprehensive Coverage of All Validators and Options
 // ============================================================================
 
-// Test 1: Address - demonstrates key<>, enum_values, min_length, max_length, as_array, exclude, wire_sink
+// Test 1: Address - demonstrates key<>, enum_values, min_length, max_length, as_array, exclude
 static_assert(TestSchemaInline<Address>(
-    R"({"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2},"metadata":{}}})"
+    R"({"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2}}})"
 ));
 
 // Test 2: Person - demonstrates range, min_items, max_items, required<...>, optional fields (oneOf with null)
 static_assert(TestSchemaInline<Person>(
-    R"({"additionalProperties":false,"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":0,"maximum":100},"email":{"oneOf":[{"type":"string"},{"type":"null"}]},"addresses":{"type":"array","minItems":1,"maxItems":10,"items":{"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2},"metadata":{}}}}},"required":["name","email"]})"
+    R"({"additionalProperties":false,"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":0,"maximum":100},"email":{"oneOf":[{"type":"string"},{"type":"null"}]},"addresses":{"type":"array","minItems":1,"maxItems":10,"items":{"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2}}}}},"required":["name","email"]})"
 ));
 
 // Test 3: Configuration - demonstrates min_properties, max_properties, min_key_length, max_key_length,
-//         allowed_keys, required_keys, forbidden_keys, string_constant, constant, not_required<...>, allow_excess_fields<>
+//         allowed_keys, required_keys, forbidden_keys, string_constant, constant, not_required<...>, allow_excess_fields
 static_assert(TestSchemaInline<Configuration>(
     R"({"type":"object","properties":{"settings":{"type":"object","minProperties":1,"maxProperties":10,"propertyNames":{"minLength":1,"maxLength":10},"additionalProperties":{"type":"string"}},"flags1":{"type":"object","properties":{"key1":{"oneOf":[{"type":"boolean"},{"type":"null"}]},"key2":{"oneOf":[{"type":"boolean"},{"type":"null"}]}},"required":["key1"],"additionalProperties":false},"flags2":{"type":"object","propertyNames":{"not":{"enum":["key1","key2"]}},"properties":{"key3":{"type":"boolean"}},"required":["key3"],"additionalProperties":{"type":"boolean"}},"enabled":{"type":"boolean"},"object_type":{"const":"configuration"},"version":{"const":14}},"required":["flags1","flags2","enabled","object_type","version"]})"
 ));
 
 // Test 4: Person with metadata wrapper - demonstrates WriteSchema (with $schema and title)
 static_assert(TestSchema<Person>(
-    R"({"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person Schema","definition":{"additionalProperties":false,"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":0,"maximum":100},"email":{"oneOf":[{"type":"string"},{"type":"null"}]},"addresses":{"type":"array","minItems":1,"maxItems":10,"items":{"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2},"metadata":{}}}}},"required":["name","email"]}})",
+    R"({"$schema":"https://json-schema.org/draft/2020-12/schema","title":"Person Schema","definition":{"additionalProperties":false,"type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":0,"maximum":100},"email":{"oneOf":[{"type":"string"},{"type":"null"}]},"addresses":{"type":"array","minItems":1,"maxItems":10,"items":{"additionalProperties":false,"type":"object","properties":{"street":{"type":"string"},"city":{"type":"string","minLength":1,"maxLength":100},"zip_code":{"type":"integer"},"type":{"enum":["apartment","house","office"]},"coordinates":{"type":"array","prefixItems":[{"type":"number"},{"type":"number"}],"minItems":2,"maxItems":2}}}}},"required":["name","email"]}})",
     "Person Schema"
 ));
 
@@ -215,9 +209,9 @@ static_assert(TestSchemaInline<LegacyAPI>(
 ));
 
 // Test 8: WireSinkExample - demonstrates NEW WireSink<MaxSize> types (first-class wire capture)
-//         Both WireSink and old wire_sink<> annotation generate empty schema {} (accept any JSON value)
+//         WireSink types generate empty schema {} (accept any JSON value)
 static_assert(TestSchemaInline<WireSinkExample>(
-    R"({"additionalProperties":false,"type":"object","properties":{"id":{"type":"integer"},"name":{"type":"string"},"raw_data_static":{},"raw_data_dynamic":{},"metadata_old_style":{},"description":{"oneOf":[{"type":"string"},{"type":"null"}]}}})"
+    R"({"additionalProperties":false,"type":"object","properties":{"id":{"type":"integer"},"name":{"type":"string"},"raw_data_static":{},"raw_data_dynamic":{},"description":{"oneOf":[{"type":"string"},{"type":"null"}]}}})"
 ));
 
 // ============================================================================
@@ -248,10 +242,9 @@ static_assert(TestSchemaInline<WireSinkExample>(
  * ✓ key<"custom_name">           - custom JSON property name
  * ✓ int_key<N>                   - custom numeric index (CBOR-oriented)
  * ✓ exclude                     - exclude field from schema/serialization
- * ✓ wire_sink<>                  - accept any JSON value (OLD annotation, deprecated)
- * ✓ WireSink<MaxSize>            - first-class wire capture type (NEW)
- * ✓ WireSink<MaxSize, dynamic>   - dynamic wire capture (NEW)
- * ✓ allow_excess_fields<>        - allow additional properties
+ * ✓ WireSink<MaxSize>            - first-class wire capture type
+ * ✓ WireSink<MaxSize, dynamic>   - dynamic wire capture
+ * ✓ allow_excess_fields        - allow additional properties
  * ✓ as_array                     - serialize struct as tuple (prefixItems)
  * ✓ indexes_as_keys              - use numeric indices as property names
  * 
@@ -266,8 +259,3 @@ static_assert(TestSchemaInline<WireSinkExample>(
  * ✓ Recursive types              - cycle detection with {"$ref": "#"}
  */
 
-// Main function for running the test
-int main() {
-    // All tests are static_assert, so if we compile, we pass
-    return 0;
-}

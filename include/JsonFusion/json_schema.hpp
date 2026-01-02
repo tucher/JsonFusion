@@ -1020,18 +1020,6 @@ constexpr bool WriteSchemaImpl(W & writer) {
     else {
     // NO CYCLE - continue with normal schema generation
     
-    // Check options on the original Type (before unwrapping annotations)
-    using OptsOnType = typename options::detail::annotation_meta_getter<Type>::options;
-    
-    // Handle wire_sink - accepts any JSON value (empty schema)
-    if constexpr (OptsOnType::template has_option<options::detail::wire_sink_tag>) {
-        // Empty schema {} allows any JSON value
-        typename W::MapFrame frame;
-        std::size_t size = 0;
-        if (!writer.write_map_begin(size, frame)) return false;
-        return writer.write_map_end(frame);
-    }
-    
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
     
     // Handle WireSink types - they accept any JSON value (empty schema)

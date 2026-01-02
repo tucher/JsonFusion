@@ -350,9 +350,7 @@ public:
 
     // ---- Skip support ----
 
-    template<std::size_t MAX_SKIP_NESTING, class OutputSinkContainer = void>
-    bool skip_value(OutputSinkContainer* = nullptr,
-                                   std::size_t = std::numeric_limits<std::size_t>::max())
+    bool skip_value()
     {
         // DOM is already built; for yyjson, "skip" means "don't materialize".
         return true;
