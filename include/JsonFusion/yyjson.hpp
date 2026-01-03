@@ -835,7 +835,7 @@ public:
         }
 
         std::size_t bytesWritten = output_sink_finisher_(doc_);
-        if (bytesWritten == -1) {
+        if (bytesWritten == std::size_t(-1)) {
             fail(Error::InvalidState);
             return -1;
         }

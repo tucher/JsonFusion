@@ -1500,18 +1500,22 @@ private:
     }
 
     constexpr bool write_float64(double d) {
-        std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 27u); // 0xFB
-        if (!write_byte(ib)) return false;
+        if constexpr(sizeof(double) == 4) {
+            return write_float32(static_cast<float>(d));
+        } else if constexpr(sizeof(double) == 8) {
+            std::uint8_t ib = static_cast<std::uint8_t>((7u << 5) | 27u); // 0xFB
+            if (!write_byte(ib)) return false;
 
-        static_assert(sizeof(double) == 8);
-        std::uint64_t bits;
-        std::memcpy(&bits, &d, sizeof(double));
+            static_assert(sizeof(double) == 8);
+            std::uint64_t bits;
+            std::memcpy(&bits, &d, sizeof(double));
 
-        std::uint8_t buf[8];
-        for (int i = 0; i < 8; ++i) {
-            buf[7 - i] = static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFFu);
+            std::uint8_t buf[8];
+            for (int i = 0; i < 8; ++i) {
+                buf[7 - i] = static_cast<std::uint8_t>((bits >> (8 * i)) & 0xFFu);
+            }
+            return write_bytes(buf, 8);
         }
-        return write_bytes(buf, 8);
     }
 };
 static_assert(writer::WriterLike<CborWriter<std::uint8_t*, std::uint8_t*>>);

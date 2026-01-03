@@ -312,7 +312,7 @@ public:
 
 static_assert(WireSinkLike<WireSink<256>>, "WireSink<256> should satisfy WireSinkLike");
 static_assert(WireSinkLike<WireSink<1024>>, "WireSink<1024> should satisfy WireSinkLike");
-static_assert(WireSinkLike<WireSink<65536, true>>, "WireSink<65536, true> should satisfy WireSinkLike");
+static_assert(WireSinkLike<WireSink<65535, true>>, "WireSink<65535, true> should satisfy WireSinkLike");
 
 } // namespace JsonFusion
 

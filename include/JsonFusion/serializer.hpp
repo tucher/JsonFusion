@@ -522,7 +522,7 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
     serializer_details::SerializeValue<typename Meta::options>(Meta::getRef(obj), writer, ctx, userCtx);
     if(ctx.currentError() == SerializeError::NO_ERROR) {
         std::size_t bytesWritten = writer.finish();
-        if(bytesWritten == -1) {
+        if(bytesWritten == std::size_t(-1)) {
             ctx.withWriterError(writer);
         } else {
             ctx.setBytesWritten(bytesWritten);

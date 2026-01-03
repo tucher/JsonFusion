@@ -743,8 +743,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
 
     while(iterStatus.has_value) {
 
-        std::size_t structIndex = -1;
-        std::size_t arrayIndex = -1;
+        std::size_t structIndex = std::size_t(-1);
+        std::size_t arrayIndex = std::size_t(-1);
         std::string_view key_sv;
 
         if constexpr(Opts::template has_option<options::detail::indexes_as_keys_tag> || FH::hasIntegerKeys) {

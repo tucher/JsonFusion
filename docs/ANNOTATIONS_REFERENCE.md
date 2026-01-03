@@ -12,7 +12,7 @@ A<T, Validator1, Validator2, Option1, ...> field; //alias
 #### Number Validators
 ```cpp
 range<Min, Max>              // Value must be in [Min, Max]
-constant<Value>              // Value must equal Value (currently only for bool)
+constant<Value>              // Value must equal Value (works for bool, numbers)
 ```
 
 #### String Validators
@@ -20,6 +20,7 @@ constant<Value>              // Value must equal Value (currently only for bool)
 min_length<N>                // String must have at least N characters
 max_length<N>                // String must have at most N characters (streaming)
 enum_values<"val1", ...>     // String must be one of the listed values (streaming)
+string_constant<"value">     // String must equal exactly "value"
 ```
 
 #### Array Validators
@@ -92,15 +93,17 @@ The validator function can use simplified signatures (without `ValidationCtx`). 
 
 #### Field-Level Options
 ```cpp
-key<"field_name">              // Override JSON key name (use "field_name" instead of C++ field name)
+key<"field_name">           // Override JSON key name (use "field_name" instead of C++ field name)
+int_key<N>                  // Use integer N as key (for indexes_as_keys mode). Native int indexes in CBOR
 exclude                     // Exclude field from JSON serialization/deserialization
-description<"text">          // Documentation metadata for schema generation
-skip          // Fast-skip this value
+skip                        // Fast-skip this value during parsing/serialization
 ```
 
 #### Struct-Level Options
 ```cpp
-as_array                     // Serialize/parse struct as JSON array instead of object: [x, y, z] <-> struct{float x, y, z;}
+as_array                    // Serialize/parse struct as JSON array instead of object: [x, y, z] <-> struct{float x, y, z;}
+indexes_as_keys             // Use field indices as JSON keys: {"0": val0, "1": val1, ...} <-> struct. Native int indexes in CBOR
+skip_nulls                  // Skip null values during serialization (for null nullable fields, works in map-like structures to allow sparse index space)
 ```
 
 
