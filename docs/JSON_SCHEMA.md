@@ -93,7 +93,7 @@ JsonFusion core doesn't know anything about `MyDate`, or reducers, or sum types.
 
 1. **Transformers** – value ↔ value
 2. **Streamers** – JSON array/map → callbacks instead of storage
-3. **`WireSink` object** – "capture this subtree as raw JSON" so you can interpret it later
+3. **`WireSink` object** – "capture this subtree as raw JSON/CBOR" so you can interpret it later
 
 Let's look at each.
 
@@ -284,16 +284,18 @@ struct OneOf_ABC {
 
     std::variant<A,B,C> value;
 
-    bool transform_from(const wire_type& json_buf) {
-        if (auto r = JsonFusion::Parse(value.emplace<A>(), json_buf); r) return true;
-        if (auto r = JsonFusion::Parse(value.emplace<B>(), json_buf); r) return true;
-        if (auto r = JsonFusion::Parse(value.emplace<C>(), json_buf); r) return true;
+    bool transform_from(const auto& parseFn) {
+        // Try parsing as A, then B, then C - first success wins
+        if (parseFn(value.emplace<A>())) return true;
+        if (parseFn(value.emplace<B>())) return true;
+        if (parseFn(value.emplace<C>())) return true;
         return false; // None matched
     }
 
-    bool transform_to(wire_type& buf) const {
-        return std::visit([&](auto&& v) {
-            return JsonFusion::Serialize(v, buf);
+    bool transform_to(const auto& serializeFn) const {
+        // Serialize whichever variant alternative is active
+        return std::visit([&](const auto& v) {
+            return serializeFn(v);
         }, value);
     }
 };
@@ -304,7 +306,7 @@ This is precisely the kind of thing that belongs in "extras", not in the core:
 - It's built entirely from:
   - core parser (`Parse`)
   - `WireSink`
-  - transformers
+  - transformers (which has special support for WIreSink: automatically configured proper Reader/Writer is created and callable object passed to user code)
 
 The core stays beautifully ignorant.
 
@@ -463,11 +465,11 @@ struct VariantOneOf {
 
     std::variant<A,B,C> value;
 
-    bool transform_from(const wire_type& buf) {
+    bool transform_from(const auto& parseFn) {
         // custom resolution logic here
     }
 
-    bool transform_to(wire_type& buf) const {
+    bool transform_to(const auto& serializeFn) const {
         // serialize active arm here
     }
 };
