@@ -1,0 +1,86 @@
+{
+  "name": "JsonFusion",
+  "version": "0.650.0",
+  "description": "Type-driven JSON/CBOR parser and serializer with declarative validation. Parse JSON directly into your C++ structs with zero boilerplate. Header-only, compile-time reflection-driven, embedded-friendly.",
+  "keywords": [
+    "json",
+    "parser",
+    "serializer",
+    "cbor",
+    "validation",
+    "reflection",
+    "header-only",
+    "embedded",
+    "type-safe",
+    "constexpr",
+    "c++23",
+    "schema"
+  ],
+  "authors": [
+    {
+      "name": "Aleksandr Tuchkov",
+      "maintainer": true
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tucher/JsonFusion.git"
+  },
+  "homepage": "https://github.com/tucher/JsonFusion",
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "headers": [
+    "JsonFusion/parser.hpp",
+    "JsonFusion/serializer.hpp"
+  ],
+  "export": {
+    "include": [
+      "include"
+    ]
+  },
+  "build": {
+    "flags": [
+      "-std=c++23"
+    ],
+    "unflags": []
+  },
+  "examples": [
+    {
+      "name": "Basic Usage",
+      "base": "examples",
+      "files": [
+        "basic_usage.cpp"
+      ]
+    },
+    {
+      "name": "External Metadata",
+      "base": "examples",
+      "files": [
+        "external_meta.cpp"
+      ]
+    },
+    {
+      "name": "JSON Schema Demo",
+      "base": "examples",
+      "files": [
+        "json_schema_demo.cpp"
+      ]
+    },
+    {
+      "name": "Validation Example",
+      "base": "examples",
+      "files": [
+        "validation_example.cpp"
+      ]
+    },
+    {
+      "name": "Schema Evolution",
+      "base": "examples",
+      "files": [
+        "schema_evolution_bool_to_enum.cpp"
+      ]
+    }
+  ]
+}
+

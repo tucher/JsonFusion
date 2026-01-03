@@ -1,6 +1,6 @@
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/serializer.hpp>
-#include <JsonFusion/yyjson.hpp>
+// #include <JsonFusion/yyjson.hpp>
 #include <iostream>
 #include <cassert>
 #include <functional>
@@ -169,6 +169,7 @@ constexpr bool test_migration_path() {
     return true;
 }
 
+/*
 // Runtime-only test using YyJSON (tests WireSink RAII with DOM handles)
 bool test_migration_path_yyjson() {
     // Start with V1 JSON (bool)
@@ -216,6 +217,7 @@ bool test_migration_path_yyjson() {
     
     return true;
 }
+*/
 
 // ============================================================================
 // Main - both compile-time and runtime validation
@@ -247,13 +249,14 @@ int main() {
     assert(test_migration_path());
     std::cout << "  ✓ V1 (bool) → V2 (enum storage) → V3 (int wire) works correctly\n";
     
+    /*
     std::cout << "\nTest 4: YyJSON migration path (WireSink RAII with DOM)\n";
     assert(test_migration_path_yyjson());
     std::cout << "  ✓ V1 (bool) → V2 (enum) → V3 (int) with YyJSON DOM\n";
     std::cout << "  ✓ WireSink stores [doc*, node*] with O(1) capture\n";
     std::cout << "  ✓ RAII cleanup frees documents automatically (no leaks!)\n";
     std::cout << "  ✓ Multiple serializations work (immutable WireSink)\n";
-    
+    */
     std::cout << "\n✅ All runtime tests passed!\n";
     std::cout << "\n=== Key Features ===\n";
     std::cout << "✓ Three distinct types: OldWire, NewWire, Storage\n";
@@ -261,7 +264,7 @@ int main() {
     std::cout << "✓ Serializes enum as int for JSON compatibility\n";
     std::cout << "✓ Configurable buffer size via template parameter\n";
     std::cout << "✓ Works in constexpr contexts (proven by static_assert!)\n";
-    std::cout << "✓ YyJSON: O(1) WireSink capture with automatic resource cleanup\n";
+    // std::cout << "✓ YyJSON: O(1) WireSink capture with automatic resource cleanup\n";
     
     return 0;
 }
