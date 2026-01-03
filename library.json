@@ -30,10 +30,6 @@
   "license": "MIT",
   "frameworks": "*",
   "platforms": "*",
-  "headers": [
-    "JsonFusion/parser.hpp",
-    "JsonFusion/serializer.hpp"
-  ],
   "export": {
     "include": [
       "include"
@@ -50,7 +46,19 @@
     "flags": [
       "-std=c++23"
     ],
-    "unflags": []
+    "unflags": [
+      "-std=gnu++11",
+      "-std=gnu++14",
+      "-std=gnu++17",
+      "-std=c++11",
+      "-std=c++14",
+      "-std=c++17"
+    ],
+    "srcFilter": [
+      "-<*>",
+      "-<*.*>"
+    ],
+    "libCompatMode": "strict"
   },
   "examples": [
     {
