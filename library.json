@@ -37,6 +37,13 @@
   "export": {
     "include": [
       "include"
+    ],
+    "exclude": [
+      "benchmarks",
+      "examples",
+      "tests",
+      "scripts",
+      "docs"
     ]
   },
   "build": {
