@@ -2,10 +2,10 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <cstring>
 #include <limits>
 #include <cmath>
 #include <type_traits>
+#include <bit>
 
 #include "reader_concept.hpp"
 #include "wire_sink.hpp"
@@ -923,8 +923,7 @@ private:
                 ++ cur_;
             }
 
-            float f;
-            std::memcpy(&f, &v, sizeof(f));
+            float f = std::bit_cast<float>(v);
             out = static_cast<double>(f);
             return true;
         }
@@ -939,9 +938,7 @@ private:
                 ++ cur_;
             }
 
-            double d;
-            std::memcpy(&d, &v, sizeof(d));
-            out = d;
+            out = std::bit_cast<double>(v);
             return true;
         }
 
@@ -1487,8 +1484,7 @@ private:
         if (!write_byte(ib)) return false;
 
         static_assert(sizeof(float) == 4);
-        std::uint32_t bits;
-        std::memcpy(&bits, &f, sizeof(float));
+        std::uint32_t bits = std::bit_cast<std::uint32_t>(f);
 
         std::uint8_t buf[4] = {
             static_cast<std::uint8_t>((bits >> 24) & 0xFFu),
@@ -1507,8 +1503,7 @@ private:
             if (!write_byte(ib)) return false;
 
             static_assert(sizeof(double) == 8);
-            std::uint64_t bits;
-            std::memcpy(&bits, &d, sizeof(double));
+            std::uint64_t bits = std::bit_cast<std::uint64_t>(d);
 
             std::uint8_t buf[8];
             for (int i = 0; i < 8; ++i) {
