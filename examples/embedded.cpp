@@ -40,7 +40,8 @@ struct EmbeddedConfig_ {
         bool enabled{false};
     };
 
-    Network network{};
+    // With empty not_required list, all fields are required
+    A<Network, not_required<>> network{};
     std::optional<Network> fallback_network{};
 
     struct Motor {
@@ -254,10 +255,10 @@ constexpr bool verify_config_initial_parse(const EmbeddedConfig_& config) {
     if (config.version_major != 1) return false;
     if (config.version_minor != 2) return false;
 
-    if (!str_eq(config.network.name, "eth0")) return false;
-    if (!str_eq(config.network.address, "192.168.1.100")) return false;
-    if (config.network.port != 8080) return false;
-    if (!config.network.enabled) return false;
+    if (!str_eq(config.network->name, "eth0")) return false;
+    if (!str_eq(config.network->address, "192.168.1.100")) return false;
+    if (config.network->port != 8080) return false;
+    if (!config.network->enabled) return false;
 
     if (!config.fallback_network.has_value()) return false;
     if (!str_eq(config.fallback_network->name, "wlan0")) return false;
@@ -275,7 +276,7 @@ constexpr bool verify_config_initial_parse(const EmbeddedConfig_& config) {
 constexpr bool verify_config_roundtrip(const EmbeddedConfig_& c1, const EmbeddedConfig_& c2) {
     if (c2.version_major != c1.version_major) return false;
     if (c2.version_minor != c1.version_minor) return false;
-    if (c2.network.port != c1.network.port) return false;
+    if (c2.network->port != c1.network->port) return false;
     if (c2.motors[0].position[2] != c1.motors[0].position[2]) return false;
     return true;
 }
