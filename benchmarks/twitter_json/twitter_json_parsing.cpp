@@ -145,10 +145,7 @@ int main(int argc, char* argv[]) {
 
             benchmark("JsonFusion parsing + populating (yyjson backend)", iterations, [&]() {
                 std::string copy = json_data;
-
-
-                YyjsonReader reader(copy.data(), copy.size());
-                auto res = JsonFusion::ParseWithReader(model, reader);
+                auto res = JsonFusion::ParseWithReader(model, YyjsonReader(copy.data(), copy.size()));
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                     throw std::runtime_error(std::format("JsonFusion parse error"));
@@ -171,9 +168,7 @@ int main(int argc, char* argv[]) {
 
             benchmark("JsonFusion streaming (yyjson backend)", iterations, [&]() {
                 std::string copy = json_data;
-
-                YyjsonReader reader(copy.data(), copy.size());
-                auto res = JsonFusion::ParseWithReader(streamModel, reader);
+                auto res = JsonFusion::ParseWithReader(streamModel, YyjsonReader(copy.data(), copy.size()));
 
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterDataStream>(res, copy.data(), copy.data() + copy.size()) << std::endl;
@@ -188,8 +183,7 @@ int main(int argc, char* argv[]) {
             using io_details::limitless_sentinel;
             auto it  = std::back_inserter(cbor_out_ref);
             limitless_sentinel end{};
-            JsonFusion::CborWriter writer(it, end);
-            if(auto res = JsonFusion::SerializeWithWriter(model, writer); !res) {
+            if(auto res = JsonFusion::SerializeWithWriter(model, JsonFusion::CborWriter(it, end)); !res) {
                 throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
             }
             // std::cout << "CBOR size: " << cbor_out_ref.size() << std::endl;
@@ -203,8 +197,7 @@ int main(int argc, char* argv[]) {
                 std::string copy = cbor_out_ref;
 
                 std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
-                JsonFusion::CborReader reader(b, b + cbor_out_ref.size());
-                auto res = JsonFusion::ParseWithReader(modelFromCBOR, reader);
+                auto res = JsonFusion::ParseWithReader(modelFromCBOR, JsonFusion::CborReader(b, b + cbor_out_ref.size()));
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                     std::cerr << int(res.readerError()) << std::endl;
@@ -216,9 +209,8 @@ int main(int argc, char* argv[]) {
                 std::string copy = cbor_out_ref;
 
                 std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
-                JsonFusion::CborReader reader(b, b + cbor_out_ref.size());
 
-                auto res = JsonFusion::ParseWithReader(streamModel, reader);
+                auto res = JsonFusion::ParseWithReader(streamModel, JsonFusion::CborReader(b, b + cbor_out_ref.size()));
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterDataStream>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                     throw std::runtime_error(std::format("JsonFusion parse error"));
@@ -236,9 +228,7 @@ int main(int argc, char* argv[]) {
             std::size_t final_size = 0;
 
             benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
-
-                YyjsonWriter writer(serialize_buffer);
-                auto res = JsonFusion::SerializeWithWriter(model, writer);
+                auto res = JsonFusion::SerializeWithWriter(model, YyjsonWriter(serialize_buffer));
                 if( !res) {
                     std::cerr << std::format("JsonFusion serialize error") << std::endl;
                     return false;
@@ -259,8 +249,7 @@ int main(int argc, char* argv[]) {
 
             benchmark("JsonFusion CBOR serializing", iterations, [&]() {
                 std::uint8_t * b = reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
-                JsonFusion::CborWriter writer(b, b + serialize_buffer.size());
-                if(auto res = JsonFusion::SerializeWithWriter(modelFromCBOR, writer); !res) {
+                if(auto res = JsonFusion::SerializeWithWriter(modelFromCBOR, JsonFusion::CborWriter(b, b + serialize_buffer.size())); !res) {
                     throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
                 }
 

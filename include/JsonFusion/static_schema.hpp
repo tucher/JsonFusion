@@ -778,7 +778,7 @@ struct is_json_serializable_map {
 };
 
 template<class C>
-concept JsonSerializableMap = is_json_serializable_map<C>::value;
+concept SerializableMapLike = is_json_serializable_map<C>::value;
 
 /* ######## Generic data access ######## */
 

@@ -177,14 +177,12 @@ constexpr bool test_json_to_cbor_roundtrip_rpc() {
 
     // Serialize to CBOR (fixed buffer)
     std::array<std::uint8_t, 512> cbor_buffer{};
-    CborWriter writer(cbor_buffer.data(), cbor_buffer.data() + cbor_buffer.size());
-    auto serialize_result = SerializeWithWriter(cmd1, writer);
+    auto serialize_result = SerializeWithWriter(cmd1, CborWriter(cbor_buffer.data(), cbor_buffer.data() + cbor_buffer.size()));
     if (!serialize_result) return false;
 
     // Parse from CBOR
     RpcCommand cmd2{};
-    CborReader reader(cbor_buffer.data(), cbor_buffer.data() + serialize_result.bytesWritten());
-    if (!ParseWithReader(cmd2, reader)) return false;
+    if (!ParseWithReader(cmd2, CborReader(cbor_buffer.data(), cbor_buffer.data() + serialize_result.bytesWritten()))) return false;
 
     if (!verify_rpc_roundtrip(cmd1, cmd2)) return false;
     return true;

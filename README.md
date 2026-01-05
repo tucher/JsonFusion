@@ -537,13 +537,10 @@ Examples could be found in  [`code size benchmarks`](benchmarks/embedded/code_si
 
 // Parsing
 Config config;
-
-JsonFusion::CborReader reader(begin, end);
-auto result = JsonFusion::ParseWithReader(config, reader);
+auto result = JsonFusion::ParseWithReader(config, JsonFusion::CborReader(begin, end));
 
 // Serialization
-JsonFusion::CborWriter writer(out_begin, out_end);
-JsonFusion::SerializeWithWriter(config, writer);
+JsonFusion::SerializeWithWriter(config, JsonFusion::CborWriter(out_begin, out_end));
 ```
 
 ## Benchmarks
@@ -881,8 +878,7 @@ same interface:
 #include <JsonFusion/yyjson_reader.hpp>
 
 TwitterData model;
-JsonFusion::YyjsonReader reader(input.data(), input.size())
-auto res = JsonFusion::ParseWithReader(model, reader);
+auto res = JsonFusion::ParseWithReader(model, JsonFusion::YyjsonReader(input.data(), input.size()));
 ```
 
 This pluggable design proves that the abstraction works in practice: same models, same annotations, same validation logic—just swap the low-level engine.

@@ -975,8 +975,7 @@ constexpr bool ParseValue(Field & field, Reader & reader, CTX &ctx, UserCtx * us
             }
         } else {
             auto parseFn = [&]<class ObjT>(ObjT& targetObj) constexpr {
-                auto tempReader = Reader::from_sink(ob);
-                return ParseWithReader(targetObj, tempReader, userCtx);
+                return ParseWithReader(targetObj, Reader::from_sink(ob), userCtx);
             };
             if(!field.transform_from(parseFn)) {
                 return ctx.withParseError(ParseError::TRANSFORMER_ERROR, reader);
@@ -1007,6 +1006,11 @@ constexpr auto ParseWithReader(InputObjectT & obj, Reader & reader, UserCtx * us
         }
     }
     return ctx.result();
+}
+
+template <static_schema::ParsableValue InputObjectT, class UserCtx = void, reader::ReaderLike Reader>
+constexpr auto ParseWithReader(InputObjectT & obj, Reader && reader, UserCtx * userCtx = nullptr) {
+    return ParseWithReader(obj, reader, userCtx);
 }
 
 template <static_schema::ParsableValue InputObjectT, CharInputIterator It, CharSentinelFor<It> Sent, class UserCtx = void, class Reader = JsonIteratorReader<It, Sent>>

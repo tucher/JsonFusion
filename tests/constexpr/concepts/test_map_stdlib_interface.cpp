@@ -91,7 +91,7 @@ struct StdMapLikeRead {
 
 // Verify the interface is recognized by MapReadable concept
 static_assert(MapReadable<StdMapLikeRead<std::array<char, 16>, int, 10>>);
-static_assert(JsonSerializableMap<StdMapLikeRead<std::array<char, 16>, int, 10>>);
+static_assert(SerializableMapLike<StdMapLikeRead<std::array<char, 16>, int, 10>>);
 
 // Verify cursor is automatically provided
 static_assert(requires {
@@ -127,7 +127,7 @@ static_assert(ParsableValue<ComplexValue>);
 static_assert(MapWritable<ComplexMapWrite>);
 static_assert(ParsableMapLike<ComplexMapWrite>);
 static_assert(MapReadable<ComplexMapRead>);
-static_assert(JsonSerializableMap<ComplexMapRead>);
+static_assert(SerializableMapLike<ComplexMapRead>);
 
 // ============================================================================
 // Test 4: Nested Maps with std::map Interface
@@ -148,7 +148,7 @@ using OptionalMapRead = StdMapLikeRead<std::array<char, 32>, std::optional<int>,
 
 static_assert(ParsableValue<std::optional<int>>);
 static_assert(ParsableMapLike<OptionalMapWrite>);
-static_assert(JsonSerializableMap<OptionalMapRead>);
+static_assert(SerializableMapLike<OptionalMapRead>);
 
 // ============================================================================
 // Test 6: Array Values with std::map Interface
@@ -159,7 +159,7 @@ using ArrayMapRead = StdMapLikeRead<std::array<char, 32>, std::array<int, 10>, 5
 
 static_assert(ParsableArrayLike<std::array<int, 10>>);
 static_assert(ParsableMapLike<ArrayMapWrite>);
-static_assert(JsonSerializableMap<ArrayMapRead>);
+static_assert(SerializableMapLike<ArrayMapRead>);
 
 // ============================================================================
 // Test 7: Both Interfaces Can Coexist
@@ -196,7 +196,7 @@ using BidirectionalMap = StdMapLikeFull<std::array<char, 32>, int, 10>;
 static_assert(MapWritable<BidirectionalMap>);
 static_assert(MapReadable<BidirectionalMap>);
 static_assert(ParsableMapLike<BidirectionalMap>);
-static_assert(JsonSerializableMap<BidirectionalMap>);
+static_assert(SerializableMapLike<BidirectionalMap>);
 
 // ============================================================================
 // All std::map Interface Tests Pass!

@@ -227,7 +227,7 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 }
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::JsonSerializableMap<ObjT>
+    requires static_schema::SerializableMapLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     using FH = static_schema::map_read_cursor<ObjT>;
@@ -496,8 +496,7 @@ constexpr  bool SerializeValue(const Field & obj, Writer & writer, CTX &ctx, Use
         }
     } else {
         auto serializeFn = [&]<class ObjT>(const ObjT& srcObj) constexpr {
-            auto tempWriter = Writer::from_sink(ob);
-            auto res = SerializeWithWriter(srcObj, tempWriter, userCtx);
+            auto res = SerializeWithWriter(srcObj, Writer::from_sink(ob), userCtx);
             if(!!res) ob.set_size(res.bytesWritten());
             return res;
         };
@@ -530,6 +529,11 @@ constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer & writer, Us
     }
 
     return ctx.result();
+}
+
+template <static_schema::SerializableValue InputObjectT, class UserCtx = void, writer::WriterLike Writer>
+constexpr auto SerializeWithWriter(const InputObjectT & obj, Writer && writer, UserCtx * userCtx = nullptr) {
+    return SerializeWithWriter(obj, writer, userCtx);
 }
 
 template <static_schema::SerializableValue InputObjectT, CharOutputIterator It, CharSentinelForOut<It> Sent, class UserCtx = void, class Writer = JsonIteratorWriter<It, Sent>>

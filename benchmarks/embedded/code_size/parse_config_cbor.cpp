@@ -152,26 +152,21 @@ A<EmbeddedConfig, indexes_as_keys> g_config;
 // Parse function - instantiates JsonFusion parser for this model
 // This is what gets measured for code size
 extern "C" __attribute__((used)) bool parse_serialize_config(const std::uint8_t* data, size_t size) {
-    JsonFusion::CborReader reader(data, data + size);
-    auto result = JsonFusion::ParseWithReader(g_config, reader);
+    auto result = JsonFusion::ParseWithReader(g_config, JsonFusion::CborReader(data, data + size));
 
     std::uint8_t* d = const_cast<std::uint8_t*>(data);
-    JsonFusion::CborWriter writer(d, d + size);
-    auto result_s = JsonFusion::SerializeWithWriter(g_config, writer);
+    auto result_s = JsonFusion::SerializeWithWriter(g_config, JsonFusion::CborWriter(d, d + size));
 
     return !!result && !!result_s;
 }
 
 extern "C" __attribute__((used)) bool parse_serialize_rpc_command(const std::uint8_t* data, size_t size) {
     RpcCommand cmd;
-    JsonFusion::CborReader reader(data, data + size);
-    auto result_p = JsonFusion::ParseWithReader(cmd, reader);
+    auto result_p = JsonFusion::ParseWithReader(cmd, JsonFusion::CborReader(data, data + size));
 
     std::uint8_t* d = const_cast<std::uint8_t*>(data);
-    JsonFusion::CborWriter writer(d, d + size);
-    auto result_s = JsonFusion::SerializeWithWriter(cmd, writer);
+    auto result_s = JsonFusion::SerializeWithWriter(cmd, JsonFusion::CborWriter(d, d + size));
         
-
     return !!result_p && !!result_s;
 }
 // Entry point - ensures parse_config is not eliminated by linker

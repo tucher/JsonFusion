@@ -70,7 +70,7 @@ namespace test_bool_concept {
     static_assert(!ParsableArrayLike<bool>);
     static_assert(!SerializableArrayLike<bool>);
     static_assert(!ParsableMapLike<bool>);
-    static_assert(!JsonSerializableMap<bool>);
+    static_assert(!SerializableMapLike<bool>);
     
     // Negative: Other types are NOT BoolLike
     static_assert(!BoolLike<int>);
@@ -115,7 +115,7 @@ namespace test_number_concept {
     static_assert(!ParsableArrayLike<int>);
     static_assert(!SerializableArrayLike<int>);
     static_assert(!ParsableMapLike<int>);
-    static_assert(!JsonSerializableMap<int>);
+    static_assert(!SerializableMapLike<int>);
     
     static_assert(!BoolLike<double>);
     static_assert(!StringLike<double>);
@@ -123,7 +123,7 @@ namespace test_number_concept {
     static_assert(!ParsableArrayLike<double>);
     static_assert(!SerializableArrayLike<double>);
     static_assert(!ParsableMapLike<double>);
-    static_assert(!JsonSerializableMap<double>);
+    static_assert(!SerializableMapLike<double>);
     
     // Negative: Other types are NOT NumberLike
     static_assert(!NumberLike<bool>);
@@ -156,7 +156,7 @@ namespace test_string_concept {
     static_assert(!ParsableArrayLike<TestString>);
     static_assert(!SerializableArrayLike<TestString>);
     static_assert(!ParsableMapLike<TestString>);
-    static_assert(!JsonSerializableMap<TestString>);
+    static_assert(!SerializableMapLike<TestString>);
     
     // Negative: Other types are NOT StringLike
     static_assert(!StringLike<bool>);
@@ -201,7 +201,7 @@ namespace test_object_concept {
     static_assert(!ParsableArrayLike<TestObject>);
     static_assert(!SerializableArrayLike<TestObject>);
     static_assert(!ParsableMapLike<TestObject>);
-    static_assert(!JsonSerializableMap<TestObject>);
+    static_assert(!SerializableMapLike<TestObject>);
     
     // CRITICAL: Objects are NOT maps (even if they look similar)
     static_assert(!ObjectLike<TestCustomMap>);
@@ -256,8 +256,8 @@ namespace test_array_concept {
     static_assert(!ObjectLike<TestCArray>);
     static_assert(!ParsableMapLike<TestArray>);
     static_assert(!ParsableMapLike<TestCArray>);
-    static_assert(!JsonSerializableMap<TestArray>);
-    static_assert(!JsonSerializableMap<TestCArray>);
+    static_assert(!SerializableMapLike<TestArray>);
+    static_assert(!SerializableMapLike<TestCArray>);
     
     // CRITICAL: Arrays are NOT objects
     static_assert(!ObjectLike<TestArray>);
@@ -463,7 +463,7 @@ namespace test_streamer_concepts {
     
     // ProducingStreamerLike is NOT other concepts
     static_assert(!ObjectLike<TestProducer>);
-    static_assert(!JsonSerializableMap<TestProducer>);
+    static_assert(!SerializableMapLike<TestProducer>);
     static_assert(!BoolLike<TestProducer>);
     static_assert(!NumberLike<TestProducer>);
     static_assert(!StringLike<TestProducer>);
@@ -480,7 +480,7 @@ namespace test_streamer_concepts {
     // IMPORTANT: StreamerLike types use ARRAY interface, not MAP
     // Even though they have different extension point than cursor-based types
     static_assert(!ParsableMapLike<TestConsumer>);
-    static_assert(!JsonSerializableMap<TestProducer>);
+    static_assert(!SerializableMapLike<TestProducer>);
 }
 
 // ============================================================================
@@ -565,7 +565,7 @@ namespace test_map_streamer_concepts {
     
     // CRITICAL: ProducingMapStreamerLike should be detected as MAP
     static_assert(ProducingMapStreamerLike<TestMapProducer>);
-    static_assert(JsonSerializableMap<TestMapProducer>);
+    static_assert(SerializableMapLike<TestMapProducer>);
     static_assert(SerializableValue<TestMapProducer>);  // Highest level concept
     
     // ProducingMapStreamerLike is NOT other concepts

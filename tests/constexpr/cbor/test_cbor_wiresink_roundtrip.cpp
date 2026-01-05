@@ -3,8 +3,6 @@
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/cbor.hpp>
 #include <array>
-#include <cstring>
-#include <cassert>
 
 using namespace JsonFusion;
 using namespace JsonFusion::options;
@@ -17,15 +15,15 @@ constexpr bool test_cbor_simple_integer() {
     
     std::array<char, 64> buffer{};
     auto it = buffer.begin();
-    CborWriter writer(it, buffer.end());
-    if (!SerializeWithWriter(value1, writer)) return false;
     
-    std::size_t written = writer.current() - buffer.begin();
+    auto res = SerializeWithWriter(value1, CborWriter (it, buffer.end()));
+    if (!res) return false;
+    
+    std::size_t written = res.bytesWritten();
     
     std::uint16_t value2 = 0;
     auto begin = buffer.begin();
-    CborReader reader(begin, buffer.begin() + written);
-    if (!ParseWithReader(value2, reader)) return false;
+    if (!ParseWithReader(value2, CborReader (begin, buffer.begin() + written))) return false;
     if (value1 != value2) return false;
     
     return true;
@@ -39,13 +37,12 @@ constexpr bool test_cbor_sign_extension() {
     std::uint64_t value1 = 255;
     std::array<char, 64> buffer1{};
     auto it1 = buffer1.begin();
-    CborWriter writer1(it1, buffer1.end());
-    if (!SerializeWithWriter(value1, writer1)) return false;
+    auto res1 = SerializeWithWriter(value1, CborWriter(it1, buffer1.end()));
+    if (!res1) return false;
     
     std::uint64_t value2 = 0;
     auto begin1 = buffer1.begin();
-    CborReader reader1(begin1, writer1.current());
-    if (!ParseWithReader(value2, reader1)) return false;
+    if (!ParseWithReader(value2, CborReader(begin1, begin1 + res1.bytesWritten()))) return false;
     if (value1 != value2) return false;
     
     // Test case 2: uint16_t with high byte >= 128 → CBOR: 19 FF 90 (ai=25)
@@ -53,13 +50,12 @@ constexpr bool test_cbor_sign_extension() {
     std::uint16_t value3 = 0xFF90;  // 65424
     std::array<char, 64> buffer2{};
     auto it2 = buffer2.begin();
-    CborWriter writer2(it2, buffer2.end());
-    if (!SerializeWithWriter(value3, writer2)) return false;
+    auto res2 = SerializeWithWriter(value3, CborWriter (it2, buffer2.end()));
+    if (!res2) return false;
     
     std::uint16_t value4 = 0;
     auto begin2 = buffer2.begin();
-    CborReader reader2(begin2, writer2.current());
-    if (!ParseWithReader(value4, reader2)) return false;
+    if (!ParseWithReader(value4, CborReader(begin2, begin2 + res2.bytesWritten()))) return false;
     if (value3 != value4) return false;
     
     return true;
@@ -100,19 +96,17 @@ constexpr bool test_cbor_basic_roundtrip() {
     // Serialize to CBOR
     std::array<char, 256> buffer{};
     auto it = buffer.begin();
-    CborWriter writer(it, buffer.end());
-    auto result = SerializeWithWriter(config1, writer);
+    auto result = SerializeWithWriter(config1, CborWriter(it, buffer.end()));
     if (!result) {
         return false;
     }
     
-    std::size_t written = writer.current() - buffer.begin();
+    std::size_t written = result.bytesWritten();
     
     // Parse back with CBOR
     NetworkConfig config2;
     auto begin = buffer.begin();
-    CborReader reader(begin, buffer.begin() + written);
-    auto parse_result = ParseWithReader(config2, reader);
+    auto parse_result = ParseWithReader(config2, CborReader(begin, buffer.begin() + written));
     if (!parse_result) {
         return false;
     }
@@ -141,13 +135,12 @@ constexpr bool test_cbor_wiresink_capture() {
     
     std::array<char, 256> buffer{};
     auto it = buffer.begin();
-    CborWriter writer(it, buffer.end());
-    auto ser_result = SerializeWithWriter(config, writer);
+    auto ser_result = SerializeWithWriter(config, CborWriter(it, buffer.end()));
     if (!ser_result) {
         return false;
     }
     
-    std::size_t cbor_size = writer.current() - buffer.begin();
+    std::size_t cbor_size = ser_result.bytesWritten();
     
     // Parse and capture to WireSink
     WireSink<128> sink;
@@ -155,7 +148,6 @@ constexpr bool test_cbor_wiresink_capture() {
         auto begin = buffer.begin();
         CborReader reader(begin, buffer.begin() + cbor_size);
         
-        auto old_cur = reader.current();
         if (!reader.capture_to_sink(sink)) {
             return false;
         }
@@ -182,8 +174,7 @@ constexpr bool test_cbor_wiresink_capture() {
     // Parse from new buffer with CBOR and verify
     NetworkConfig config2{};  // Zero-initialize to avoid garbage in unused bytes
     auto begin2 = buffer2.begin();
-    CborReader reader2(begin2, buffer2.begin() + cbor_size);
-    auto parse_result = ParseWithReader(config2, reader2);
+    auto parse_result = ParseWithReader(config2, CborReader(begin2, buffer2.begin() + cbor_size));
     if (!parse_result) {
         return false;
     }
@@ -238,16 +229,15 @@ constexpr bool test_cbor_wiresink_transformer() {
     
     std::array<char, 256> legacy_buffer{};
     auto it = legacy_buffer.begin();
-    CborWriter legacy_writer(it, legacy_buffer.end());
-    if (!SerializeWithWriter(legacy, legacy_writer)) return false;
+    auto res = SerializeWithWriter(legacy, CborWriter(it, legacy_buffer.end()));
+    if (!res) return false;
     
-    std::size_t legacy_size = legacy_writer.current() - legacy_buffer.begin();
+    std::size_t legacy_size = res.bytesWritten();
     
     // Parse as modern config with CBOR (transformer handles missing field)
     ModernConfig modern{};  // Zero-initialize
     auto begin = legacy_buffer.begin();
-    CborReader modern_reader(begin, legacy_buffer.begin() + legacy_size);
-    auto result = ParseWithReader(modern, modern_reader);
+    auto result = ParseWithReader(modern, CborReader(begin, legacy_buffer.begin() + legacy_size));
     
     // Should succeed with default value
     if (!result) return false;
@@ -260,16 +250,15 @@ constexpr bool test_cbor_wiresink_transformer() {
     
     std::array<char, 256> modern_buffer{};
     auto it2 = modern_buffer.begin();
-    CborWriter modern_writer(it2, modern_buffer.end());
-    if (!SerializeWithWriter(modern, modern_writer)) return false;
+    auto mres = SerializeWithWriter(modern, CborWriter(it2, modern_buffer.end()));
+    if (!mres) return false;
     
-    std::size_t modern_size = modern_writer.current() - modern_buffer.begin();
+    std::size_t modern_size = mres.bytesWritten();
     
     // Parse back with CBOR and verify
     ModernConfig modern2{};  // Zero-initialize
     auto begin2 = modern_buffer.begin();
-    CborReader modern_reader2(begin2, modern_buffer.begin() + modern_size);
-    if (!ParseWithReader(modern2, modern_reader2)) return false;
+    if (!ParseWithReader(modern2, CborReader(begin2, modern_buffer.begin() + modern_size))) return false;
     
     if (!compare_arrays(modern.name, modern2.name)) return false;
     if (modern.port != modern2.port) return false;

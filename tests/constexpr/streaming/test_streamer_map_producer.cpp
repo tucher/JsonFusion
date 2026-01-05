@@ -58,7 +58,7 @@ struct IntMapProducer {
 };
 
 static_assert(ProducingMapStreamerLike<IntMapProducer>);
-static_assert(JsonSerializableMap<IntMapProducer>);
+static_assert(SerializableMapLike<IntMapProducer>);
 
 // Test 1: Map producer as first-class type (direct serialization)
 static_assert(

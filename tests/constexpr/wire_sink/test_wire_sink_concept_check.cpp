@@ -21,4 +21,4 @@ static_assert(!static_schema::ObjectLike<WireSink<1024>>, "WireSink should NOT b
 static_assert(!static_schema::ParsableArrayLike<WireSink<1024>>, "WireSink should NOT be ParsableArrayLike");
 static_assert(!static_schema::SerializableArrayLike<WireSink<1024>>, "WireSink should NOT be SerializableArrayLike");
 static_assert(!static_schema::ParsableMapLike<WireSink<1024>>, "WireSink should NOT be ParsableMapLike");
-static_assert(!static_schema::JsonSerializableMap<WireSink<1024>>, "WireSink should NOT be JsonSerializableMap");
+static_assert(!static_schema::SerializableMapLike<WireSink<1024>>, "WireSink should NOT be SerializableMapLike");

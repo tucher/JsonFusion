@@ -138,7 +138,7 @@ struct MapProducer {
 
 // Verify the high-level interface is recognized
 static_assert(ProducingMapStreamerLike<MapProducer<std::array<char, 32>, int, 10>>);
-static_assert(JsonSerializableMap<MapProducer<std::array<char, 32>, int, 10>>);
+static_assert(SerializableMapLike<MapProducer<std::array<char, 32>, int, 10>>);
 
 // ============================================================================
 // Test: Parse Simple String->Int Map

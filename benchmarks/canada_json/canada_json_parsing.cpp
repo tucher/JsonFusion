@@ -99,8 +99,7 @@ int main(int argc, char* argv[]) {
     cbor_out.clear();
     auto it  = std::back_inserter(cbor_out);
     limitless_sentinel end{};
-    JsonFusion::CborWriter writer(it, end);
-    if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer); !res) {
+    if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, JsonFusion::CborWriter(it, end)); !res) {
         std::cerr << std::format("JsonFusion CBOR serialize error") << std::endl;
         return 1;
     }
@@ -149,8 +148,7 @@ int main(int argc, char* argv[]) {
         benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
             std::string copy = json_data;
 
-            YyjsonReader reader(copy.data(), copy.size());
-            auto res = ParseWithReader(canada, reader);
+            auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()));
             if (!res) {
                 std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -169,8 +167,7 @@ int main(int argc, char* argv[]) {
 
             canada.features.set_jsonfusion_context(&stats);
 
-            YyjsonReader reader(copy.data(), copy.size());
-            auto res = ParseWithReader(canada, reader, &stats);
+            auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()), &stats);
 
             if (!res) {
                 std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
@@ -188,8 +185,7 @@ int main(int argc, char* argv[]) {
             std::string copy = cbor_out;
 
             std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
-            JsonFusion::CborReader reader(b, b + copy.size());
-            auto res = JsonFusion::ParseWithReader(modelFromCBOR, reader);
+            auto res = JsonFusion::ParseWithReader(modelFromCBOR, JsonFusion::CborReader(b, b + copy.size()));
             if (!res) {
                 std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
                 return false;
@@ -214,8 +210,7 @@ int main(int argc, char* argv[]) {
             canada.features.set_jsonfusion_context(&stats);
 
             std::uint8_t * b = reinterpret_cast<std::uint8_t *>(copy.data());
-            JsonFusion::CborReader reader(b, b + copy.size());
-            auto res = ParseWithReader(canada, reader, &stats);
+            auto res = ParseWithReader(canada, JsonFusion::CborReader(b, b + copy.size()), &stats);
 
             if (!res) {
                 std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
@@ -236,8 +231,7 @@ int main(int argc, char* argv[]) {
     {
         std::size_t final_size = 0;
         benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
-            YyjsonWriter writer(serialize_buffer);
-            auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer);
+            auto res = JsonFusion::SerializeWithWriter(canadaPopulated, YyjsonWriter(serialize_buffer));
             if( !res) {
                 std::cerr << std::format("JsonFusion serialize error") << std::endl;
                 return false;
@@ -270,8 +264,7 @@ int main(int argc, char* argv[]) {
         std::size_t final_sz;
         benchmark("JsonFusion CBOR serializing", iterations, [&]() {
             std::uint8_t * b = reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
-            JsonFusion::CborWriter writer(b, b + serialize_buffer.size());
-            if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, writer); !res) {
+            if(auto res = JsonFusion::SerializeWithWriter(canadaPopulated, JsonFusion::CborWriter(b, b + serialize_buffer.size())); !res) {
                 std::cerr << std::format("JsonFusion CBOR serialize error") << std::endl;
                 return false;
             } else {
