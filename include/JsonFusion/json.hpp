@@ -993,8 +993,8 @@ private:
 
 
     char   string_buf_[4]   = {}; // temp buffer for escapes / UTF-8
-    int    string_buf_len_  = 0;
-    int    string_buf_pos_  = 0;
+    std::size_t    string_buf_len_  = 0;
+    std::size_t    string_buf_pos_  = 0;
     bool   in_string_       = false;
 
     constexpr void setError(JsonIteratorReaderError e) {

@@ -148,7 +148,7 @@ constexpr std::size_t STRING_CHUNK_SIZE = 64;
 // Cursor provides: prepare_write(), write_ptr(), commit(), finalize(), max_capacity()
 // This unified interface works for both static buffers (zero-copy) and dynamic strings (buffered append)
 template<class Reader, class Cursor>
-constexpr bool read_string_with_cursor(
+__attribute__((noinline)) constexpr bool read_string_with_cursor(
     Reader&      reader,
     Cursor&      cursor,
     std::size_t  max_len,   // validator limit or SIZE_MAX
