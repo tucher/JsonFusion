@@ -247,37 +247,58 @@ public:
         }
         return ret;
     }
-    __attribute__((noinline)) constexpr  reader::IterationStatus advance_after_value(MapFrame&) {
-        reader::IterationStatus ret;
-        if(!skip_whitespace())  {
-            ret.status = reader::TryParseStatus::error;
-            return ret;
-        }
-        if(*current_ == '}')  {
-            ret.has_value = false;
-            current_ ++;
+    __attribute__((noinline)) constexpr reader::IterationStatus advance_after_value(MapFrame&) {
+        reader::IterationStatus ret{};
 
-            ret.status = reader::TryParseStatus::ok;
+        // After finishing a value, move to either '}' or ','.
+        skip_whitespace();
+
+        if (atEnd()) {
+            // Object cannot validly end right after a value without '}'.
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
+            ret.status = reader::TryParseStatus::error;
             return ret;
         }
-        if(*current_ == ',')  {
-            current_ ++;
-        }else {
+
+        char c = *current_;
+
+        // Case 1: end of object: ... "value" }
+        if (c == '}') {
+            ++current_;
+            ret.has_value = false;
+            ret.status    = reader::TryParseStatus::ok;
+            return ret;
+        }
+
+        // Case 2: must be a comma separating members: ... "value" ,
+        if (c != ',') {
             setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
-        if(!skip_whitespace()) {
+
+        // Consume the comma and skip whitespace before the next key.
+        ++current_;
+        skip_whitespace();
+
+        if (atEnd()) {
+            // Trailing comma: { "a": 1, <EOF> }
+            setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
             ret.status = reader::TryParseStatus::error;
             return ret;
         }
-        if(*current_==',' || *current_ == '}') {
+
+        // In JSON objects, next non-WS must be a string key.
+        if (*current_ != '"') {
+            // This also catches { "a": 1, } and { "a": 1, , ... }
             setError(JsonIteratorReaderError::ILLFORMED_OBJECT);
             ret.status = reader::TryParseStatus::error;
-        } else {
-            ret.has_value = true;
-            ret.status = reader::TryParseStatus::ok;
+            return ret;
         }
+
+        // We’re positioned on the next key.
+        ret.has_value = true;
+        ret.status    = reader::TryParseStatus::ok;
         return ret;
     }
     __attribute__((noinline)) constexpr  bool move_to_value(MapFrame&) {
@@ -370,10 +391,11 @@ public:
         }
     }
 
-    __attribute__((noinline)) constexpr reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
+    __attribute__((noinline))
+    constexpr reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
         std::size_t written = 0;
 
-        // If we're not currently inside a string, expect an opening quote
+        // If we're not currently inside a string, expect an opening quote.
         if (!in_string_) {
             if (atEnd()) {
                 setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
@@ -384,28 +406,74 @@ public:
             }
             in_string_ = true;
             ++current_; // consume opening '"'
-            // No output yet, fall through into main loop
         }
 
-        while (true) {
-            // 1) Flush any buffered UTF-8 bytes (from previous \uXXXX)
+        auto handle_capacity_full = [&](std::size_t written_bytes) {
+            // If buffer is full, but the next char is the closing quote,
+            // we can still finish the string in this call.
+            if (!atEnd() && *current_ == '"') {
+                ++current_;
+                in_string_      = false;
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+                return reader::StringChunkResult{
+                    reader::StringChunkStatus::ok,
+                    written_bytes,
+                    true // done
+                };
+            }
+            // Otherwise, caller continues the string later.
+            return reader::StringChunkResult{
+                reader::StringChunkStatus::ok,
+                written_bytes,
+                false // not done
+            };
+        };
+
+        // First, flush any leftover UTF-8 bytes from previous escapes.
+        if (string_buf_pos_ < string_buf_len_) {
             while (string_buf_pos_ < string_buf_len_ && written < capacity) {
                 out[written++] = string_buf_[string_buf_pos_++];
             }
 
-            // If we filled the caller's buffer, stop here
-            if (written == capacity) {
-                if(*current_ == '"') {
-                    ++current_;
-                    in_string_      = false;
-                    string_buf_len_ = 0;
-                    string_buf_pos_ = 0;
-                    return {reader::StringChunkStatus::ok, written, true};
-                } else
-                    return {reader::StringChunkStatus::ok, written, false};
+            if (string_buf_pos_ == string_buf_len_) {
+                string_buf_pos_ = 0;
+                string_buf_len_ = 0;
             }
 
-            // No buffered bytes left, read next raw char
+            if (written == capacity) {
+                return handle_capacity_full(written);
+            }
+        }
+
+        // Main loop: fill caller's buffer up to capacity, or until string ends / error.
+        while (written < capacity) {
+            if (atEnd()) {
+                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
+                in_string_      = false;
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+                return {reader::StringChunkStatus::error, written, false};
+            }
+
+            // ---- Fast path: copy a run of non-special chars ----
+            while (written < capacity && !atEnd()) {
+                char c  = *current_;
+                auto uc = static_cast<unsigned char>(c);
+
+                // Stop on: closing quote, backslash (escape), or control char.
+                if (c == '"' || c == '\\' || uc <= 0x1F) {
+                    break;
+                }
+
+                out[written++] = c;
+                ++current_;
+            }
+
+            if (written == capacity) {
+                return handle_capacity_full(written);
+            }
+
             if (atEnd()) {
                 setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
                 in_string_      = false;
@@ -416,9 +484,10 @@ public:
 
             char c = *current_;
 
-            switch (c) {
-            case '"': {
-                // End of string
+            // ---- Slow path: special characters ----
+
+            // 1) End of string
+            if (c == '"') {
                 ++current_;
                 in_string_      = false;
                 string_buf_len_ = 0;
@@ -426,8 +495,8 @@ public:
                 return {reader::StringChunkStatus::ok, written, true};
             }
 
-            case '\\': {
-                // Escape sequence
+            // 2) Escape sequence
+            if (c == '\\') {
                 ++current_;
                 if (atEnd()) {
                     setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
@@ -456,18 +525,17 @@ public:
                     return {reader::StringChunkStatus::error, written, false};
                 }
 
+                // Simple escape: write directly or buffer if no space left.
                 if (esc != 'u') {
-                    // Simple escape → either write now or buffer it
                     if (written < capacity) {
                         out[written++] = simple;
                     } else {
-                        // no room this chunk: buffer for next time
-                        string_buf_len_ = 1;
                         string_buf_pos_ = 0;
+                        string_buf_len_ = 1;
                         string_buf_[0]  = simple;
-                        return {reader::StringChunkStatus::ok, written, false};
+                        return handle_capacity_full(written);
                     }
-                    break; // continue main loop
+                    continue;
                 }
 
                 // ---- \uXXXX handling ----
@@ -527,50 +595,62 @@ public:
                     codepoint = u1;
                 }
 
-                // Encode codepoint as UTF-8 into internal buffer
-                string_buf_len_ = 0;
-                string_buf_pos_ = 0;
+                // Encode codepoint as UTF-8 into a small local buffer,
+                // then write as much as fits, buffer the rest (if any).
+                char utf8[4];
+                std::size_t utf8_len = 0;
 
                 if (codepoint <= 0x7Fu) {
-                    string_buf_[string_buf_len_++] = static_cast<char>(codepoint);
+                    utf8[utf8_len++] = static_cast<char>(codepoint);
                 } else if (codepoint <= 0x7FFu) {
-                    string_buf_[string_buf_len_++] = static_cast<char>(0xC0 | (codepoint >> 6));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0xC0 | (codepoint >> 6));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
                 } else if (codepoint <= 0xFFFFu) {
-                    string_buf_[string_buf_len_++] = static_cast<char>(0xE0 | (codepoint >> 12));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0xE0 | (codepoint >> 12));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
                 } else { // up to 0x10FFFF
-                    string_buf_[string_buf_len_++] = static_cast<char>(0xF0 | (codepoint >> 18));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
-                    string_buf_[string_buf_len_++] = static_cast<char>(0x80 | (codepoint & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0xF0 | (codepoint >> 18));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+                    utf8[utf8_len++] = static_cast<char>(0x80 | (codepoint & 0x3F));
                 }
 
-                // Next loop iteration will immediately flush from string_buf_
-                break;
+                // Write as many bytes as we can to out, buffer the remainder.
+                std::size_t i = 0;
+                while (i < utf8_len && written < capacity) {
+                    out[written++] = utf8[i++];
+                }
+
+                if (i < utf8_len) {
+                    // Not all bytes fit; store the rest in string_buf_ for next call.
+                    string_buf_pos_ = 0;
+                    string_buf_len_ = utf8_len - i;
+                    for (std::size_t j = 0; j < string_buf_len_; ++j) {
+                        string_buf_[j] = utf8[i + j];
+                    }
+                    return handle_capacity_full(written);
+                }
+
+                continue;
             }
 
-            default:
-                // RFC 8259 §7: Control chars U+0000–U+001F must be escaped
-                if (static_cast<unsigned char>(c) <= 0x1F) {
-                    setError(JsonIteratorReaderError::ILLFORMED_STRING);
-                    in_string_ = false;
-                    return {reader::StringChunkStatus::error, written, false};
-                }
+            // 3) Control characters (<= 0x1F) must be escaped.
+            if (static_cast<unsigned char>(c) <= 0x1F) {
+                setError(JsonIteratorReaderError::ILLFORMED_STRING);
+                in_string_      = false;
+                string_buf_len_ = 0;
+                string_buf_pos_ = 0;
+                return {reader::StringChunkStatus::error, written, false};
+            }
 
-                // Normal unescaped char
-                if (written == capacity) {
-                    // no space; defer this char to next chunk
-                    return {reader::StringChunkStatus::ok, written, false};
-                }
-                out[written++] = c;
-                ++current_;
-                break;
-            } // switch
-        }     // while
+            // Should not reach here: fast path handles normal chars,
+            // special cases are handled above.
+        }
+
+        // Out of capacity, still inside string; caller will resume.
+        return handle_capacity_full(written);
     }
-
 
     __attribute__((noinline)) constexpr bool skip_value() {
         NoOpFiller filler{};
@@ -937,16 +1017,7 @@ private:
     constexpr bool atEnd() {
         return current_ == end_;
     }
-    constexpr bool isSpace(char a) {
-        switch(a) {
-        case 0x20:
-        case 0x0A:
-        case 0x0D:
-        case 0x09:
-            return true;
-        }
-        return false;
-    }
+
 
     constexpr bool isPlainEnd(char a) {
         switch(a) {
@@ -962,17 +1033,18 @@ private:
         return false;
     }
 
-    // Basic whitespace skipping for all callers
-    constexpr  bool skip_whitespace() {
-        while(isSpace(*current_)) {
-            if (atEnd())  {
-                setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
-                return false;
-            }
+    constexpr bool isSpace(char c) noexcept {
+        // ASCII JSON whitespace: space, LF, CR, TAB
+        return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+    }
+
+    constexpr bool skip_whitespace() {
+
+        // Fast path: just chew through spaces until non-space or end
+        while (current_ != end_ && isSpace(*current_)) {
+
             ++current_;
         }
-
-
         return true;
     }
 

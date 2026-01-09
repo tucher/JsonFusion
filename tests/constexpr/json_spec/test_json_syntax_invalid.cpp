@@ -19,12 +19,12 @@ struct TwoFields {
 
 // Test 1: Missing closing brace
 static_assert(
-    TestParseError<Simple>(R"({"value": 1)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 1)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA),
     "Invalid: missing closing brace"
 );
 
 static_assert(
-    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
+    TestParseError<TwoFields>(R"({"x": 1, "y": 2)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA),
     "Invalid: missing closing brace (multiple fields)"
 );
 
@@ -117,7 +117,7 @@ static_assert(
 );
 
 static_assert(
-    TestParseError<Simple>(R"({"value": 4)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
+    TestParseError<Simple>(R"({"value": 4)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA),
     "Invalid: truncated number"
 );
 
@@ -216,7 +216,7 @@ struct Nested {
 };
 
 static_assert(
-    TestParseError<Nested>(R"({"inner": {"x": 1)", JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT),
+    TestParseError<Nested>(R"({"inner": {"x": 1)", JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA),
     "Invalid: missing closing brace in nested object"
 );
 

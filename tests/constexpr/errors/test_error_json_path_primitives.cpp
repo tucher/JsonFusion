@@ -151,7 +151,7 @@ static_assert([]() constexpr {
     Flat obj{};
     auto result = Parse(obj, std::string_view(R"({"x": 42)"));
     return !result 
-        && result.readerError() == JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT;
+        && result.readerError() == JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA;
         // Path depth could be 0 or 1 depending on how far parsing got
 }(), "Root-level error: unclosed object");
 

@@ -47,7 +47,7 @@ static_assert([]() constexpr {
     // Unclosed object
     return ParseFailsWith(c, 
         std::string_view(R"({"value": 42, "flag": true)"),
-        JsonFusion::JsonIteratorReaderError::ILLFORMED_OBJECT);
+        JsonFusion::JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
 }(), "Should fail with ILLFORMED_OBJECT error");
 
 // ============================================================================
