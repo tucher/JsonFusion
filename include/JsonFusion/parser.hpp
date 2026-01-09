@@ -144,31 +144,22 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
 
 constexpr std::size_t STRING_CHUNK_SIZE = 64;
 
-template<class Reader, class Cont>
-constexpr bool read_string_into(
+// Helper: read string using cursor abstraction
+// Cursor provides: prepare_write(), write_ptr(), commit(), finalize(), max_capacity()
+// This unified interface works for both static buffers (zero-copy) and dynamic strings (buffered append)
+template<class Reader, class Cursor>
+constexpr bool read_string_with_cursor(
     Reader&      reader,
-    Cont&        out,
+    Cursor&      cursor,
     std::size_t  max_len,   // validator limit or SIZE_MAX
-    ParseError&         err,
-    std::size_t& outSize,
+    ParseError&  err,
     bool         read_rest_on_overflow = false
-    )
+)
 {
-    std::size_t total = 0;
-
-    // Pre-reserve for dynamic containers to minimize reallocations.
-    if constexpr (false && JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
-        const std::size_t reserve_size =
-            (max_len == std::numeric_limits<std::size_t>::max())
-                ? STRING_CHUNK_SIZE
-                : max_len;
-        out.reserve(reserve_size);
-    }
-
     for (;;) {
-        // Remaining bytes we are *allowed* to store into the container.
-        const std::size_t remaining = max_len - total;
-        if (remaining == 0) {
+        // Check if we've hit the validator limit
+        const std::size_t current_size = cursor.size();
+        if (current_size >= max_len) {
             if (read_rest_on_overflow) {
                 // Consume and discard the rest of the string so the reader ends
                 // in a sane state (past the closing quote).
@@ -180,145 +171,109 @@ constexpr bool read_string_into(
 
                     switch (rest.status) {
                     case JsonFusion::reader::StringChunkStatus::no_match:
-                        // Shouldn't happen mid-string, but treat as ill-formed.
                         err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
                         return false;
-
                     case JsonFusion::reader::StringChunkStatus::error:
                         return false;
-
                     case JsonFusion::reader::StringChunkStatus::ok:
                         break;
                     }
 
-                    if (rest.bytes_written > STRING_CHUNK_SIZE) {
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    }
-
                     if (rest.done) {
-                        // We’ve reached the end of the JSON string.
                         err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        // outSize stays at the number of bytes we actually stored.
-                        outSize = total;
                         return false;
                     }
 
                     if (rest.bytes_written == 0) {
-                        // Reader made no progress but not done → malformed.
                         err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-
                         return false;
                     }
                 }
             } else {
-                // Old behavior: fail immediately at overflow, leaving reader
-                // mid-string.
                 err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
                 return false;
             }
         }
 
-        const std::size_t ask =
-            remaining < STRING_CHUNK_SIZE ? remaining : STRING_CHUNK_SIZE;
-
-        JsonFusion::reader::StringChunkResult res;
-
-        if constexpr (!JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
-            res = reader.read_string_chunk(out + total, ask);
-
-        } else if constexpr (std::is_same_v<typename Cont::value_type, char>) {
-            // Dynamic string-like container: use a stack buffer + append
-            char buf[STRING_CHUNK_SIZE];
-            res = reader.read_string_chunk(buf, ask);
-
-            switch (res.status) {
-            case JsonFusion::reader::StringChunkStatus::ok:
-                break;
-            case JsonFusion::reader::StringChunkStatus::no_match:
-                err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
-                return false;
-            case JsonFusion::reader::StringChunkStatus::error:
-                return false;
+        // Calculate how much we can write
+        const std::size_t remaining_for_validator = max_len - current_size;
+        const std::size_t ask_hint = remaining_for_validator < STRING_CHUNK_SIZE 
+                                     ? remaining_for_validator : STRING_CHUNK_SIZE;
+        
+        // Ask cursor for buffer space
+        const std::size_t available = cursor.prepare_write(ask_hint);
+        if (available == 0) {
+            // Cursor has no more space (container capacity exhausted)
+            if (read_rest_on_overflow) {
+                // Need to consume rest of string
+                char scratch[STRING_CHUNK_SIZE];
+                for (;;) {
+                    JsonFusion::reader::StringChunkResult rest =
+                        reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
+                    if (rest.status != JsonFusion::reader::StringChunkStatus::ok) {
+                        if (rest.status == JsonFusion::reader::StringChunkStatus::no_match) {
+                            err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
+                        }
+                        return false;
+                    }
+                    if (rest.done) {
+                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+                        return false;
+                    }
+                    if (rest.bytes_written == 0) {
+                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+                        return false;
+                    }
+                }
             }
-
-            if (res.bytes_written > ask) {
-                err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                return false;
-            }
-
-            if (res.bytes_written > 0) {
-                out.append(buf, res.bytes_written);
-                total += res.bytes_written;
-            }
-
-            if (res.done) {
-                outSize = total;
-                return true;
-            }
-
-            if (res.bytes_written == 0) {
-                err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                return false;
-            }
-
-            continue; // go to next chunk
-        }else {
-            // Dynamic non-char container (unlikely here, but keep it generic)
-            out.resize(total + ask);
-            res = reader.read_string_chunk(out.data() + total, ask);
+            err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+            return false;
         }
+
+        // Read directly into cursor's buffer
+        char* write_buf = cursor.write_ptr();
+        JsonFusion::reader::StringChunkResult res = reader.read_string_chunk(write_buf, available);
 
         switch (res.status) {
         case JsonFusion::reader::StringChunkStatus::no_match:
-            // We expected a string here and didn't get one.
             err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
             return false;
-
         case JsonFusion::reader::StringChunkStatus::error:
             return false;
-
         case JsonFusion::reader::StringChunkStatus::ok:
             break;
         }
 
-        // Defensive check: reader must not overrun the supplied chunk.
-        if (res.bytes_written > ask) {
+        // Defensive check
+        if (res.bytes_written > available) {
             err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-
             return false;
         }
 
-        total += res.bytes_written;
+        // Commit what was written
+        if (res.bytes_written > 0) {
+            cursor.commit(res.bytes_written);
+        }
 
         if (res.done) {
-            // String fully consumed.
-            outSize = total;
-            if constexpr (JsonFusion::static_schema::DynamicContainerTypeConcept<Cont>) {
-                out.resize(total);
-            }
+            cursor.finalize();
             return true;
         }
 
-        // Safety net: if reader made no progress and says not done, bail
-        // to avoid accidental infinite loops if the implementation ever regresses.
+        // Safety net: no progress = bail
         if (res.bytes_written == 0) {
             err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
             return false;
         }
-
-        // Otherwise: not done, made progress → loop again.
     }
 
-    // Unreachable, but keeps compilers happy.
-    // If we ever fall through, treat it as a malformed string.
     err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
     return false;
 }
 
 
 template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
-    requires static_schema::StringLike<ObjT>
+    requires static_schema::ParsableStringLike<ObjT>
 constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx * userCtx = nullptr) {
 
     validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
@@ -327,62 +282,42 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
     using PropertyTag = validators::validators_detail::parsing_constraint_properties_tags::max_string_length;
     constexpr std::size_t validator_max = 
         validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTag>();
-    // Read validator_max + 1 to detect if string exceeds the limit
-    constexpr std::size_t MAX_SIZE = (validator_max > 0) ? (validator_max + 1) : std::numeric_limits<std::size_t>::max();
     
-    std::size_t parsedSize = 0;
+    // Effective max: min of container capacity and validator limit (+1 to detect overflow)
+    using Cursor = static_schema::string_write_cursor<ObjT>;
+    Cursor cursor{obj};
+    cursor.reset();
+    
+    const std::size_t container_max = cursor.max_capacity();
+    const std::size_t effective_max = [&]() {
+        if (validator_max > 0) {
+            // Read validator_max + 1 to detect if string exceeds the limit
+            std::size_t val_limit = validator_max + 1;
+            return container_max < val_limit ? container_max : val_limit;
+        }
+        return container_max;
+    }();
+    
     ParseError err{ParseError::NO_ERROR};
-    if constexpr (!static_schema::DynamicContainerTypeConcept<ObjT>) {
-        char * b = static_schema::static_string_traits<ObjT>::data(obj);
-        constexpr std::size_t container_max = static_schema::static_string_traits<ObjT>::max_size(obj);
-        constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
-        if(!read_string_into(reader, b, effective_max, err, parsedSize)) {
-            // On overflow, parsedSize is not set by read_string_into, so set it to the limit
-            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                parsedSize = effective_max;
+    if (!read_string_with_cursor(reader, cursor, effective_max, err)) {
+        const std::size_t parsedSize = cursor.size();
+        
+        // Check if we read enough to detect validator limit exceeded
+        if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
+            // Early rejection: string exceeded validator limit
+            cursor.finalize();
+            if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                    obj, ctx.validationCtx(), cursor.view())) {
+                return ctx.withSchemaError(reader);
             }
-            // Check if we read enough to detect validator limit exceeded
-            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
-                // Early rejection: string exceeded validator limit
-                b[parsedSize] = 0;
-                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-                            std::string_view(b, b + parsedSize))) {
-                    return ctx.withSchemaError(reader);
-                }
-            }
-            return ctx.withParseError(err, reader);
         }
-        b[parsedSize] = 0;
-    } else {
-        obj.clear();
-        if(!read_string_into(reader, obj, MAX_SIZE, err, parsedSize)) {
-            // On overflow, parsedSize is not set by read_string_into, so set it to the limit
-            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                parsedSize = MAX_SIZE;
-            }
-            // Check if we read enough to detect validator limit exceeded
-            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
-                // Early rejection: string exceeded validator limit
-                if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-                            std::string_view(obj.data(), obj.data() + parsedSize))) {
-                    return ctx.withSchemaError(reader);
-                }
-            }
-            return ctx.withParseError(err, reader);
-        }
+        return ctx.withParseError(err, reader);
     }
 
-    if constexpr (static_schema::DynamicContainerTypeConcept<ObjT>) {
-        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-                    std::string_view(obj.data(), obj.data() + parsedSize))) {
-            return ctx.withSchemaError(reader);
-        }
-    } else {
-        char * b = static_schema::static_string_traits<ObjT>::data(obj);
-        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-                    std::string_view(b, b + parsedSize))) {
-            return ctx.withSchemaError(reader);
-        }
+    // Validate final string
+    if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+            obj, ctx.validationCtx(), cursor.view())) {
+        return ctx.withSchemaError(reader);
     }
 
     return true;
@@ -547,58 +482,47 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
         typename FH::key_type& key = cursor.key_ref();
         std::string_view key_sv;
         if constexpr(!std::integral<typename FH::key_type>) {
-            // Custom string parsing with incremental key validation
-            std::size_t parsedSize = 0;
+            // Use string_write_cursor for key parsing
+            using KeyCursor = static_schema::string_write_cursor<typename FH::key_type>;
+            KeyCursor keyCursor{key};
+            keyCursor.reset();
 
             // Query max key length from validators for early rejection
             using PropertyTagKeyLen = validators::validators_detail::parsing_constraint_properties_tags::max_map_key_length;
             constexpr std::size_t validator_max_key_len = 
                 validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTagKeyLen>();
-            // Read validator_max + 1 to detect if key exceeds the limit
-            constexpr std::size_t MAX_SIZE = (validator_max_key_len > 0) ? (validator_max_key_len + 1) : std::numeric_limits<std::size_t>::max();
+            
+            // Calculate effective max: min of container capacity and validator limit (+1 to detect overflow)
+            const std::size_t container_max = keyCursor.max_capacity();
+            const std::size_t effective_max = [&]() {
+                if constexpr (validator_max_key_len > 0) {
+                    std::size_t val_limit = validator_max_key_len + 1;
+                    return container_max < val_limit ? container_max : val_limit;
+                } else {
+                    return container_max;
+                }
+            }();
 
             ParseError err{ParseError::NO_ERROR};
-            if constexpr (!static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-                char * b = static_schema::static_string_traits<typename FH::key_type>::data(key);
-                constexpr std::size_t container_max = static_schema::static_string_traits<typename FH::key_type>::max_size(key);
-                constexpr std::size_t effective_max = std::min(container_max, MAX_SIZE);
-                if(!read_string_into(reader, b, effective_max, err, parsedSize)) {
-                    // On overflow, parsedSize is not set by read_string_into, so set it to the limit
-                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                        parsedSize = effective_max;
+            if(!read_string_with_cursor(reader, keyCursor, effective_max, err)) {
+                const std::size_t parsedSize = keyCursor.size();
+                
+                // Check if we read enough to detect validator limit exceeded
+                if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
+                    // Early rejection: key exceeded validator limit
+                    keyCursor.finalize();
+                    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), keyCursor.view())) {
+                        return ctx.withSchemaError(reader);
                     }
-                    // Check if we read enough to detect validator limit exceeded
-                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
-                        // Early rejection: key exceeded validator limit
-                        b[parsedSize] = 0;
-                        std::string_view key_sv_overflow(b, b + parsedSize);
-                        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv_overflow)) {
-                            return ctx.withSchemaError(reader);
-                        }
-                    }
-                    return ctx.withParseError(err, reader);
                 }
-                b[parsedSize] = 0;
-            } else {
-                if(!read_string_into(reader, key, MAX_SIZE, err, parsedSize)) {
-                    // On overflow, parsedSize is not set by read_string_into, so set it to the limit
-                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                        parsedSize = MAX_SIZE;
-                    }
-                    // Check if we read enough to detect validator limit exceeded
-                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
-                        // Early rejection: key exceeded validator limit
-                        std::string_view key_sv_overflow(key.data(), key.data() + parsedSize);
-                        if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv_overflow)) {
-                            return ctx.withSchemaError(reader);
-                        }
-                    }
-                    return ctx.withParseError(err, reader);
-                }
+                return ctx.withParseError(err, reader);
             }
+            keyCursor.finalize();
 
+            // Get key view for validation and path tracking
+            key_sv = keyCursor.view();
+            
             // Emit key finished event
-            key_sv = std::string_view(key.data(), key.data() + parsedSize);
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv)) {
                 return ctx.withSchemaError(reader);
             }
@@ -781,8 +705,27 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             };
             char * b = searcher.buffer();
 
+            // Create a simple raw buffer cursor wrapper for the searcher's buffer
+            struct RawBufferCursor {
+                char* buf;
+                std::size_t& len;
+                std::size_t max_cap;
+                
+                constexpr std::size_t prepare_write(std::size_t hint) {
+                    std::size_t remaining = max_cap - len;
+                    return hint < remaining ? hint : remaining;
+                }
+                constexpr char* write_ptr() { return buf + len; }
+                constexpr void commit(std::size_t n) { len += n; }
+                constexpr void reset() { len = 0; }
+                constexpr void finalize() { if (len < max_cap) buf[len] = '\0'; }
+                constexpr std::size_t size() const { return len; }
+                constexpr std::size_t max_capacity() const { return max_cap; }
+            };
+            
+            RawBufferCursor bufCursor{b, searcher.current_length(), effective_max_field_len};
             ParseError err{ParseError::NO_ERROR};
-            if(!read_string_into(reader, b, effective_max_field_len, err, searcher.current_length(), true)) {
+            if(!read_string_with_cursor(reader, bufCursor, effective_max_field_len, err, true)) {
                 if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                     return ctx.withParseError(err, reader);
                 } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
@@ -817,7 +760,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
 
         if(arrayIndex == std::size_t(-1)) {
             if constexpr (Opts::template has_option<options::detail::allow_excess_fields_tag>) {
-                if(!reader.template skip_value()) {
+                if(!reader.skip_value()) {
                     return ctx.withReaderError(reader);
                 }
             } else {

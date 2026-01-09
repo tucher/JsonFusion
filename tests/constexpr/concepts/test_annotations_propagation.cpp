@@ -93,7 +93,8 @@ static_assert(introspection::structureElementsCount<Motor> == 3);
 
 static_assert(static_schema::ParsableArrayLike<introspection::structureElementTypeByIndex<0, Motor>>);
 static_assert(static_schema::BoolLike<introspection::structureElementTypeByIndex<1, Motor>>);
-static_assert(static_schema::StringLike<introspection::structureElementTypeByIndex<2, Motor>>);
+static_assert(static_schema::ParsableStringLike<introspection::structureElementTypeByIndex<2, Motor>>);
+static_assert(static_schema::SerializableStringLike<introspection::structureElementTypeByIndex<2, Motor>>);
 
 
 static_assert(introspection::structureElementNameByIndex<0, Motor> == "position");

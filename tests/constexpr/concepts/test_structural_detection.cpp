@@ -65,7 +65,8 @@ namespace test_bool_concept {
     
     // Negative: bool is NOT other concepts
     static_assert(!NumberLike<bool>);
-    static_assert(!StringLike<bool>);
+    static_assert(!ParsableStringLike<bool>);
+    static_assert(!SerializableStringLike<bool>);
     static_assert(!ObjectLike<bool>);
     static_assert(!ParsableArrayLike<bool>);
     static_assert(!SerializableArrayLike<bool>);
@@ -110,7 +111,8 @@ namespace test_number_concept {
     
     // Negative: numbers are NOT other concepts
     static_assert(!BoolLike<int>);
-    static_assert(!StringLike<int>);
+    static_assert(!ParsableStringLike<int>);
+    static_assert(!SerializableStringLike<int>);
     static_assert(!ObjectLike<int>);
     static_assert(!ParsableArrayLike<int>);
     static_assert(!SerializableArrayLike<int>);
@@ -118,7 +120,8 @@ namespace test_number_concept {
     static_assert(!SerializableMapLike<int>);
     
     static_assert(!BoolLike<double>);
-    static_assert(!StringLike<double>);
+    static_assert(!ParsableStringLike<double>);
+    static_assert(!SerializableStringLike<double>);
     static_assert(!ObjectLike<double>);
     static_assert(!ParsableArrayLike<double>);
     static_assert(!SerializableArrayLike<double>);
@@ -140,14 +143,17 @@ namespace test_number_concept {
 }
 
 // ============================================================================
-// SECTION 3: StringLike - Must ONLY match string types
+// SECTION 3: ParsableStringLike/SerializableStringLike - Must ONLY match string types
 // ============================================================================
 
 namespace test_string_concept {
-    // Positive: string types ARE StringLike
-    static_assert(StringLike<std::array<char, 32>>);
-    static_assert(StringLike<std::array<char, 64>>);
-    static_assert(StringLike<std::array<char, 1>>);
+    // Positive: string types ARE ParsableStringLike and SerializableStringLike
+    static_assert(ParsableStringLike<std::array<char, 32>>);
+    static_assert(ParsableStringLike<std::array<char, 64>>);
+    static_assert(ParsableStringLike<std::array<char, 1>>);
+    static_assert(SerializableStringLike<std::array<char, 32>>);
+    static_assert(SerializableStringLike<std::array<char, 64>>);
+    static_assert(SerializableStringLike<std::array<char, 1>>);
     
     // Negative: strings are NOT other concepts
     static_assert(!BoolLike<TestString>);
@@ -158,19 +164,31 @@ namespace test_string_concept {
     static_assert(!ParsableMapLike<TestString>);
     static_assert(!SerializableMapLike<TestString>);
     
-    // Negative: Other types are NOT StringLike
-    static_assert(!StringLike<bool>);
-    static_assert(!StringLike<int>);
-    static_assert(!StringLike<double>);
-    static_assert(!StringLike<TestObject>);
-    static_assert(!StringLike<std::array<int, 10>>);  // array of int, not char
-    static_assert(!StringLike<TestCArray>);  // C array of int, not char
-    static_assert(!StringLike<TestCustomMap>);
-    static_assert(!StringLike<TestUnorderedMap>);
-    static_assert(!StringLike<TestMap>);
-    static_assert(!StringLike<TestOptional>);
-    static_assert(!StringLike<TestUniquePtr>);
-    static_assert(!StringLike<TestPointer>);
+    // Negative: Other types are NOT ParsableStringLike/SerializableStringLike
+    static_assert(!ParsableStringLike<bool>);
+    static_assert(!SerializableStringLike<bool>);
+    static_assert(!ParsableStringLike<int>);
+    static_assert(!SerializableStringLike<int>);
+    static_assert(!ParsableStringLike<double>);
+    static_assert(!SerializableStringLike<double>);
+    static_assert(!ParsableStringLike<TestObject>);
+    static_assert(!SerializableStringLike<TestObject>);
+    static_assert(!ParsableStringLike<std::array<int, 10>>);  // array of int, not char
+    static_assert(!SerializableStringLike<std::array<int, 10>>);
+    static_assert(!ParsableStringLike<TestCArray>);  // C array of int, not char
+    static_assert(!SerializableStringLike<TestCArray>);
+    static_assert(!ParsableStringLike<TestCustomMap>);
+    static_assert(!SerializableStringLike<TestCustomMap>);
+    static_assert(!ParsableStringLike<TestUnorderedMap>);
+    static_assert(!SerializableStringLike<TestUnorderedMap>);
+    static_assert(!ParsableStringLike<TestMap>);
+    static_assert(!SerializableStringLike<TestMap>);
+    static_assert(!ParsableStringLike<TestOptional>);
+    static_assert(!SerializableStringLike<TestOptional>);
+    static_assert(!ParsableStringLike<TestUniquePtr>);
+    static_assert(!SerializableStringLike<TestUniquePtr>);
+    static_assert(!ParsableStringLike<TestPointer>);
+    static_assert(!SerializableStringLike<TestPointer>);
 }
 
 // ============================================================================
@@ -197,7 +215,8 @@ namespace test_object_concept {
     // Negative: objects are NOT other concepts
     static_assert(!BoolLike<TestObject>);
     static_assert(!NumberLike<TestObject>);
-    static_assert(!StringLike<TestObject>);
+    static_assert(!ParsableStringLike<TestObject>);
+    static_assert(!SerializableStringLike<TestObject>);
     static_assert(!ParsableArrayLike<TestObject>);
     static_assert(!SerializableArrayLike<TestObject>);
     static_assert(!ParsableMapLike<TestObject>);
@@ -250,8 +269,10 @@ namespace test_array_concept {
     static_assert(!BoolLike<TestCArray>);
     static_assert(!NumberLike<TestArray>);
     static_assert(!NumberLike<TestCArray>);
-    static_assert(!StringLike<TestArray>);  // array<int>, not array<char>
-    static_assert(!StringLike<TestCArray>);  // C array<int>, not array<char>
+    static_assert(!ParsableStringLike<TestArray>);  // array<int>, not array<char>
+    static_assert(!SerializableStringLike<TestArray>);
+    static_assert(!ParsableStringLike<TestCArray>);  // C array<int>, not array<char>
+    static_assert(!SerializableStringLike<TestCArray>);
     static_assert(!ObjectLike<TestArray>);
     static_assert(!ObjectLike<TestCArray>);
     static_assert(!ParsableMapLike<TestArray>);
@@ -319,7 +340,8 @@ namespace test_map_concept {
     static_assert(!BoolLike<TestUnorderedMap>);
     static_assert(!BoolLike<TestMap>);
     static_assert(!NumberLike<TestCustomMap>);
-    static_assert(!StringLike<TestCustomMap>);
+    static_assert(!ParsableStringLike<TestCustomMap>);
+    static_assert(!SerializableStringLike<TestCustomMap>);
     static_assert(!ObjectLike<TestCustomMap>);  // CRITICAL: Maps are NOT objects!
     static_assert(!ParsableArrayLike<TestCustomMap>);
     static_assert(!ParsableArrayLike<TestUnorderedMap>);
@@ -427,7 +449,8 @@ namespace test_streamer_concepts {
     static_assert(!ParsableMapLike<TestConsumer>);
     static_assert(!BoolLike<TestConsumer>);
     static_assert(!NumberLike<TestConsumer>);
-    static_assert(!StringLike<TestConsumer>);
+    static_assert(!ParsableStringLike<TestConsumer>);
+    static_assert(!SerializableStringLike<TestConsumer>);
     
     // ProducingStreamerLike - for serialization (array-like)
     template<typename T>
@@ -466,7 +489,8 @@ namespace test_streamer_concepts {
     static_assert(!SerializableMapLike<TestProducer>);
     static_assert(!BoolLike<TestProducer>);
     static_assert(!NumberLike<TestProducer>);
-    static_assert(!StringLike<TestProducer>);
+    static_assert(!ParsableStringLike<TestProducer>);
+    static_assert(!SerializableStringLike<TestProducer>);
     
     // Test with complex value_type
     struct Point { int x; int y; };
@@ -534,7 +558,8 @@ namespace test_map_streamer_concepts {
     static_assert(!ParsableArrayLike<TestMapConsumer>);
     static_assert(!BoolLike<TestMapConsumer>);
     static_assert(!NumberLike<TestMapConsumer>);
-    static_assert(!StringLike<TestMapConsumer>);
+    static_assert(!ParsableStringLike<TestMapConsumer>);
+    static_assert(!SerializableStringLike<TestMapConsumer>);
     
     // ProducingMapStreamerLike - for serializing maps
     template<typename K, typename V, std::size_t N>
@@ -573,7 +598,8 @@ namespace test_map_streamer_concepts {
     static_assert(!SerializableArrayLike<TestMapProducer>);
     static_assert(!BoolLike<TestMapProducer>);
     static_assert(!NumberLike<TestMapProducer>);
-    static_assert(!StringLike<TestMapProducer>);
+    static_assert(!ParsableStringLike<TestMapProducer>);
+    static_assert(!SerializableStringLike<TestMapProducer>);
     
     // Test with struct value type
     struct Point { int x; int y; };
@@ -663,7 +689,7 @@ namespace test_classification_matrix {
         int count = 0;
         if constexpr (BoolLike<T>) count++;
         if constexpr (NumberLike<T>) count++;
-        if constexpr (StringLike<T>) count++;
+        if constexpr (ParsableStringLike<T>) count++;
         if constexpr (ObjectLike<T>) count++;
         if constexpr (ParsableArrayLike<T>) count++;
         if constexpr (ParsableMapLike<T>) count++;
@@ -754,7 +780,8 @@ namespace test_annotated_types {
     static_assert(!ObjectLike<AnnotatedInt>);
     
     using AnnotatedString = Annotated<std::array<char, 32>, key<"name">>;
-    static_assert(StringLike<AnnotatedString>);
+    static_assert(ParsableStringLike<AnnotatedString>);
+    static_assert(SerializableStringLike<AnnotatedString>);
     static_assert(!NumberLike<AnnotatedString>);
     static_assert(!ObjectLike<AnnotatedString>);
     

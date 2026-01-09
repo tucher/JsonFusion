@@ -139,7 +139,7 @@ constexpr std::size_t EstimateNumberSize() {
 
 // Size for strings
 template <typename T>
-    requires StringLike<T>
+    requires SerializableStringLike<T>
 constexpr std::size_t EstimateStringSize() {
     using U = AnnotatedValue<T>;
     
@@ -216,7 +216,7 @@ constexpr std::size_t EstimateMapSize() {
     if constexpr (std::integral<KeyT>) {
         // Integer keys: convert to string, need quotes too
         key_size = max_integer_digits<KeyT>() + 2; // digits + quotes
-    } else if constexpr (StringLike<KeyT>) {
+    } else if constexpr (SerializableStringLike<KeyT>) {
         // String keys: must be fixed-size
         if constexpr (requires { std::tuple_size<KeyT>::value; }) {
             constexpr std::size_t N = std::tuple_size<KeyT>::value;
@@ -322,7 +322,7 @@ constexpr std::size_t EstimateMaxSizeImpl() {
         return EstimateBoolSize<Type>();
     } else if constexpr (NumberLike<T>) {
         return EstimateNumberSize<Type>();
-    } else if constexpr (StringLike<T>) {
+    } else if constexpr (SerializableStringLike<T>) {
         return EstimateStringSize<Type>();
     }
     // Handle arrays

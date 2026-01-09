@@ -141,34 +141,24 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>
-    requires static_schema::StringLike<ObjT>
+    requires static_schema::SerializableStringLike<ObjT>
 constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx, UserCtx * userCtx = nullptr) {
 
-    // validators::validators_detail::validator_state<Opts, ObjT> validatorsState;
-
-
-    if constexpr(static_schema::DynamicContainerTypeConcept<ObjT>) {
-        // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-
-        //                                                                                                                     std::string_view(obj.data(), obj.data() + obj.size()))) {
-        //     return ctx.withSchemaError(writer);
-        // }
-
-        if(!writer.write_string(obj.data(), obj.size())) {
+    // Use string_read_cursor for unified string serialization
+    using Cursor = static_schema::string_read_cursor<ObjT>;
+    Cursor cursor{obj};
+    cursor.reset();
+    
+    stream_read_result res = cursor.read_more();
+    while (res == stream_read_result::value) {
+        if (!writer.write_string(cursor.data(), cursor.size())) {
             return ctx.withWriterError(writer);
         }
-
-    } else {
-        // const char * b = static_schema::static_string_traits<ObjT>::data(obj);
-        // if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(obj, ctx.validationCtx(),
-        //        std::string_view(b))) {
-        //     return ctx.withSchemaError(writer);
-        // }
-
-        if(!writer.write_string(static_schema::static_string_traits<ObjT>::data(obj),
-                                 static_schema::static_string_traits<ObjT>::max_size(obj), true)) {
-            return ctx.withWriterError(writer);
-        }
+        res = cursor.read_more();
+    }
+    
+    if (res == stream_read_result::error) {
+        return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
     }
     return true;
 }
@@ -272,16 +262,20 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
                 return ctx.withWriterError(writer);
             }
         } else {
-            if constexpr(static_schema::DynamicContainerTypeConcept<typename FH::key_type>) {
-                if(!writer.write_string(key.data(), key.size())) {
+            // Use string_read_cursor for unified key serialization
+            using KeyCursor = static_schema::string_read_cursor<typename FH::key_type>;
+            KeyCursor keyCursor{key};
+            keyCursor.reset();
+            
+            stream_read_result keyRes = keyCursor.read_more();
+            while (keyRes == stream_read_result::value) {
+                if (!writer.write_string(keyCursor.data(), keyCursor.size())) {
                     return ctx.withWriterError(writer);
                 }
-
-            } else {
-                if(!writer.write_string(static_schema::static_string_traits<typename FH::key_type>::data(key),
-                                         static_schema::static_string_traits<typename FH::key_type>::max_size(key), true)) {
-                    return ctx.withWriterError(writer);
-                }
+                keyRes = keyCursor.read_more();
+            }
+            if (keyRes == stream_read_result::error) {
+                return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
             }
         }
 

@@ -11,16 +11,6 @@
 
 namespace JsonFusion {
 
-
-namespace detail {
-template <typename T>
-concept DynamicContainerTypeConcept = requires (T  v) {
-    typename T::value_type;
-    v.push_back(std::declval<typename T::value_type>());
-    v.clear();
-};
-}
-
 enum class JsonIteratorReaderError {
     NO_ERROR,
     UNEXPECTED_END_OF_DATA,

@@ -30,7 +30,7 @@ That's it. No `oneOf`, no date, no "discriminated union", no "RPC". Just those s
 - **Bool** → `bool`
 - **null** → `std::optional<T>`, `std::unique_ptr<T>`
 
-Static schema concepts (`ObjectLike`, `JsonArray`, `StringLike`, …) are all about answering:
+Static schema concepts (`ObjectLike`, `JsonArray`, `ParsableStringLike`, `SerializableStringLike`, …) are all about answering:
 
 > If I ignore annotations, options, validators, etc., does this C++ type represent one of the six JSON value categories?
 

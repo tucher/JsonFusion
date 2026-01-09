@@ -15,7 +15,8 @@ static_assert(static_schema::SerializableValue<WireSink<1024>>, "WireSink should
 
 // Test that WireSink is NOT recognized as other types
 static_assert(!static_schema::BoolLike<WireSink<1024>>, "WireSink should NOT be BoolLike");
-static_assert(!static_schema::StringLike<WireSink<1024>>, "WireSink should NOT be StringLike");
+static_assert(!static_schema::ParsableStringLike<WireSink<1024>>, "WireSink should NOT be ParsableStringLike");
+static_assert(!static_schema::SerializableStringLike<WireSink<1024>>, "WireSink should NOT be SerializableStringLike");
 static_assert(!static_schema::NumberLike<WireSink<1024>>, "WireSink should NOT be NumberLike");
 static_assert(!static_schema::ObjectLike<WireSink<1024>>, "WireSink should NOT be ObjectLike");
 static_assert(!static_schema::ParsableArrayLike<WireSink<1024>>, "WireSink should NOT be ParsableArrayLike");

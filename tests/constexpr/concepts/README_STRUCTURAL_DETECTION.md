@@ -19,39 +19,39 @@ These tests run **first** in the test suite because if type detection is broken,
 
 ### 1. **BoolLike** (Section 1)
 - ✅ `bool` IS `BoolLike`
-- ❌ `bool` is NOT `NumberLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ `bool` is NOT `NumberLike`, `ParsableStringLike`, `SerializableStringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
 - ❌ Other types are NOT `BoolLike`
 
 ### 2. **NumberLike** (Section 2)
 - ✅ All integral types (`int`, `uint32_t`, etc.) ARE `NumberLike`
 - ✅ All floating types (`float`, `double`) ARE `NumberLike`
-- ❌ Numbers are NOT `BoolLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ Numbers are NOT `BoolLike`, `ParsableStringLike`, `SerializableStringLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
 - ❌ Other types are NOT `NumberLike`
 
-### 3. **StringLike** (Section 3)
-- ✅ `std::array<char, N>` IS `StringLike`
+### 3. **ParsableStringLike / SerializableStringLike** (Section 3)
+- ✅ `std::array<char, N>` IS both `ParsableStringLike` and `SerializableStringLike`
 - ❌ Strings are NOT `BoolLike`, `NumberLike`, `ObjectLike`, `ParsableArrayLike`, `ParsableMapLike`
-- ❌ `std::array<int, N>` is NOT `StringLike` (wrong element type)
-- ❌ Other types are NOT `StringLike`
+- ❌ `std::array<int, N>` is NOT `ParsableStringLike`/`SerializableStringLike` (wrong element type)
+- ❌ Other types are NOT `ParsableStringLike`/`SerializableStringLike`
 
 ### 4. **ObjectLike** (Section 4)
 - ✅ Aggregate structs ARE `ObjectLike`
-- ❌ Objects are NOT `BoolLike`, `NumberLike`, `StringLike`, `ParsableArrayLike`, `ParsableMapLike`
+- ❌ Objects are NOT `BoolLike`, `NumberLike`, `ParsableStringLike`, `SerializableStringLike`, `ParsableArrayLike`, `ParsableMapLike`
 - **CRITICAL**: ❌ Maps are NOT `ObjectLike`
 - **CRITICAL**: ❌ Arrays are NOT `ObjectLike`
 - ❌ Other types are NOT `ObjectLike`
 
 ### 5. **ParsableArrayLike** (Section 5)
 - ✅ `std::array<T, N>` (non-char) ARE `ParsableArrayLike`
-- ❌ Arrays are NOT `BoolLike`, `NumberLike`, `StringLike`, `ObjectLike`, `ParsableMapLike`
+- ❌ Arrays are NOT `BoolLike`, `NumberLike`, `ParsableStringLike`, `SerializableStringLike`, `ObjectLike`, `ParsableMapLike`
 - **CRITICAL**: ❌ Arrays are NOT `ObjectLike`
 - **CRITICAL**: ❌ Arrays are NOT `ParsableMapLike`
-- ❌ `std::array<char, N>` is NOT `ParsableArrayLike` (it's `StringLike`)
+- ❌ `std::array<char, N>` is NOT `ParsableArrayLike` (it's `ParsableStringLike`)
 - ❌ Other types are NOT `ParsableArrayLike`
 
 ### 6. **ParsableMapLike** (Section 6)
 - ✅ Types with `key_type`, `mapped_type`, `try_emplace`, `clear` ARE `ParsableMapLike`
-- ❌ Maps are NOT `BoolLike`, `NumberLike`, `StringLike`, `ObjectLike`, `ParsableArrayLike`
+- ❌ Maps are NOT `BoolLike`, `NumberLike`, `ParsableStringLike`, `SerializableStringLike`, `ObjectLike`, `ParsableArrayLike`
 - **CRITICAL**: ❌ Maps are NOT `ObjectLike`
 - **CRITICAL**: ❌ Objects are NOT `ParsableMapLike`
 - ❌ Map-like types with non-string keys are NOT `ParsableMapLike`
@@ -79,7 +79,7 @@ consteval int count_matching_concepts() {
     int count = 0;
     if constexpr (BoolLike<T>) count++;
     if constexpr (NumberLike<T>) count++;
-    if constexpr (StringLike<T>) count++;
+    if constexpr (ParsableStringLike<T>) count++;
     if constexpr (ObjectLike<T>) count++;
     if constexpr (ParsableArrayLike<T>) count++;
     if constexpr (ParsableMapLike<T>) count++;

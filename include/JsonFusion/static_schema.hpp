@@ -31,15 +31,6 @@ enum class stream_write_result : std::uint8_t {
 
 namespace static_schema {
 
-
-template <typename T>
-concept DynamicContainerTypeConcept = requires (T  v) {
-    typename T::value_type;
-    v.push_back(std::declval<typename T::value_type>());
-    v.clear();
-};
-
-
 namespace input_checks {
 
 
@@ -434,6 +425,230 @@ struct map_read_cursor<M> {
     }
 };
 
+
+/* ######## String cursor infrastructure ######## */
+
+// Primary templates (empty - specializations provide the implementation)
+template<class C>
+struct string_read_cursor {};
+
+template<class C>
+struct string_write_cursor {};
+
+// Concept: type supports reading string content for serialization
+// Symmetric with ArrayReadable - uses read_more() pattern
+template<class C>
+concept StringReadable = requires(const C& c) {
+    typename string_read_cursor<C>::char_type;
+    requires std::is_constructible_v<string_read_cursor<C>, const C&>;
+    { std::declval<string_read_cursor<C>>().read_more() } -> std::same_as<stream_read_result>;
+    { std::declval<string_read_cursor<C>>().data() } -> std::same_as<const char*>;
+    { std::declval<string_read_cursor<C>>().size() } -> std::same_as<std::size_t>;
+    { std::declval<string_read_cursor<C>>().total_size() } -> std::same_as<std::size_t>;
+    std::declval<string_read_cursor<C>>().reset();
+};
+
+// Concept: type supports writing string content during parsing
+template<class C>
+concept StringWritable = requires(C& c, std::size_t n) {
+    typename string_write_cursor<C>::char_type;
+    requires std::is_constructible_v<string_write_cursor<C>, C&>;
+    { std::declval<string_write_cursor<C>>().prepare_write(n) } -> std::same_as<std::size_t>;
+    { std::declval<string_write_cursor<C>>().write_ptr() } -> std::same_as<char*>;
+    std::declval<string_write_cursor<C>>().commit(n);
+    std::declval<string_write_cursor<C>>().finalize();
+    { std::declval<string_write_cursor<C>>().size() } -> std::same_as<std::size_t>;
+    { std::declval<string_write_cursor<C>>().max_capacity() } -> std::same_as<std::size_t>;
+    { std::declval<const string_write_cursor<C>>().view() } -> std::same_as<std::string_view>;
+    std::declval<string_write_cursor<C>>().reset();
+};
+
+// Specialization: std::array<char, N> - fixed size buffer
+// For reading: single chunk containing the whole string (zero-copy)
+template<std::size_t N>
+struct string_read_cursor<std::array<char, N>> {
+    using char_type = char;
+    
+private:
+    const std::array<char, N>& arr_;
+    mutable bool done_ = false;
+    mutable std::size_t len_ = 0;
+    
+public:
+    constexpr explicit string_read_cursor(const std::array<char, N>& a) : arr_(a) {}
+    
+    constexpr stream_read_result read_more() const {
+        if (done_) return stream_read_result::end;
+        // Calculate length by finding null terminator (or use full array)
+        len_ = 0;
+        while (len_ < N && arr_[len_] != '\0') {
+            ++len_;
+        }
+        done_ = true;
+        return stream_read_result::value;
+    }
+    constexpr const char* data() const { return arr_.data(); }
+    constexpr std::size_t size() const { return len_; }
+    constexpr std::size_t total_size() const { return len_; }
+    constexpr void reset() const { done_ = false; len_ = 0; }
+};
+
+// For writing: direct buffer access (zero-copy)
+template<std::size_t N>
+struct string_write_cursor<std::array<char, N>> {
+    using char_type = char;
+    
+private:
+    std::array<char, N>& arr_;
+    std::size_t pos_ = 0;
+    
+public:
+    constexpr explicit string_write_cursor(std::array<char, N>& a) : arr_(a) {}
+    
+    constexpr std::size_t prepare_write(std::size_t hint) {
+        std::size_t remaining = max_capacity() - pos_;
+        return hint < remaining ? hint : remaining;
+    }
+    constexpr char* write_ptr() { return arr_.data() + pos_; }
+    constexpr void commit(std::size_t n) { pos_ += n; }
+    constexpr void reset() { pos_ = 0; }
+    constexpr void finalize() { if (pos_ < N) arr_[pos_] = '\0'; }
+    constexpr std::size_t size() const { return pos_; }
+    constexpr std::size_t max_capacity() const { return N > 0 ? N - 1 : 0; }
+    constexpr std::string_view view() const { return std::string_view(arr_.data(), pos_); }
+};
+
+// Specialization: char[N] - fixed size C-style array
+// For reading: single chunk (zero-copy)
+template<std::size_t N>
+struct string_read_cursor<char[N]> {
+    using char_type = char;
+    
+private:
+    const char (&arr_)[N];
+    mutable bool done_ = false;
+    mutable std::size_t len_ = 0;
+    
+public:
+    constexpr explicit string_read_cursor(const char (&a)[N]) : arr_(a) {}
+    
+    constexpr stream_read_result read_more() const {
+        if (done_) return stream_read_result::end;
+        // Calculate length by finding null terminator (or use full array)
+        len_ = 0;
+        while (len_ < N && arr_[len_] != '\0') {
+            ++len_;
+        }
+        done_ = true;
+        return stream_read_result::value;
+    }
+    constexpr const char* data() const { return arr_; }
+    constexpr std::size_t size() const { return len_; }
+    constexpr std::size_t total_size() const { return len_; }
+    constexpr void reset() const { done_ = false; len_ = 0; }
+};
+
+// For writing: direct buffer access (zero-copy)
+template<std::size_t N>
+struct string_write_cursor<char[N]> {
+    using char_type = char;
+    
+private:
+    char (&arr_)[N];
+    std::size_t pos_ = 0;
+    
+public:
+    constexpr explicit string_write_cursor(char (&a)[N]) : arr_(a) {}
+    
+    constexpr std::size_t prepare_write(std::size_t hint) {
+        std::size_t remaining = max_capacity() - pos_;
+        return hint < remaining ? hint : remaining;
+    }
+    constexpr char* write_ptr() { return arr_ + pos_; }
+    constexpr void commit(std::size_t n) { pos_ += n; }
+    constexpr void reset() { pos_ = 0; }
+    constexpr void finalize() { if (pos_ < N) arr_[pos_] = '\0'; }
+    constexpr std::size_t size() const { return pos_; }
+    constexpr std::size_t max_capacity() const { return N > 0 ? N - 1 : 0; }
+    constexpr std::string_view view() const { return std::string_view(arr_, pos_); }
+};
+
+// Specialization: std::string_view - read only (for serialization)
+template<>
+struct string_read_cursor<std::string_view> {
+    using char_type = char;
+    
+private:
+    std::string_view sv_;
+    mutable bool done_ = false;
+    
+public:
+    constexpr explicit string_read_cursor(std::string_view s) : sv_(s) {}
+    
+    constexpr stream_read_result read_more() const {
+        if (done_) return stream_read_result::end;
+        done_ = true;
+        return stream_read_result::value;
+    }
+    constexpr const char* data() const { return sv_.data(); }
+    constexpr std::size_t size() const { return sv_.size(); }
+    constexpr std::size_t total_size() const { return sv_.size(); }
+    constexpr void reset() const { done_ = false; }
+};
+
+#if __has_include(<string>)
+// Specialization: std::string - dynamic size
+// For reading: single chunk (zero-copy)
+template<>
+struct string_read_cursor<std::string> {
+    using char_type = char;
+    
+private:
+    const std::string& str_;
+    mutable bool done_ = false;
+    
+public:
+    constexpr explicit string_read_cursor(const std::string& s) : str_(s) {}
+    
+    constexpr stream_read_result read_more() const {
+        if (done_) return stream_read_result::end;
+        done_ = true;
+        return stream_read_result::value;
+    }
+    constexpr const char* data() const { return str_.data(); }
+    constexpr std::size_t size() const { return str_.size(); }
+    constexpr std::size_t total_size() const { return str_.size(); }
+    constexpr void reset() const { done_ = false; }
+};
+
+// For writing: uses internal temp buffer + append (optimal for unknown-size strings)
+// Buffer size is implementation detail, not exposed
+template<>
+struct string_write_cursor<std::string> {
+    using char_type = char;
+    
+private:
+    std::string& str_;
+    static constexpr std::size_t BUFFER_SIZE = 64;  // implementation detail
+    char buffer_[BUFFER_SIZE];
+    
+public:
+    constexpr explicit string_write_cursor(std::string& s) : str_(s), buffer_{} {}
+    
+    constexpr std::size_t prepare_write(std::size_t hint) {
+        return hint < BUFFER_SIZE ? hint : BUFFER_SIZE;
+    }
+    constexpr char* write_ptr() { return buffer_; }
+    constexpr void commit(std::size_t n) { str_.append(buffer_, n); }
+    constexpr void reset() { str_.clear(); }
+    constexpr void finalize() { /* nothing needed */ }
+    constexpr std::size_t size() const { return str_.size(); }
+    constexpr std::size_t max_capacity() const { return std::numeric_limits<std::size_t>::max(); }
+    constexpr std::string_view view() const { return std::string_view(str_); }
+};
+#endif
+
+
 template<class T, class = void>
 struct parse_transform_traits;
 
@@ -452,49 +667,29 @@ concept NumberLike =
     (std::is_integral_v<AnnotatedValue<C>> || std::is_floating_point_v<AnnotatedValue<C>>);
 
 /* ######## String type detection ######## */
+
+// ParsableStringLike: type can receive string data during parsing (via string_write_cursor)
 template<class C>
-concept StringLike =
-    !WireSinkLike<AnnotatedValue<C>> &&  // WireSink is NOT a string
-    (
-#if __has_include(<string>)
-    // std::same_as<AnnotatedValue<C>, std::string>      ||
-#endif
-    std::same_as<AnnotatedValue<C>, std::string_view> ||
-    (std::ranges::contiguous_range<AnnotatedValue<C>> &&
-     std::same_as<std::ranges::range_value_t<AnnotatedValue<C>>, char>
-    && !parse_transform_traits<C>::is_transformer && !serialize_transform_traits<C>::is_transformer));
+concept ParsableStringLike =
+    !WireSinkLike<AnnotatedValue<C>> &&
+    !parse_transform_traits<C>::is_transformer &&
+    StringWritable<AnnotatedValue<C>>;
+
+// SerializableStringLike: type can provide string data for serialization (via string_read_cursor)
+template<class C>
+concept SerializableStringLike =
+    !WireSinkLike<AnnotatedValue<C>> &&
+    !serialize_transform_traits<C>::is_transformer &&
+    StringReadable<AnnotatedValue<C>>;
+
+// Legacy alias for compatibility during migration - will be removed
+template<class C>
+concept StringLike = ParsableStringLike<C> || SerializableStringLike<C>;
 
 
 
-template<class T>
-struct static_string_traits {
-    static constexpr bool is_static = false;
-};
 
-template<std::size_t N>
-struct static_string_traits<std::array<char, N>> {
-    static constexpr bool is_static = true;
-    static constexpr std::size_t capacity = N;
 
-    static constexpr char* data(std::array<char, N>& s)  { return s.data(); }
-    static constexpr const char* data(const std::array<char, N>& s)  { return s.data(); }
-
-    static constexpr std::size_t max_size(const std::array<char, N>&) {
-        // reserve 1 byte for null-terminator if you follow that convention
-        return N ? N - 1 : 0;
-    }
-};
-
-template<std::size_t N>
-struct static_string_traits<char[N]> {
-    static constexpr bool is_static = true;
-    static constexpr std::size_t capacity = N;
-
-    static constexpr char* data(char (&s)[N])  { return s; }
-    static constexpr const char* data(const char (&s)[N]) { return s; }
-
-    static constexpr std::size_t max_size(const char (&)[N]) noexcept { return N ? N - 1 : 0; }
-};
 
 
 
@@ -506,7 +701,7 @@ struct is_json_object {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT an object
-        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        } else if constexpr (BoolLike<T> || ParsableStringLike<T> || SerializableStringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (std::ranges::range<U>) {
             return false; // arrays are handled separately
@@ -558,7 +753,7 @@ struct is_json_serializable_array {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT an array
-        } else if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
+        } else if constexpr (SerializableStringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else if constexpr(serialize_transform_traits<U>::is_transformer) {
             return false;
@@ -581,7 +776,7 @@ struct is_non_null_json_serializable_value {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT a regular non-null value
-        } else if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
+        } else if constexpr (BoolLike<T> || NumberLike<T> || SerializableStringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -591,7 +786,7 @@ struct is_non_null_json_serializable_value {
             // Inline map check
             if constexpr (MapReadable<U>) {
                 using Cursor = map_read_cursor<U>;
-                return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+                return (SerializableStringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_serializable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -650,7 +845,7 @@ struct is_json_parsable_array {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT an array
-        } else if constexpr (StringLike<T>||BoolLike<T> || NumberLike<T>)
+        } else if constexpr (ParsableStringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
         else {
             if constexpr(ArrayWritable<U>) {
@@ -672,7 +867,7 @@ struct is_non_null_json_parsable_value {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT a regular non-null value
-        } else if constexpr (BoolLike<T> || NumberLike<T> || StringLike<T>) {
+        } else if constexpr (BoolLike<T> || NumberLike<T> || ParsableStringLike<T>) {
             return true;
         } else if constexpr (is_json_object<T>::value) {
             return true;
@@ -682,7 +877,7 @@ struct is_non_null_json_parsable_value {
             // Inline map check
             if constexpr (MapWritable<U>) {
                 using Cursor = map_write_cursor<U>;
-                return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+                return (ParsableStringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                        is_json_parsable_value<typename Cursor::mapped_type>::value;
             } else {
                 return false;
@@ -740,13 +935,13 @@ struct is_json_parsable_map {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT a map
-        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        } else if constexpr (BoolLike<T> || ParsableStringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
         } else if constexpr (MapWritable<U>) {
             using Cursor = map_write_cursor<U>;
-            return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+            return (ParsableStringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_parsable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;
@@ -763,13 +958,13 @@ struct is_json_serializable_map {
         using U = AnnotatedValue<T>;
         if constexpr (WireSinkLike<U>) {
             return false; // WireSink is NOT a map
-        } else if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>) {
+        } else if constexpr (BoolLike<T> || SerializableStringLike<T> || NumberLike<T>) {
             return false;
         } else if constexpr (is_json_object<T>::value) {
             return false; // objects are handled separately
         } else if constexpr (MapReadable<U>) {
             using Cursor = map_read_cursor<U>;
-            return (StringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
+            return (SerializableStringLike<typename Cursor::key_type> || std::integral<typename Cursor::key_type>) &&
                    is_json_serializable_value<typename Cursor::mapped_type>::value;
         } else {
             return false;
@@ -955,8 +1150,8 @@ concept ConsumingMapStreamerLike =
             { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
             { s.reset() } -> std::same_as<void>;
         }
-        // Key must be string-like, value must be parsable
-        && static_schema::StringLike<decltype(std::declval<typename S::value_type>().key)>
+        // Key must be string-like (parsable), value must be parsable
+        && static_schema::ParsableStringLike<decltype(std::declval<typename S::value_type>().key)>
         && static_schema::ParsableValue<decltype(std::declval<typename S::value_type>().value)>;
 
 // High-level map producer interface (for serialization)
@@ -972,8 +1167,8 @@ concept ProducingMapStreamerLike =
             { s.read(entry) } -> std::same_as<stream_read_result>;
             { s.reset() } -> std::same_as<void>;
         }
-        // Key must be string-like, value must be serializable
-        && static_schema::StringLike<decltype(std::declval<typename S::value_type>().key)>
+        // Key must be string-like (serializable), value must be serializable
+        && static_schema::SerializableStringLike<decltype(std::declval<typename S::value_type>().key)>
         && static_schema::SerializableValue<decltype(std::declval<typename S::value_type>().value)>;
 
 namespace static_schema {
@@ -1287,7 +1482,7 @@ consteval std::size_t calc_type_depth() {
                     return SCHEMA_UNBOUNDED;
                 }
             } else {
-                if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>){
+                if constexpr (BoolLike<T> || ParsableStringLike<T> || NumberLike<T>){
                     return 1;
                 } else { //containers
                     if constexpr(ArrayWritable<T>) {
@@ -1358,7 +1553,7 @@ consteval std::size_t has_maps() {
                     return SCHEMA_UNBOUNDED;
                 }
             } else {
-                if constexpr (BoolLike<T> || StringLike<T> || NumberLike<T>){
+                if constexpr (BoolLike<T> || ParsableStringLike<T> || NumberLike<T>){
                     return false;
                 } else { //containers
                     if constexpr(ArrayWritable<T>) {

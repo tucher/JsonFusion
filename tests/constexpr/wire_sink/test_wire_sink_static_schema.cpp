@@ -36,8 +36,10 @@ static_assert(SerializableValue<WireSink<1024, true>>,
               "Dynamic WireSink should satisfy SerializableValue concept");
 
 // Test: WireSink is NOT recognized as other types
-static_assert(!StringLike<WireSink<256>>, 
-              "WireSink should NOT be StringLike");
+static_assert(!ParsableStringLike<WireSink<256>>, 
+              "WireSink should NOT be ParsableStringLike");
+static_assert(!SerializableStringLike<WireSink<256>>, 
+              "WireSink should NOT be SerializableStringLike");
 static_assert(!is_json_object<WireSink<256>>::value, 
               "WireSink should NOT be a JSON object");
 static_assert(!is_json_parsable_array<WireSink<256>>::value, 

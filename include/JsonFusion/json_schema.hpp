@@ -89,7 +89,7 @@ constexpr bool WriteBoolSchema(W & writer) {
 
 // Write schema for string types
 template <typename T, writer::WriterLike W>
-    requires StringLike<T>
+    requires ParsableStringLike<T>
 constexpr bool WriteStringSchema(W & writer) {
     using Opts = typename options::detail::annotation_meta_getter<T>::options;
 
@@ -1069,7 +1069,7 @@ constexpr bool WriteSchemaImpl(W & writer) {
     // Handle primitive types
     else if constexpr (BoolLike<T>) {
         return WriteBoolSchema<Type>(writer);
-    } else if constexpr (StringLike<T>) {
+    } else if constexpr (ParsableStringLike<T>) {
         return WriteStringSchema<Type>(writer);
     } else if constexpr (NumberLike<T>) {
         return WriteNumberSchema<Type>(writer);
