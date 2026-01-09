@@ -146,40 +146,52 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 
     // Use string_read_cursor for unified string serialization
     using Cursor = static_schema::string_read_cursor<ObjT>;
-    Cursor cursor = [&]() {
-        if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<Cursor, const ObjT&, UserCtx*>) {
-            if(userCtx) {
-                return Cursor(obj, userCtx);
-            } else {
-                return Cursor(obj);
-            }
-        } else {
-            return Cursor{obj};
-        }
-    }();
-    cursor.reset();
     
-    // Pass total_size as hint: SIZE_MAX for streaming, exact size for contiguous
-    if (!writer.write_string_begin(cursor.total_size())) {
-        return ctx.withWriterError(writer);
-    }
-    
-    stream_read_result res = cursor.read_more();
-    while (res == stream_read_result::value) {
-        if (!writer.write_string_chunk(cursor.data(), cursor.size())) {
+    if constexpr (Cursor::single_pass) {
+        // Fast path: contiguous string, single chunk - no loop overhead
+        Cursor cursor{obj};
+        cursor.read_more();  // Single call, all data available
+        if (!writer.write_string(cursor.data(), cursor.size())) {
             return ctx.withWriterError(writer);
         }
-        res = cursor.read_more();
+        return true;
+    } else {
+        // Streaming path: multiple chunks possible
+        Cursor cursor = [&]() {
+            if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<Cursor, const ObjT&, UserCtx*>) {
+                if(userCtx) {
+                    return Cursor(obj, userCtx);
+                } else {
+                    return Cursor(obj);
+                }
+            } else {
+                return Cursor{obj};
+            }
+        }();
+        cursor.reset();
+        
+        // Pass total_size as hint: SIZE_MAX for streaming
+        if (!writer.write_string_begin(cursor.total_size())) {
+            return ctx.withWriterError(writer);
+        }
+        
+        stream_read_result res = cursor.read_more();
+        while (res == stream_read_result::value) {
+            if (!writer.write_string_chunk(cursor.data(), cursor.size())) {
+                return ctx.withWriterError(writer);
+            }
+            res = cursor.read_more();
+        }
+        
+        if (res == stream_read_result::error) {
+            return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+        }
+        
+        if (!writer.write_string_end()) {
+            return ctx.withWriterError(writer);
+        }
+        return true;
     }
-    
-    if (res == stream_read_result::error) {
-        return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
-    }
-    
-    if (!writer.write_string_end()) {
-        return ctx.withWriterError(writer);
-    }
-    return true;
 }
 
 template <class Opts, class ObjT, writer::WriterLike Writer, class CTX, class UserCtx = void>

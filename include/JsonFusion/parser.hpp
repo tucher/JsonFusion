@@ -283,44 +283,119 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
     constexpr std::size_t validator_max = 
         validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTag>();
     
-    // Effective max: min of container capacity and validator limit (+1 to detect overflow)
     using Cursor = static_schema::string_write_cursor<ObjT>;
-    Cursor cursor{obj};
+    Cursor cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<Cursor, ObjT&, UserCtx*>) {
+            if (userCtx) {
+                return Cursor(obj, userCtx);
+            } else {
+                return Cursor(obj);
+            }
+        } else {
+            return Cursor{obj};
+        }
+    }();
     cursor.reset();
     
     const std::size_t container_max = cursor.max_capacity();
     const std::size_t effective_max = [&]() {
-        if (validator_max > 0) {
+        if constexpr (validator_max > 0) {
             // Read validator_max + 1 to detect if string exceeds the limit
-            std::size_t val_limit = validator_max + 1;
+            constexpr std::size_t val_limit = validator_max + 1;
             return container_max < val_limit ? container_max : val_limit;
+        } else {
+            return container_max;
         }
-        return container_max;
     }();
     
-    ParseError err{ParseError::NO_ERROR};
-    if (!read_string_with_cursor(reader, cursor, effective_max, err)) {
-        const std::size_t parsedSize = cursor.size();
+    if constexpr (Cursor::single_pass) {
+        // Fast path: direct buffer access, minimal abstraction overhead
+        char* buf = cursor.write_ptr();
+        std::size_t pos = 0;
         
-        // Check if we read enough to detect validator limit exceeded
-        if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
-            // Early rejection: string exceeded validator limit
-            cursor.finalize();
-            if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
-                    obj, ctx.validationCtx(), cursor.view())) {
-                return ctx.withSchemaError(reader);
+        for (;;) {
+            const std::size_t remaining = effective_max - pos;
+            if (remaining == 0) {
+                // Buffer full - consume rest and fail
+                char scratch[64];
+                for (;;) {
+                    auto rest = reader.read_string_chunk(scratch, 64);
+                    if (rest.status != reader::StringChunkStatus::ok) {
+                        return ctx.withParseError(
+                            rest.status == reader::StringChunkStatus::no_match 
+                                ? ParseError::NON_STRING_IN_STRING_STORAGE 
+                                : ParseError::READER_ERROR, reader);
+                    }
+                    if (rest.done) {
+                        cursor.commit(pos);
+                        cursor.finalize();
+                        // Check validator limit
+                        if constexpr (validator_max > 0) {
+                            if (pos > validator_max) {
+                                if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                                        obj, ctx.validationCtx(), cursor.view())) {
+                                    return ctx.withSchemaError(reader);
+                                }
+                            }
+                        }
+                        return ctx.withParseError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader);
+                    }
+                }
+            }
+            
+            auto res = reader.read_string_chunk(buf + pos, remaining);
+            
+            if (res.status != reader::StringChunkStatus::ok) {
+                return ctx.withParseError(
+                    res.status == reader::StringChunkStatus::no_match 
+                        ? ParseError::NON_STRING_IN_STRING_STORAGE 
+                        : ParseError::READER_ERROR, reader);
+            }
+            
+            pos += res.bytes_written;
+            
+            if (res.done) {
+                cursor.commit(pos);
+                cursor.finalize();
+                
+                // Validate final string
+                if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                        obj, ctx.validationCtx(), cursor.view())) {
+                    return ctx.withSchemaError(reader);
+                }
+                return true;
+            }
+            
+            if (res.bytes_written == 0) {
+                return ctx.withParseError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader);
             }
         }
-        return ctx.withParseError(err, reader);
-    }
+    } else {
+        // Streaming path: use cursor abstraction for buffered writes
+        ParseError err{ParseError::NO_ERROR};
+        if (!read_string_with_cursor(reader, cursor, effective_max, err)) {
+            const std::size_t parsedSize = cursor.size();
+            
+            // Check if we read enough to detect validator limit exceeded
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && parsedSize > validator_max) {
+                // Early rejection: string exceeded validator limit
+                cursor.finalize();
+                if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                        obj, ctx.validationCtx(), cursor.view())) {
+                    return ctx.withSchemaError(reader);
+                }
+            }
+            return ctx.withParseError(err, reader);
+        }
 
-    // Validate final string
-    if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
-            obj, ctx.validationCtx(), cursor.view())) {
-        return ctx.withSchemaError(reader);
-    }
+        // Validate final string
+        if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                obj, ctx.validationCtx(), cursor.view())) {
+            return ctx.withSchemaError(reader);
+        }
 
-    return true;
+        return true;
+    }
 }
 
 

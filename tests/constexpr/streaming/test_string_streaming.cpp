@@ -176,6 +176,76 @@ static_assert(
     "Consumer finalize called correctly"
 );
 
+// Test 8: Consumer with context
+struct ContextualConsumer {
+    std::array<char, 128> buffer{};
+    std::size_t length = 0;
+    mutable int* char_count_ctx = nullptr;  // Context: count characters
+    
+    struct Context {
+        int total_chars = 0;
+    };
+    
+    constexpr void set_jsonfusion_context(Context* ctx) const {
+        if (ctx) {
+            char_count_ctx = &ctx->total_chars;
+        }
+    }
+    
+    constexpr bool consume(const char* data, std::size_t len) {
+        if (length + len > buffer.size()) return false;
+        for (std::size_t i = 0; i < len; ++i) {
+            buffer[length++] = data[i];
+            if (char_count_ctx) {
+                (*char_count_ctx)++;
+            }
+        }
+        return true;
+    }
+    
+    constexpr bool finalize(bool success) { return success; }
+    constexpr void reset() { length = 0; }
+    
+    constexpr std::string_view view() const {
+        return std::string_view(buffer.data(), length);
+    }
+};
+
+static_assert(ConsumingStringStreamerLike<ContextualConsumer>);
+
+static_assert(
+    []() constexpr {
+        ContextualConsumer consumer{};
+        ContextualConsumer::Context ctx{};
+        std::string json = R"("hello")";
+        auto result = JsonFusion::Parse(consumer, json, &ctx);
+        if (!result) return false;
+        return consumer.view() == "hello"
+            && ctx.total_chars == 5;  // Context received and used
+    }(),
+    "String consumer with context"
+);
+
+// Test 9: Consumer with context in struct field
+struct WithContextualConsumer {
+    ContextualConsumer name;
+    int value;
+};
+
+static_assert(
+    []() constexpr {
+        WithContextualConsumer obj{};
+        ContextualConsumer::Context ctx{};
+        std::string json = R"({"name": "test-name", "value": 42})";
+        auto result = JsonFusion::Parse(obj, json, &ctx);
+        if (!result) return false;
+        return obj.name.view() == "test-name"
+            && obj.value == 42
+            && ctx.total_chars == 9;  // "test-name" has 9 chars
+    }(),
+    "String consumer with context in struct field"
+);
+
 // ============================================================================
 // Part 2: Producing String Streamer (for serialization)
 // ============================================================================
@@ -380,7 +450,27 @@ static_assert(
     "String producer with context"
 );
 
-// Test 14: Multiple producers in struct
+// Test 16: Producer with context in struct field
+struct WithContextualProducer {
+    ContextualProducer name;
+    int value;
+};
+
+static_assert(
+    []() constexpr {
+        const char data[] = "ctx-name";
+        WithContextualProducer obj{};
+        obj.value = 99;
+        ContextualProducer::Context ctx{data, 8};
+        std::string output;
+        JsonFusion::Serialize(obj, output, &ctx);
+        return output.find("\"ctx-name\"") != std::string::npos
+            && output.find("99") != std::string::npos;
+    }(),
+    "String producer with context in struct field"
+);
+
+// Test 17: Multiple producers in struct
 struct MultipleStringProducers {
     StringProducer first;
     StringProducer second;

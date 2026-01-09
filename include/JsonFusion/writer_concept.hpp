@@ -59,7 +59,11 @@ concept WriterLike = requires(R writer,
     { mutable_writer.template write_number<int>(int_ref) } -> std::same_as<bool>;
     { mutable_writer.template write_number<double>(double_ref) } -> std::same_as<bool>;
     
-    // String writing (chunked interface with size hint)
+    // String writing - convenience method for single-pass strings
+    // null_ended: if true, find null terminator to determine size
+    { mutable_writer.write_string(char_ptr, size, bool_ref) } -> std::same_as<bool>;
+    
+    // String writing (chunked interface with size hint) - for streaming
     // size_hint: exact size if known, SIZE_MAX for streaming/unknown size
     // For JSON: ignores hint, outputs " + chunks + "
     // For CBOR: uses definite-length if hint != SIZE_MAX, else indefinite-length

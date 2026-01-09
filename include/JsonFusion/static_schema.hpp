@@ -486,6 +486,8 @@ private:
 public:
     constexpr explicit string_read_cursor(const std::array<char, N>& a) : arr_(a) {}
     
+    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    
     constexpr stream_read_result read_more() const {
         if (done_) return stream_read_result::end;
         len_ = calc_len();
@@ -503,6 +505,7 @@ public:
 template<std::size_t N>
 struct string_write_cursor<std::array<char, N>> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
     
 private:
     std::array<char, N>& arr_;
@@ -529,6 +532,7 @@ public:
 template<std::size_t N>
 struct string_read_cursor<char[N]> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Single chunk, no streaming
     
 private:
     const char (&arr_)[N];
@@ -564,6 +568,7 @@ public:
 template<std::size_t N>
 struct string_write_cursor<char[N]> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
     
 private:
     char (&arr_)[N];
@@ -589,6 +594,7 @@ public:
 template<>
 struct string_read_cursor<std::string_view> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Single chunk, no streaming
     
 private:
     std::string_view sv_;
@@ -614,6 +620,7 @@ public:
 template<>
 struct string_read_cursor<std::string> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Single chunk, no streaming
     
 private:
     const std::string& str_;
@@ -635,9 +642,11 @@ public:
 
 // For writing: uses internal temp buffer + append (optimal for unknown-size strings)
 // Buffer size is implementation detail, not exposed
+// Note: single_pass = false because we use intermediate buffer + append
 template<>
 struct string_write_cursor<std::string> {
     using char_type = char;
+    static constexpr bool single_pass = false;  // Uses intermediate buffer + append
     
 private:
     std::string& str_;
@@ -713,6 +722,7 @@ template<class Streamer>
     requires static_schema_detail::ConsumingStringStreamerCheck<Streamer>
 struct string_write_cursor<Streamer> {
     using char_type = char;
+    static constexpr bool single_pass = false;  // Streaming: multiple chunks
     static constexpr std::size_t buffer_size = get_streamer_buffer_size<Streamer>();
     
 private:
@@ -772,6 +782,7 @@ template<class Streamer>
     requires static_schema_detail::ProducingStringStreamerCheck<Streamer>
 struct string_read_cursor<Streamer> {
     using char_type = char;
+    static constexpr bool single_pass = false;  // Streaming: multiple chunks
     static constexpr std::size_t buffer_size = get_streamer_buffer_size<Streamer>();
     
 private:
