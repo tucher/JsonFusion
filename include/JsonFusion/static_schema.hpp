@@ -474,22 +474,28 @@ private:
     mutable bool done_ = false;
     mutable std::size_t len_ = 0;
     
+    // Calculate string length by finding null terminator
+    constexpr std::size_t calc_len() const {
+        std::size_t l = 0;
+        while (l < N && arr_[l] != '\0') {
+            ++l;
+        }
+        return l;
+    }
+    
 public:
     constexpr explicit string_read_cursor(const std::array<char, N>& a) : arr_(a) {}
     
     constexpr stream_read_result read_more() const {
         if (done_) return stream_read_result::end;
-        // Calculate length by finding null terminator (or use full array)
-        len_ = 0;
-        while (len_ < N && arr_[len_] != '\0') {
-            ++len_;
-        }
+        len_ = calc_len();
         done_ = true;
         return stream_read_result::value;
     }
     constexpr const char* data() const { return arr_.data(); }
     constexpr std::size_t size() const { return len_; }
-    constexpr std::size_t total_size() const { return len_; }
+    // total_size() can be called before read_more() - calculates on demand
+    constexpr std::size_t total_size() const { return done_ ? len_ : calc_len(); }
     constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
@@ -529,22 +535,28 @@ private:
     mutable bool done_ = false;
     mutable std::size_t len_ = 0;
     
+    // Calculate string length by finding null terminator
+    constexpr std::size_t calc_len() const {
+        std::size_t l = 0;
+        while (l < N && arr_[l] != '\0') {
+            ++l;
+        }
+        return l;
+    }
+    
 public:
     constexpr explicit string_read_cursor(const char (&a)[N]) : arr_(a) {}
     
     constexpr stream_read_result read_more() const {
         if (done_) return stream_read_result::end;
-        // Calculate length by finding null terminator (or use full array)
-        len_ = 0;
-        while (len_ < N && arr_[len_] != '\0') {
-            ++len_;
-        }
+        len_ = calc_len();
         done_ = true;
         return stream_read_result::value;
     }
     constexpr const char* data() const { return arr_; }
     constexpr std::size_t size() const { return len_; }
-    constexpr std::size_t total_size() const { return len_; }
+    // total_size() can be called before read_more() - calculates on demand
+    constexpr std::size_t total_size() const { return done_ ? len_ : calc_len(); }
     constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
@@ -647,6 +659,171 @@ public:
     constexpr std::string_view view() const { return std::string_view(str_); }
 };
 #endif
+
+// ============================================================================
+// String Streamer Cursor Specializations
+// ============================================================================
+
+// Forward declarations for string streamer concepts (defined later)
+template<class S> struct is_consuming_string_streamer : std::false_type {};
+template<class S> struct is_producing_string_streamer : std::false_type {};
+
+// Forward declaration of context setter (used by cursor constructors)
+template<class Streamer, class Ctx>
+constexpr void streamer_context_setter(const Streamer & s, Ctx * ctx);
+template<class Streamer, class Ctx>
+constexpr void streamer_context_setter(Streamer & s, Ctx * ctx);
+
+} // namespace static_schema (temporarily close for concept forward declaration)
+
+// Forward declare concepts for SFINAE in cursor specializations
+namespace static_schema_detail {
+    template<class S>
+    concept ConsumingStringStreamerCheck = 
+        requires(S& s, const char* data, std::size_t len) {
+            { s.consume(data, len) } -> std::same_as<bool>;
+            { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
+            { s.reset() } -> std::same_as<void>;
+        };
+    
+    template<class S>
+    concept ProducingStringStreamerCheck = 
+        requires(const S& s, char* buf, std::size_t capacity) {
+            { s.read_chunk(buf, capacity) } -> std::same_as<std::pair<std::size_t, bool>>;
+            { s.total_size() } -> std::same_as<std::size_t>;
+            { s.reset() } -> std::same_as<void>;
+        };
+}
+
+namespace static_schema {
+
+// Helper to get buffer_size from streamer, with default fallback
+template<class Streamer>
+consteval std::size_t get_streamer_buffer_size() {
+    if constexpr (requires { Streamer::buffer_size; }) {
+        return Streamer::buffer_size;
+    } else {
+        return 64;  // Default buffer size
+    }
+}
+
+// Specialization: string_write_cursor for ConsumingStringStreamerLike
+// Routes chunks directly to the streamer's consume() method
+template<class Streamer>
+    requires static_schema_detail::ConsumingStringStreamerCheck<Streamer>
+struct string_write_cursor<Streamer> {
+    using char_type = char;
+    static constexpr std::size_t buffer_size = get_streamer_buffer_size<Streamer>();
+    
+private:
+    Streamer& streamer_;
+    std::size_t total_written_ = 0;
+    char buffer_[buffer_size];
+    std::size_t pending_ = 0;
+    
+public:
+    constexpr explicit string_write_cursor(Streamer& s) : streamer_(s), buffer_{} {}
+    
+    template<class Ctx>
+    constexpr string_write_cursor(Streamer& s, Ctx* ctx) : streamer_(s), buffer_{} {
+        streamer_context_setter(s, ctx);
+    }
+    
+    // Always ready to receive any amount of data (up to buffer size per chunk)
+    constexpr std::size_t prepare_write(std::size_t hint) {
+        return hint < buffer_size ? hint : buffer_size;
+    }
+    
+    constexpr char* write_ptr() { 
+        pending_ = 0;
+        return buffer_; 
+    }
+    
+    constexpr void commit(std::size_t n) { 
+        // Route to streamer's consume
+        if (n > 0) {
+            streamer_.consume(buffer_, n);
+            total_written_ += n;
+        }
+        pending_ = 0;
+    }
+    
+    constexpr void reset() { 
+        streamer_.reset(); 
+        total_written_ = 0;
+        pending_ = 0;
+    }
+    
+    constexpr void finalize() { 
+        // Finalize with success=true (parser completed successfully)
+        streamer_.finalize(true); 
+    }
+    
+    constexpr std::size_t size() const { return total_written_; }
+    constexpr std::size_t max_capacity() const { return std::numeric_limits<std::size_t>::max(); }
+    
+    // view() returns empty for streamers - data was consumed, not stored
+    constexpr std::string_view view() const { return std::string_view{}; }
+};
+
+// Specialization: string_read_cursor for ProducingStringStreamerLike
+// Reads chunks from the streamer's read_chunk() method
+template<class Streamer>
+    requires static_schema_detail::ProducingStringStreamerCheck<Streamer>
+struct string_read_cursor<Streamer> {
+    using char_type = char;
+    static constexpr std::size_t buffer_size = get_streamer_buffer_size<Streamer>();
+    
+private:
+    const Streamer& streamer_;
+    mutable bool done_ = false;
+    mutable char buffer_[buffer_size];
+    mutable std::size_t chunk_size_ = 0;
+    
+public:
+    constexpr explicit string_read_cursor(const Streamer& s) : streamer_(s), buffer_{} {}
+    
+    template<class Ctx>
+    constexpr string_read_cursor(const Streamer& s, Ctx* ctx) : streamer_(s), buffer_{} {
+        streamer_context_setter(s, ctx);
+    }
+    
+    constexpr stream_read_result read_more() const {
+        if (done_) return stream_read_result::end;
+        
+        auto [bytes_read, is_done] = streamer_.read_chunk(buffer_, buffer_size);
+        chunk_size_ = bytes_read;
+        
+        if (is_done && bytes_read == 0) {
+            done_ = true;
+            return stream_read_result::end;
+        }
+        
+        if (is_done) {
+            done_ = true;
+        }
+        
+        return bytes_read > 0 ? stream_read_result::value : stream_read_result::end;
+    }
+    
+    constexpr const char* data() const { return buffer_; }
+    constexpr std::size_t size() const { return chunk_size_; }
+    constexpr std::size_t total_size() const { return streamer_.total_size(); }
+    constexpr void reset() const { 
+        streamer_.reset(); 
+        done_ = false; 
+        chunk_size_ = 0;
+    }
+};
+
+// Mark string streamers as satisfying the concepts
+template<class S>
+    requires static_schema_detail::ConsumingStringStreamerCheck<S>
+struct is_consuming_string_streamer<S> : std::true_type {};
+
+template<class S>
+    requires static_schema_detail::ProducingStringStreamerCheck<S>
+struct is_producing_string_streamer<S> : std::true_type {};
 
 
 template<class T, class = void>
@@ -1134,6 +1311,35 @@ concept ProducingStreamerLike =
         && !requires {
             { std::declval<typename S::value_type>().key };
             { std::declval<typename S::value_type>().value };
+        };
+
+// ============================================================================
+// String Streamers - for streaming string data character-by-character or in chunks
+// ============================================================================
+
+// ConsumingStringStreamerLike: for parsing strings in streaming fashion
+// Receives characters/chunks during parsing
+template<class S>
+concept ConsumingStringStreamerLike =
+        requires(S& s, const char* data, std::size_t len) {
+            // Consume a chunk of string data
+            { s.consume(data, len) } -> std::same_as<bool>;
+            // Called when string parsing is complete
+            { s.finalize(std::declval<bool>()) } -> std::same_as<bool>;
+            { s.reset() } -> std::same_as<void>;
+        };
+
+// ProducingStringStreamerLike: for serializing strings in streaming fashion
+// Produces characters/chunks during serialization
+template<class S>
+concept ProducingStringStreamerLike =
+        requires(const S& s, char* buf, std::size_t capacity) {
+            // Read next chunk into buffer, returns bytes written and whether more data
+            // Returns: {bytes_written, done} where done=true means no more data
+            { s.read_chunk(buf, capacity) } -> std::same_as<std::pair<std::size_t, bool>>;
+            // Total size if known, SIZE_MAX if unknown (for CBOR indefinite-length)
+            { s.total_size() } -> std::same_as<std::size_t>;
+            { s.reset() } -> std::same_as<void>;
         };
 
 // High-level map consumer interface (for parsing)

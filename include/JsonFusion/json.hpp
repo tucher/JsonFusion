@@ -1749,18 +1749,21 @@ public:
             }
         }
     }
-    __attribute__((noinline)) constexpr bool write_string(const char * data, std::size_t size, bool null_ended = false) {
-
+    // Chunked string writing - JSON ignores size_hint (delimiter-based format)
+    __attribute__((noinline)) constexpr bool write_string_begin(std::size_t /*size_hint*/) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"'; m_bytesWritten ++;
-        std::size_t segSize = 0;
+        *m_current++ = '"'; m_bytesWritten++;
+        return true;
+    }
+    
+    __attribute__((noinline)) constexpr bool write_string_chunk(const char* data, std::size_t size) {
         std::size_t counter = 0;
-        char toOutEscaped [6] = {0, 0, 0, 0, 0, 0};  // Increased to fit \uXXXX
+        char toOutEscaped[6] = {0, 0, 0, 0, 0, 0};  // Fits \uXXXX
         char toOutSize = 0;
-        bool is_null_end = false;
+        
         while(counter < size) {
             char c = data[counter];
             switch(c) {
@@ -1772,10 +1775,7 @@ public:
             case '\n':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'n'; toOutSize = 2; break;
             case '\t':toOutEscaped[0] = '\\'; toOutEscaped[1] = 't'; toOutSize = 2; break;
             default:
-                if(null_ended && c == 0) {
-                    is_null_end = true;
-                }
-                else if(static_cast<unsigned char>(c) < 32) {
+                if(static_cast<unsigned char>(c) < 32) {
                     // Control character (0x00-0x1F): escape as \uXXXX per RFC 8259
                     toOutEscaped[0] = '\\';
                     toOutEscaped[1] = 'u';
@@ -1790,25 +1790,40 @@ public:
                     toOutSize = 1;
                 }
             }
-            if(is_null_end) {
-                break;
-            }
             for(int i = 0; i < toOutSize; i++) {
                 if(m_current == end_) {
                     setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                     return false;
                 }
-                *m_current++ = toOutEscaped[i]; m_bytesWritten ++;
+                *m_current++ = toOutEscaped[i]; m_bytesWritten++;
             }
-            counter ++;
+            counter++;
         }
-
+        return true;
+    }
+    
+    __attribute__((noinline)) constexpr bool write_string_end() {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
         }
-        *m_current ++ = '"'; m_bytesWritten ++;
+        *m_current++ = '"'; m_bytesWritten++;
         return true;
+    }
+    
+    // Convenience wrapper for single-call string writing (maintains old behavior)
+    __attribute__((noinline)) constexpr bool write_string(const char* data, std::size_t size, bool null_ended = false) {
+        if (null_ended) {
+            // Find null terminator
+            std::size_t actual_size = 0;
+            while (actual_size < size && data[actual_size] != '\0') {
+                actual_size++;
+            }
+            size = actual_size;
+        }
+        if (!write_string_begin(size)) return false;
+        if (!write_string_chunk(data, size)) return false;
+        return write_string_end();
     }
 
     constexpr std::size_t finish() {

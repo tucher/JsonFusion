@@ -146,12 +146,27 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
 
     // Use string_read_cursor for unified string serialization
     using Cursor = static_schema::string_read_cursor<ObjT>;
-    Cursor cursor{obj};
+    Cursor cursor = [&]() {
+        if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<Cursor, const ObjT&, UserCtx*>) {
+            if(userCtx) {
+                return Cursor(obj, userCtx);
+            } else {
+                return Cursor(obj);
+            }
+        } else {
+            return Cursor{obj};
+        }
+    }();
     cursor.reset();
+    
+    // Pass total_size as hint: SIZE_MAX for streaming, exact size for contiguous
+    if (!writer.write_string_begin(cursor.total_size())) {
+        return ctx.withWriterError(writer);
+    }
     
     stream_read_result res = cursor.read_more();
     while (res == stream_read_result::value) {
-        if (!writer.write_string(cursor.data(), cursor.size())) {
+        if (!writer.write_string_chunk(cursor.data(), cursor.size())) {
             return ctx.withWriterError(writer);
         }
         res = cursor.read_more();
@@ -159,6 +174,10 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
     
     if (res == stream_read_result::error) {
         return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+    }
+    
+    if (!writer.write_string_end()) {
+        return ctx.withWriterError(writer);
     }
     return true;
 }
@@ -267,15 +286,23 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
             KeyCursor keyCursor{key};
             keyCursor.reset();
             
+            if (!writer.write_string_begin(keyCursor.total_size())) {
+                return ctx.withWriterError(writer);
+            }
+            
             stream_read_result keyRes = keyCursor.read_more();
             while (keyRes == stream_read_result::value) {
-                if (!writer.write_string(keyCursor.data(), keyCursor.size())) {
+                if (!writer.write_string_chunk(keyCursor.data(), keyCursor.size())) {
                     return ctx.withWriterError(writer);
                 }
                 keyRes = keyCursor.read_more();
             }
             if (keyRes == stream_read_result::error) {
                 return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+            }
+            
+            if (!writer.write_string_end()) {
+                return ctx.withWriterError(writer);
             }
         }
 
@@ -341,12 +368,24 @@ constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfInde
                 if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
                     using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
                     const auto & f =  KeyOpt::desc.toStringView();
-                    if(!writer.write_string(f.data(), f.size())) {
+                    if(!writer.write_string_begin(f.size())) {
+                        return ctx.withWriterError(writer);
+                    }
+                    if(!writer.write_string_chunk(f.data(), f.size())) {
+                        return ctx.withWriterError(writer);
+                    }
+                    if(!writer.write_string_end()) {
                         return ctx.withWriterError(writer);
                     }
                 } else {
                     const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
-                    if(!writer.write_string(f.data(), f.size())) {
+                    if(!writer.write_string_begin(f.size())) {
+                        return ctx.withWriterError(writer);
+                    }
+                    if(!writer.write_string_chunk(f.data(), f.size())) {
+                        return ctx.withWriterError(writer);
+                    }
+                    if(!writer.write_string_end()) {
                         return ctx.withWriterError(writer);
                     }
                 }

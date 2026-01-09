@@ -783,7 +783,42 @@ public:
         return attach_value_to_current(v);
     }
 
-    // String writing:
+    // Chunked string writing interface
+    // For yyjson DOM builder, we buffer chunks then create the node on end
+    bool write_string_begin(std::size_t /*size_hint*/) {
+        if (!ensure_ok()) return false;
+        string_buffer_.clear();
+        return true;
+    }
+    
+    bool write_string_chunk(char const* data, std::size_t size) {
+        if (!ensure_ok()) return false;
+        string_buffer_.append(data, size);
+        return true;
+    }
+    
+    bool write_string_end() {
+        if (!ensure_ok()) return false;
+        
+        if (scope_kind_ == ScopeKind::Map) {
+            MapFrame* frame = static_cast<MapFrame*>(scope_frame_);
+            if (frame->expecting_key) {
+                frame->pending_key = std::move(string_buffer_);
+                frame->use_index_key  = false;
+                frame->pending_index  = 0;
+                frame->expecting_key  = false;
+                string_buffer_.clear();
+                return true;
+            }
+        }
+
+        yyjson_mut_val* v = yyjson_mut_strncpy(doc_, string_buffer_.data(), string_buffer_.size());
+        string_buffer_.clear();
+        if (!v) return fail(Error::AllocFailed);
+        return attach_value_to_current(v);
+    }
+    
+    // String writing (convenience wrapper for single-call usage):
     //  - In map & expecting_key → record key in MapFrame
     //  - Else → create value string node and attach
     bool write_string(char const* data, std::size_t size, bool null_terminated = false) {
@@ -964,6 +999,9 @@ private:
 
     ScopeKind scope_kind_;
     void*     scope_frame_;
+    
+    // Buffer for chunked string writing
+    std::string string_buffer_;
     
     // RAII and sink support
     bool  owns_doc_;           // True if we should free doc_ in destructor

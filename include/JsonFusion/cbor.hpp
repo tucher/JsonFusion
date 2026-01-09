@@ -1265,29 +1265,77 @@ public:
         }
     }
 
-    __attribute__((noinline)) constexpr bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
-        // Major type 3 = text string, argument = length in bytes
-        if(null_terminated) {
-            size = 0;
-            const char * d = data;
-            while(*d != '\0') {  // Fixed: dereference pointer
-                d ++;
-                size ++;
+    // Chunked string writing
+    // size_hint: exact size → definite-length encoding
+    //            SIZE_MAX → indefinite-length encoding (0x7F marker)
+    __attribute__((noinline)) constexpr bool write_string_begin(std::size_t size_hint) {
+        if (size_hint == std::numeric_limits<std::size_t>::max()) {
+            // Indefinite-length text string: major type 3 with additional info 31
+            if (m_current == end_) {
+                setError(CborWriterError::sink_error);
+                return false;
+            }
+            *m_current++ = static_cast<std::uint8_t>(0x7F);  // 0b011_11111
+            m_bytesWritten++;
+            m_indefinite_string_ = true;
+        } else {
+            // Definite-length: write header with known size
+            if (!write_major_type_with_length(/*major=*/3, size_hint)) {
+                return false;
+            }
+            m_indefinite_string_ = false;
+        }
+        return true;
+    }
+    
+    __attribute__((noinline)) constexpr bool write_string_chunk(const char* data, std::size_t size) {
+        if (m_indefinite_string_) {
+            // Each chunk is a definite-length text string
+            if (!write_major_type_with_length(/*major=*/3, size)) {
+                return false;
             }
         }
-        if (!write_major_type_with_length(/*major=*/3, size)) {
-            return false;
-        }
+        // Write the data bytes
         for (std::size_t i = 0; i < size; ++i) {
-            if(m_current == end_) {
+            if (m_current == end_) {
                 m_bytesWritten += i;
                 setError(CborWriterError::sink_error);
                 return false;
             }
-            *m_current ++ = data[i];
+            *m_current++ = data[i];
         }
         m_bytesWritten += size;
         return true;
+    }
+    
+    __attribute__((noinline)) constexpr bool write_string_end() {
+        if (m_indefinite_string_) {
+            // Write break marker (0xFF)
+            if (m_current == end_) {
+                setError(CborWriterError::sink_error);
+                return false;
+            }
+            *m_current++ = static_cast<std::uint8_t>(0xFF);
+            m_bytesWritten++;
+            m_indefinite_string_ = false;
+        }
+        // For definite-length, nothing to do
+        return true;
+    }
+    
+    // Convenience wrapper for single-call string writing
+    __attribute__((noinline)) constexpr bool write_string(const char* data, std::size_t size, bool null_terminated = false) {
+        if (null_terminated) {
+            size = 0;
+            const char* d = data;
+            while (*d != '\0') {
+                d++;
+                size++;
+            }
+        }
+        if (!write_string_begin(size)) return false;
+        if (!write_string_chunk(data, size)) return false;
+        return write_string_end();
     }
 
     // ========= Finalization =========
@@ -1328,7 +1376,8 @@ private:
     It m_errorPos;
     It m_current;
     Sent end_;  // Store by value, not reference (avoid dangling reference to temporaries)
-    error_type       err_ = CborWriterError::none;
+    error_type err_ = CborWriterError::none;
+    bool m_indefinite_string_ = false;  // Track if we're in indefinite-length string mode
 
     constexpr void setError(error_type e) noexcept {
         if (err_ == CborWriterError::none) {
