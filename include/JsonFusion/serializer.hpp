@@ -293,26 +293,45 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
         } else {
             // Use string_read_cursor for unified key serialization
             using KeyCursor = static_schema::string_read_cursor<typename FH::key_type>;
-            KeyCursor keyCursor{key};
-            keyCursor.reset();
             
-            if (!writer.write_string_begin(keyCursor.total_size())) {
-                return ctx.withWriterError(writer);
-            }
-            
-            stream_read_result keyRes = keyCursor.read_more();
-            while (keyRes == stream_read_result::value) {
-                if (!writer.write_string_chunk(keyCursor.data(), keyCursor.size())) {
+            if constexpr (KeyCursor::single_pass) {
+                // Fast path: static direct access - no cursor instance needed
+                if (!writer.write_string(KeyCursor::data(key), KeyCursor::size(key))) {
                     return ctx.withWriterError(writer);
                 }
-                keyRes = keyCursor.read_more();
-            }
-            if (keyRes == stream_read_result::error) {
-                return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
-            }
-            
-            if (!writer.write_string_end()) {
-                return ctx.withWriterError(writer);
+            } else {
+                // Streaming path: multiple chunks possible
+                KeyCursor keyCursor = [&]() {
+                    if constexpr (!std::is_same_v<UserCtx, void> && std::is_constructible_v<KeyCursor, const typename FH::key_type&, UserCtx*>) {
+                        if(userCtx) {
+                            return KeyCursor(key, userCtx);
+                        } else {
+                            return KeyCursor(key);
+                        }
+                    } else {
+                        return KeyCursor{key};
+                    }
+                }();
+                keyCursor.reset();
+                
+                if (!writer.write_string_begin(keyCursor.total_size())) {
+                    return ctx.withWriterError(writer);
+                }
+                
+                stream_read_result keyRes = keyCursor.read_more();
+                while (keyRes == stream_read_result::value) {
+                    if (!writer.write_string_chunk(keyCursor.data(), keyCursor.size())) {
+                        return ctx.withWriterError(writer);
+                    }
+                    keyRes = keyCursor.read_more();
+                }
+                if (keyRes == stream_read_result::error) {
+                    return ctx.withError(SerializeError::INPUT_STREAM_ERROR, writer);
+                }
+                
+                if (!writer.write_string_end()) {
+                    return ctx.withWriterError(writer);
+                }
             }
         }
 

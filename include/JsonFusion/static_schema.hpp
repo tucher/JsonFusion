@@ -437,86 +437,94 @@ struct string_write_cursor {};
 
 // Concept: type supports reading string content for serialization
 // Symmetric with ArrayReadable - uses read_more() pattern
+// Helper: check if read cursor type is valid for single_pass=true (static interface)
 template<class C>
-concept StringReadable = requires(const C& c) {
-    typename string_read_cursor<C>::char_type;
+concept StringReadableStatic = requires(const C& c) {
+    { string_read_cursor<C>::single_pass } -> std::convertible_to<bool>;
+    requires string_read_cursor<C>::single_pass == true;
+    { string_read_cursor<C>::data(c) } -> std::convertible_to<const char*>;
+    { string_read_cursor<C>::size(c) } -> std::convertible_to<std::size_t>;
+};
+
+// Helper: check if read cursor type is valid for single_pass=false (instance interface)
+template<class C>
+concept StringReadableDynamic = requires(const C& c) {
+    { string_read_cursor<C>::single_pass } -> std::convertible_to<bool>;
+    requires string_read_cursor<C>::single_pass == false;
     requires std::is_constructible_v<string_read_cursor<C>, const C&>;
-    { std::declval<string_read_cursor<C>>().read_more() } -> std::same_as<stream_read_result>;
-    { std::declval<string_read_cursor<C>>().data() } -> std::same_as<const char*>;
-    { std::declval<string_read_cursor<C>>().size() } -> std::same_as<std::size_t>;
-    { std::declval<string_read_cursor<C>>().total_size() } -> std::same_as<std::size_t>;
-    std::declval<string_read_cursor<C>>().reset();
+    { string_read_cursor<C>(c).read_more() } -> std::same_as<stream_read_result>;
+    { string_read_cursor<C>(c).data() } -> std::same_as<const char*>;
+    { string_read_cursor<C>(c).size() } -> std::same_as<std::size_t>;
+    { string_read_cursor<C>(c).total_size() } -> std::same_as<std::size_t>;
+    string_read_cursor<C>(c).reset();
+};
+
+// Concept: type supports reading string content during serialization
+template<class C>
+concept StringReadable = requires {
+    typename string_read_cursor<C>::char_type;
+} && (StringReadableStatic<C> || StringReadableDynamic<C>);
+
+// Helper: check if cursor type is valid for single_pass=true (static interface)
+template<class C>
+concept StringWritableStatic = requires(C& c, std::size_t n) {
+    { string_write_cursor<C>::single_pass } -> std::convertible_to<bool>;
+    requires string_write_cursor<C>::single_pass == true;
+    { string_write_cursor<C>::data(c) } -> std::convertible_to<char*>;
+    { string_write_cursor<C>::max_capacity() } -> std::convertible_to<std::size_t>;
+    string_write_cursor<C>::finalize(c, n);
+    { string_write_cursor<C>::view(c, n) } -> std::same_as<std::string_view>;
+};
+
+// Helper: check if cursor type is valid for single_pass=false (instance interface)
+template<class C>
+concept StringWritableDynamic = requires(C& c, const char* data, std::size_t n) {
+    { string_write_cursor<C>::single_pass } -> std::convertible_to<bool>;
+    requires string_write_cursor<C>::single_pass == false;
+    requires std::is_constructible_v<string_write_cursor<C>, C&>;
+    { string_write_cursor<C>::buffer_size() } -> std::convertible_to<std::size_t>;
+    string_write_cursor<C>(c).commit(data, n);
+    string_write_cursor<C>(c).finalize();
+    { string_write_cursor<C>(c).size() } -> std::same_as<std::size_t>;
+    { string_write_cursor<C>(c).max_capacity() } -> std::same_as<std::size_t>;
+    { string_write_cursor<C>(c).view() } -> std::same_as<std::string_view>;
+    string_write_cursor<C>(c).reset();
 };
 
 // Concept: type supports writing string content during parsing
-// Two interfaces supported:
-// - single_pass=true: static data(), finalize(), view() - no cursor instance needed
-// - single_pass=false: buffer_size(), commit(data, n) - cursor receives data chunks
+// Two interfaces:
+// - single_pass=true: only static data(), finalize(), view() used - no cursor instance needed
+// - single_pass=false: cursor instance with buffer_size(), commit(data, n), size(), etc.
 template<class C>
-concept StringWritable = requires(C& c, std::size_t n, const char* data) {
+concept StringWritable = requires {
     typename string_write_cursor<C>::char_type;
-    requires std::is_constructible_v<string_write_cursor<C>, C&>;
-    std::declval<string_write_cursor<C>>().finalize();
-    { std::declval<string_write_cursor<C>>().size() } -> std::same_as<std::size_t>;
-    { std::declval<string_write_cursor<C>>().max_capacity() } -> std::same_as<std::size_t>;
-    { std::declval<const string_write_cursor<C>>().view() } -> std::same_as<std::string_view>;
-    std::declval<string_write_cursor<C>>().reset();
-} && (
-    // Either: single_pass=true with old interface (prepare_write/write_ptr/commit(n))
-    requires(std::size_t n) {
-        { std::declval<string_write_cursor<C>>().prepare_write(n) } -> std::same_as<std::size_t>;
-        { std::declval<string_write_cursor<C>>().write_ptr() } -> std::same_as<char*>;
-        std::declval<string_write_cursor<C>>().commit(n);
-    }
-    // Or: single_pass=false with new interface (buffer_size/commit(data,n))
-    || requires(const char* data, std::size_t n) {
-        { string_write_cursor<C>::buffer_size() } -> std::convertible_to<std::size_t>;
-        std::declval<string_write_cursor<C>>().commit(data, n);
-    }
-);
+} && (StringWritableStatic<C> || StringWritableDynamic<C>);
 
 // Specialization: std::array<char, N> - fixed size buffer
 // For reading: single chunk containing the whole string (zero-copy)
+// single_pass = true: only static methods used, no cursor instance created
 template<std::size_t N>
 struct string_read_cursor<std::array<char, N>> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr const char* data(const std::array<char, N>& arr) { return arr.data(); }
     static constexpr std::size_t size(const std::array<char, N>& arr) {
         std::size_t l = 0;
         while (l < N && arr[l] != '\0') ++l;
         return l;
     }
-    
-private:
-    const std::array<char, N>& arr_;
-    mutable bool done_ = false;
-    mutable std::size_t len_ = 0;
-    
-public:
-    constexpr explicit string_read_cursor(const std::array<char, N>& a) : arr_(a) {}
-    
-    constexpr stream_read_result read_more() const {
-        if (done_) return stream_read_result::end;
-        len_ = size(arr_);
-        done_ = true;
-        return stream_read_result::value;
-    }
-    constexpr const char* data() const { return arr_.data(); }
-    constexpr std::size_t size() const { return len_; }
-    constexpr std::size_t total_size() const { return done_ ? len_ : size(arr_); }
-    constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
 // For writing: direct buffer access (zero-copy)
+// single_pass = true: only static methods used, no cursor instance created
 template<std::size_t N>
 struct string_write_cursor<std::array<char, N>> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr char* data(std::array<char, N>& arr) { return arr.data(); }
     static constexpr std::size_t max_capacity() { return N > 0 ? N - 1 : 0; }
     static constexpr void finalize(std::array<char, N>& arr, std::size_t pos) { 
@@ -525,68 +533,34 @@ struct string_write_cursor<std::array<char, N>> {
     static constexpr std::string_view view(std::array<char, N>& arr, std::size_t pos) {
         return std::string_view(arr.data(), pos);
     }
-    
-private:
-    std::array<char, N>& arr_;
-    std::size_t pos_ = 0;
-    
-public:
-    constexpr explicit string_write_cursor(std::array<char, N>& a) : arr_(a) {}
-    
-    constexpr std::size_t prepare_write(std::size_t hint) {
-        std::size_t remaining = max_capacity() - pos_;
-        return hint < remaining ? hint : remaining;
-    }
-    constexpr char* write_ptr() { return arr_.data() + pos_; }
-    constexpr void commit(std::size_t n) { pos_ += n; }
-    constexpr void reset() { pos_ = 0; }
-    constexpr void finalize() { finalize(arr_, pos_); }
-    constexpr std::size_t size() const { return pos_; }
-    constexpr std::string_view view() const { return view(arr_, pos_); }
 };
 
 // Specialization: char[N] - fixed size C-style array
 // For reading: single chunk (zero-copy)
+// For reading: single chunk containing the whole string (zero-copy)
+// single_pass = true: only static methods used, no cursor instance created
 template<std::size_t N>
 struct string_read_cursor<char[N]> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr const char* data(const char (&arr)[N]) { return arr; }
     static constexpr std::size_t size(const char (&arr)[N]) {
         std::size_t l = 0;
         while (l < N && arr[l] != '\0') ++l;
         return l;
     }
-    
-private:
-    const char (&arr_)[N];
-    mutable bool done_ = false;
-    mutable std::size_t len_ = 0;
-    
-public:
-    constexpr explicit string_read_cursor(const char (&a)[N]) : arr_(a) {}
-    
-    constexpr stream_read_result read_more() const {
-        if (done_) return stream_read_result::end;
-        len_ = size(arr_);
-        done_ = true;
-        return stream_read_result::value;
-    }
-    constexpr const char* data() const { return arr_; }
-    constexpr std::size_t size() const { return len_; }
-    constexpr std::size_t total_size() const { return done_ ? len_ : size(arr_); }
-    constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
 // For writing: direct buffer access (zero-copy)
+// single_pass = true: only static methods used, no cursor instance created
 template<std::size_t N>
 struct string_write_cursor<char[N]> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr char* data(char (&arr)[N]) { return arr; }
     static constexpr std::size_t max_capacity() { return N > 0 ? N - 1 : 0; }
     static constexpr void finalize(char (&arr)[N], std::size_t pos) { 
@@ -595,82 +569,33 @@ struct string_write_cursor<char[N]> {
     static constexpr std::string_view view(char (&arr)[N], std::size_t pos) {
         return std::string_view(arr, pos);
     }
-    
-private:
-    char (&arr_)[N];
-    std::size_t pos_ = 0;
-    
-public:
-    constexpr explicit string_write_cursor(char (&a)[N]) : arr_(a) {}
-    
-    constexpr std::size_t prepare_write(std::size_t hint) {
-        std::size_t remaining = max_capacity() - pos_;
-        return hint < remaining ? hint : remaining;
-    }
-    constexpr char* write_ptr() { return arr_ + pos_; }
-    constexpr void commit(std::size_t n) { pos_ += n; }
-    constexpr void reset() { pos_ = 0; }
-    constexpr void finalize() { finalize(arr_, pos_); }
-    constexpr std::size_t size() const { return pos_; }
-    constexpr std::string_view view() const { return view(arr_, pos_); }
 };
 
 // Specialization: std::string_view - read only (for serialization)
+// single_pass = true: only static methods used, no cursor instance created
 template<>
 struct string_read_cursor<std::string_view> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr const char* data(std::string_view sv) { return sv.data(); }
     static constexpr std::size_t size(std::string_view sv) { return sv.size(); }
-    
-private:
-    std::string_view sv_;
-    mutable bool done_ = false;
-    
-public:
-    constexpr explicit string_read_cursor(std::string_view s) : sv_(s) {}
-    
-    constexpr stream_read_result read_more() const {
-        if (done_) return stream_read_result::end;
-        done_ = true;
-        return stream_read_result::value;
-    }
-    constexpr const char* data() const { return sv_.data(); }
-    constexpr std::size_t size() const { return sv_.size(); }
-    constexpr std::size_t total_size() const { return sv_.size(); }
-    constexpr void reset() const { done_ = false; }
 };
 
 #if __has_include(<string>)
 // Specialization: std::string - dynamic size
 // For reading: single chunk (zero-copy)
+// Specialization: std::string - for serialization
+// single_pass = true: only static methods used, no cursor instance created
 template<>
 struct string_read_cursor<std::string> {
     using char_type = char;
-    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    static constexpr bool single_pass = true;
     
-    // ===== Static direct access (zero-cost for single_pass) =====
+    // Static interface only (no instance methods needed)
     static constexpr const char* data(const std::string& s) { return s.data(); }
     static constexpr std::size_t size(const std::string& s) { return s.size(); }
-    
-private:
-    const std::string& str_;
-    mutable bool done_ = false;
-    
-public:
-    constexpr explicit string_read_cursor(const std::string& s) : str_(s) {}
-    
-    constexpr stream_read_result read_more() const {
-        if (done_) return stream_read_result::end;
-        done_ = true;
-        return stream_read_result::value;
-    }
-    constexpr const char* data() const { return str_.data(); }
-    constexpr std::size_t size() const { return str_.size(); }
-    constexpr std::size_t total_size() const { return str_.size(); }
-    constexpr void reset() const { done_ = false; }
 };
 
 // For writing: receives data chunks and appends to string
