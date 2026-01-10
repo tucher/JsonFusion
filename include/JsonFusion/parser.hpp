@@ -591,43 +591,73 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
         if constexpr(!std::integral<typename FH::key_type>) {
             // Use string_write_cursor for key parsing
             using KeyCursor = static_schema::string_write_cursor<typename FH::key_type>;
-            KeyCursor keyCursor{key};
-            keyCursor.reset();
 
             // Query max key length from validators for early rejection
             using PropertyTagKeyLen = validators::validators_detail::parsing_constraint_properties_tags::max_map_key_length;
             constexpr std::size_t validator_max_key_len = 
                 validators::validators_detail::validator_state<Opts, ObjT>::template max_property<PropertyTagKeyLen>();
             
-            // Calculate effective max: min of container capacity and validator limit (+1 to detect overflow)
-            const std::size_t container_max = keyCursor.max_capacity();
-            const std::size_t effective_max = [&]() {
-                if constexpr (validator_max_key_len > 0) {
-                    std::size_t val_limit = validator_max_key_len + 1;
-                    return container_max < val_limit ? container_max : val_limit;
-                } else {
-                    return container_max;
-                }
-            }();
-
-            ParseError err{ParseError::NO_ERROR};
-            if(!read_string_with_cursor(reader, keyCursor, effective_max, err)) {
-                const std::size_t parsedSize = keyCursor.size();
-                
-                // Check if we read enough to detect validator limit exceeded
-                if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
-                    // Early rejection: key exceeded validator limit
-                    keyCursor.finalize();
-                    if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), keyCursor.view())) {
-                        return ctx.withSchemaError(reader);
+            if constexpr (KeyCursor::single_pass) {
+                // Fast path: direct buffer access for fixed-size key types
+                constexpr std::size_t container_max = KeyCursor::max_capacity();
+                constexpr std::size_t effective_max = [&]() {
+                    if constexpr (validator_max_key_len > 0) {
+                        constexpr std::size_t val_limit = validator_max_key_len + 1;
+                        return container_max < val_limit ? container_max : val_limit;
+                    } else {
+                        return container_max;
                     }
+                }();
+                
+                char* buf = KeyCursor::data(key);
+                std::size_t key_len = 0;
+                ParseError err{ParseError::NO_ERROR};
+                
+                if (!read_string_into_buffer(reader, buf, effective_max, err, key_len)) {
+                    KeyCursor::finalize(key, key_len);
+                    // Check if we read enough to detect validator limit exceeded
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && key_len > validator_max_key_len) {
+                        if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(
+                                obj, ctx.validationCtx(), KeyCursor::view(key, key_len))) {
+                            return ctx.withSchemaError(reader);
+                        }
+                    }
+                    return ctx.withParseError(err, reader);
                 }
-                return ctx.withParseError(err, reader);
-            }
-            keyCursor.finalize();
+                KeyCursor::finalize(key, key_len);
+                key_sv = KeyCursor::view(key, key_len);
+            } else {
+                // Streaming path: use cursor for dynamic key types (std::string, streamers)
+                KeyCursor keyCursor{key};
+                keyCursor.reset();
+                
+                const std::size_t container_max = keyCursor.max_capacity();
+                const std::size_t effective_max = [&]() {
+                    if constexpr (validator_max_key_len > 0) {
+                        std::size_t val_limit = validator_max_key_len + 1;
+                        return container_max < val_limit ? container_max : val_limit;
+                    } else {
+                        return container_max;
+                    }
+                }();
 
-            // Get key view for validation and path tracking
-            key_sv = keyCursor.view();
+                ParseError err{ParseError::NO_ERROR};
+                if (!read_string_with_cursor(reader, keyCursor, effective_max, err)) {
+                    const std::size_t parsedSize = keyCursor.size();
+                    
+                    // Check if we read enough to detect validator limit exceeded
+                    if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max_key_len > 0 && parsedSize > validator_max_key_len) {
+                        keyCursor.finalize();
+                        if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(
+                                obj, ctx.validationCtx(), keyCursor.view())) {
+                            return ctx.withSchemaError(reader);
+                        }
+                    }
+                    return ctx.withParseError(err, reader);
+                }
+                keyCursor.finalize();
+                key_sv = keyCursor.view();
+            }
             
             // Emit key finished event
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_key_finished>(obj, ctx.validationCtx(), key_sv)) {
@@ -812,27 +842,10 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             };
             char * b = searcher.buffer();
 
-            // Create a simple raw buffer cursor wrapper for the searcher's buffer
-            struct RawBufferCursor {
-                char* buf;
-                std::size_t& len;
-                std::size_t max_cap;
-                
-                constexpr std::size_t prepare_write(std::size_t hint) {
-                    std::size_t remaining = max_cap - len;
-                    return hint < remaining ? hint : remaining;
-                }
-                constexpr char* write_ptr() { return buf + len; }
-                constexpr void commit(std::size_t n) { len += n; }
-                constexpr void reset() { len = 0; }
-                constexpr void finalize() { if (len < max_cap) buf[len] = '\0'; }
-                constexpr std::size_t size() const { return len; }
-                constexpr std::size_t max_capacity() const { return max_cap; }
-            };
-            
-            RawBufferCursor bufCursor{b, searcher.current_length(), effective_max_field_len};
+            // Use shared helper for direct buffer access (faster than cursor abstraction)
+            std::size_t field_len = 0;
             ParseError err{ParseError::NO_ERROR};
-            if(!read_string_with_cursor(reader, bufCursor, effective_max_field_len, err, true)) {
+            if(!read_string_into_buffer(reader, b, effective_max_field_len, err, field_len)) {
                 if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                     return ctx.withParseError(err, reader);
                 } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
@@ -841,6 +854,9 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
                     return ctx.withReaderError(reader);
                 }
             }
+            // Update searcher with parsed length and null-terminate
+            searcher.current_length() = field_len;
+            if (field_len < effective_max_field_len) b[field_len] = '\0';
             auto res = searcher.result();
             if( searcher.result() != FH::fieldIndexesToFieldNames.end()) {
                 arrayIndex = res - FH::fieldIndexesToFieldNames.begin();
