@@ -144,6 +144,64 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
 
 constexpr std::size_t STRING_CHUNK_SIZE = 64;
 
+// Helper: read string directly into a char* buffer (shared across all fixed-size array types)
+// This is the hot path for parsing into std::array<char,N>, char[N], etc.
+// Returns number of bytes written via out_size, or 0 on error (with err set)
+template<class Reader>
+constexpr bool read_string_into_buffer(
+    Reader&      reader,
+    char*        buf,
+    std::size_t  max_len,   // buffer capacity (e.g. N-1 for arrays)
+    ParseError&  err,
+    std::size_t& out_size
+)
+{
+    std::size_t pos = 0;
+    
+    for (;;) {
+        const std::size_t remaining = max_len - pos;
+        if (remaining == 0) {
+            // Buffer full - consume rest and fail
+            char scratch[STRING_CHUNK_SIZE];
+            for (;;) {
+                auto rest = reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
+                if (rest.status != reader::StringChunkStatus::ok) {
+                    err = (rest.status == reader::StringChunkStatus::no_match)
+                        ? ParseError::NON_STRING_IN_STRING_STORAGE 
+                        : ParseError::READER_ERROR;
+                    return false;
+                }
+                if (rest.done) {
+                    out_size = pos;
+                    err = ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+                    return false;
+                }
+            }
+        }
+        
+        auto res = reader.read_string_chunk(buf + pos, remaining);
+        
+        if (res.status != reader::StringChunkStatus::ok) {
+            err = (res.status == reader::StringChunkStatus::no_match)
+                ? ParseError::NON_STRING_IN_STRING_STORAGE 
+                : ParseError::READER_ERROR;
+            return false;
+        }
+        
+        pos += res.bytes_written;
+        
+        if (res.done) {
+            out_size = pos;
+            return true;
+        }
+        
+        if (res.bytes_written == 0) {
+            err = ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+            return false;
+        }
+    }
+}
+
 // Helper: read string using cursor abstraction
 // Cursor provides: prepare_write(), write_ptr(), commit(), finalize(), max_capacity()
 // This unified interface works for both static buffers (zero-copy) and dynamic strings (buffered append)
@@ -286,7 +344,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
     using Cursor = static_schema::string_write_cursor<ObjT>;
     
     if constexpr (Cursor::single_pass) {
-        // Fast path: static direct access - no cursor instance needed
+        // Fast path: direct buffer access via shared helper
         constexpr std::size_t container_max = Cursor::max_capacity();
         constexpr std::size_t effective_max = [&]() {
             if constexpr (validator_max > 0) {
@@ -299,62 +357,28 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
         
         char* buf = Cursor::data(obj);
         std::size_t pos = 0;
+        ParseError err{ParseError::NO_ERROR};
         
-        for (;;) {
-            const std::size_t remaining = effective_max - pos;
-            if (remaining == 0) {
-                // Buffer full - consume rest and fail
-                char scratch[64];
-                for (;;) {
-                    auto rest = reader.read_string_chunk(scratch, 64);
-                    if (rest.status != reader::StringChunkStatus::ok) {
-                        return ctx.withParseError(
-                            rest.status == reader::StringChunkStatus::no_match 
-                                ? ParseError::NON_STRING_IN_STRING_STORAGE 
-                                : ParseError::READER_ERROR, reader);
-                    }
-                    if (rest.done) {
-                        Cursor::finalize(obj, pos);
-                        // Check validator limit
-                        if constexpr (validator_max > 0) {
-                            if (pos > validator_max) {
-                                if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
-                                        obj, ctx.validationCtx(), Cursor::view(obj, pos))) {
-                                    return ctx.withSchemaError(reader);
-                                }
-                            }
-                        }
-                        return ctx.withParseError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader);
-                    }
-                }
-            }
-            
-            auto res = reader.read_string_chunk(buf + pos, remaining);
-            
-            if (res.status != reader::StringChunkStatus::ok) {
-                return ctx.withParseError(
-                    res.status == reader::StringChunkStatus::no_match 
-                        ? ParseError::NON_STRING_IN_STRING_STORAGE 
-                        : ParseError::READER_ERROR, reader);
-            }
-            
-            pos += res.bytes_written;
-            
-            if (res.done) {
-                Cursor::finalize(obj, pos);
-                
-                // Validate final string
+        if (!read_string_into_buffer(reader, buf, effective_max, err, pos)) {
+            Cursor::finalize(obj, pos);
+            // Check if we read enough to detect validator limit exceeded
+            if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW && validator_max > 0 && pos > validator_max) {
                 if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
                         obj, ctx.validationCtx(), Cursor::view(obj, pos))) {
                     return ctx.withSchemaError(reader);
                 }
-                return true;
             }
-            
-            if (res.bytes_written == 0) {
-                return ctx.withParseError(ParseError::FIXED_SIZE_CONTAINER_OVERFLOW, reader);
-            }
+            return ctx.withParseError(err, reader);
         }
+        
+        Cursor::finalize(obj, pos);
+        
+        // Validate final string
+        if (!validatorsState.template validate<validators::validators_detail::parsing_events_tags::string_parsing_finished>(
+                obj, ctx.validationCtx(), Cursor::view(obj, pos))) {
+            return ctx.withSchemaError(reader);
+        }
+        return true;
     } else {
         // Streaming path: need cursor instance with context
         Cursor cursor = [&]() {
