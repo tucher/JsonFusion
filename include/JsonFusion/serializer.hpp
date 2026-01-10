@@ -148,10 +148,8 @@ constexpr bool SerializeNonNullValue(const ObjT& obj, Writer & writer, CTX &ctx,
     using Cursor = static_schema::string_read_cursor<ObjT>;
     
     if constexpr (Cursor::single_pass) {
-        // Fast path: contiguous string, single chunk - no loop overhead
-        Cursor cursor{obj};
-        cursor.read_more();  // Single call, all data available
-        if (!writer.write_string(cursor.data(), cursor.size())) {
+        // Fast path: static direct access - no cursor instance needed
+        if (!writer.write_string(Cursor::data(obj), Cursor::size(obj))) {
             return ctx.withWriterError(writer);
         }
         return true;

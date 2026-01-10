@@ -468,36 +468,33 @@ concept StringWritable = requires(C& c, std::size_t n) {
 template<std::size_t N>
 struct string_read_cursor<std::array<char, N>> {
     using char_type = char;
+    static constexpr bool single_pass = true;  // Single chunk, no streaming
+    
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr const char* data(const std::array<char, N>& arr) { return arr.data(); }
+    static constexpr std::size_t size(const std::array<char, N>& arr) {
+        std::size_t l = 0;
+        while (l < N && arr[l] != '\0') ++l;
+        return l;
+    }
     
 private:
     const std::array<char, N>& arr_;
     mutable bool done_ = false;
     mutable std::size_t len_ = 0;
     
-    // Calculate string length by finding null terminator
-    constexpr std::size_t calc_len() const {
-        std::size_t l = 0;
-        while (l < N && arr_[l] != '\0') {
-            ++l;
-        }
-        return l;
-    }
-    
 public:
     constexpr explicit string_read_cursor(const std::array<char, N>& a) : arr_(a) {}
     
-    static constexpr bool single_pass = true;  // Single chunk, no streaming
-    
     constexpr stream_read_result read_more() const {
         if (done_) return stream_read_result::end;
-        len_ = calc_len();
+        len_ = size(arr_);
         done_ = true;
         return stream_read_result::value;
     }
     constexpr const char* data() const { return arr_.data(); }
     constexpr std::size_t size() const { return len_; }
-    // total_size() can be called before read_more() - calculates on demand
-    constexpr std::size_t total_size() const { return done_ ? len_ : calc_len(); }
+    constexpr std::size_t total_size() const { return done_ ? len_ : size(arr_); }
     constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
@@ -506,6 +503,16 @@ template<std::size_t N>
 struct string_write_cursor<std::array<char, N>> {
     using char_type = char;
     static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
+    
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr char* data(std::array<char, N>& arr) { return arr.data(); }
+    static constexpr std::size_t max_capacity() { return N > 0 ? N - 1 : 0; }
+    static constexpr void finalize(std::array<char, N>& arr, std::size_t pos) { 
+        if (pos < N) arr[pos] = '\0'; 
+    }
+    static constexpr std::string_view view(std::array<char, N>& arr, std::size_t pos) {
+        return std::string_view(arr.data(), pos);
+    }
     
 private:
     std::array<char, N>& arr_;
@@ -521,10 +528,9 @@ public:
     constexpr char* write_ptr() { return arr_.data() + pos_; }
     constexpr void commit(std::size_t n) { pos_ += n; }
     constexpr void reset() { pos_ = 0; }
-    constexpr void finalize() { if (pos_ < N) arr_[pos_] = '\0'; }
+    constexpr void finalize() { finalize(arr_, pos_); }
     constexpr std::size_t size() const { return pos_; }
-    constexpr std::size_t max_capacity() const { return N > 0 ? N - 1 : 0; }
-    constexpr std::string_view view() const { return std::string_view(arr_.data(), pos_); }
+    constexpr std::string_view view() const { return view(arr_, pos_); }
 };
 
 // Specialization: char[N] - fixed size C-style array
@@ -534,33 +540,31 @@ struct string_read_cursor<char[N]> {
     using char_type = char;
     static constexpr bool single_pass = true;  // Single chunk, no streaming
     
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr const char* data(const char (&arr)[N]) { return arr; }
+    static constexpr std::size_t size(const char (&arr)[N]) {
+        std::size_t l = 0;
+        while (l < N && arr[l] != '\0') ++l;
+        return l;
+    }
+    
 private:
     const char (&arr_)[N];
     mutable bool done_ = false;
     mutable std::size_t len_ = 0;
-    
-    // Calculate string length by finding null terminator
-    constexpr std::size_t calc_len() const {
-        std::size_t l = 0;
-        while (l < N && arr_[l] != '\0') {
-            ++l;
-        }
-        return l;
-    }
     
 public:
     constexpr explicit string_read_cursor(const char (&a)[N]) : arr_(a) {}
     
     constexpr stream_read_result read_more() const {
         if (done_) return stream_read_result::end;
-        len_ = calc_len();
+        len_ = size(arr_);
         done_ = true;
         return stream_read_result::value;
     }
     constexpr const char* data() const { return arr_; }
     constexpr std::size_t size() const { return len_; }
-    // total_size() can be called before read_more() - calculates on demand
-    constexpr std::size_t total_size() const { return done_ ? len_ : calc_len(); }
+    constexpr std::size_t total_size() const { return done_ ? len_ : size(arr_); }
     constexpr void reset() const { done_ = false; len_ = 0; }
 };
 
@@ -569,6 +573,16 @@ template<std::size_t N>
 struct string_write_cursor<char[N]> {
     using char_type = char;
     static constexpr bool single_pass = true;  // Direct buffer write, no intermediate
+    
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr char* data(char (&arr)[N]) { return arr; }
+    static constexpr std::size_t max_capacity() { return N > 0 ? N - 1 : 0; }
+    static constexpr void finalize(char (&arr)[N], std::size_t pos) { 
+        if (pos < N) arr[pos] = '\0'; 
+    }
+    static constexpr std::string_view view(char (&arr)[N], std::size_t pos) {
+        return std::string_view(arr, pos);
+    }
     
 private:
     char (&arr_)[N];
@@ -584,10 +598,9 @@ public:
     constexpr char* write_ptr() { return arr_ + pos_; }
     constexpr void commit(std::size_t n) { pos_ += n; }
     constexpr void reset() { pos_ = 0; }
-    constexpr void finalize() { if (pos_ < N) arr_[pos_] = '\0'; }
+    constexpr void finalize() { finalize(arr_, pos_); }
     constexpr std::size_t size() const { return pos_; }
-    constexpr std::size_t max_capacity() const { return N > 0 ? N - 1 : 0; }
-    constexpr std::string_view view() const { return std::string_view(arr_, pos_); }
+    constexpr std::string_view view() const { return view(arr_, pos_); }
 };
 
 // Specialization: std::string_view - read only (for serialization)
@@ -595,6 +608,10 @@ template<>
 struct string_read_cursor<std::string_view> {
     using char_type = char;
     static constexpr bool single_pass = true;  // Single chunk, no streaming
+    
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr const char* data(std::string_view sv) { return sv.data(); }
+    static constexpr std::size_t size(std::string_view sv) { return sv.size(); }
     
 private:
     std::string_view sv_;
@@ -621,6 +638,10 @@ template<>
 struct string_read_cursor<std::string> {
     using char_type = char;
     static constexpr bool single_pass = true;  // Single chunk, no streaming
+    
+    // ===== Static direct access (zero-cost for single_pass) =====
+    static constexpr const char* data(const std::string& s) { return s.data(); }
+    static constexpr std::size_t size(const std::string& s) { return s.size(); }
     
 private:
     const std::string& str_;
