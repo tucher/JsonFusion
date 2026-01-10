@@ -2,6 +2,7 @@
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/serializer.hpp>
 #include <JsonFusion/static_schema.hpp>
+#include <JsonFusion/cbor.hpp>
 #include <array>
 #include <utility>
 
@@ -120,17 +121,46 @@ static_assert(
     "String consumer as struct field"
 );
 
-// Test 6: Large string to test chunking
+// Test 6: Large string to test chunking - verify multiple chunks actually used
+struct ChunkCountingConsumer {
+    std::array<char, 128> buffer{};
+    std::size_t length = 0;
+    mutable std::size_t consume_count = 0;  // Track number of consume() calls
+    
+    constexpr bool consume(const char* data, std::size_t len) {
+        consume_count++;
+        if (length + len > buffer.size()) return false;
+        for (std::size_t i = 0; i < len; ++i) {
+            buffer[length++] = data[i];
+        }
+        return true;
+    }
+    
+    constexpr bool finalize(bool success) { return success; }
+    constexpr void reset() { 
+        length = 0; 
+        consume_count = 0;
+    }
+    
+    constexpr std::string_view view() const {
+        return std::string_view(buffer.data(), length);
+    }
+};
+
+static_assert(ConsumingStringStreamerLike<ChunkCountingConsumer>);
+
 static_assert(
     []() constexpr {
-        StringConsumer consumer{};
-        // String longer than typical chunk size (64 bytes)
+        ChunkCountingConsumer consumer{};
+        // String longer than default chunk size (64 bytes) - should require at least 2 chunks
         std::string json = R"("0123456789012345678901234567890123456789012345678901234567890123456789")";  // 70 chars
         auto result = JsonFusion::Parse(consumer, json);
         if (!result) return false;
-        return consumer.length == 70;
+        // Verify: length is correct AND multiple consume() calls happened
+        return consumer.length == 70 
+            && consumer.consume_count >= 2;  // At least 2 chunks used!
     }(),
-    "Large string parsed in chunks"
+    "Large string parsed in multiple chunks (verified)"
 );
 
 // Test 7: Consumer finalize called correctly
@@ -491,6 +521,58 @@ static_assert(
     "Multiple string producers in struct"
 );
 
+// Test 14: Verify producer uses multiple chunks for large string
+struct ChunkCountingProducer {
+    const char* data_ = nullptr;
+    std::size_t len_ = 0;
+    mutable std::size_t pos_ = 0;
+    mutable std::size_t read_chunk_count = 0;  // Track number of read_chunk() calls
+    
+    constexpr ChunkCountingProducer() = default;
+    constexpr ChunkCountingProducer(const char* d, std::size_t l) : data_(d), len_(l) {}
+    
+    constexpr std::pair<std::size_t, bool> read_chunk(char* buf, std::size_t capacity) const {
+        read_chunk_count++;
+        
+        if (!data_ || pos_ >= len_) {
+            return {0, true};
+        }
+        
+        std::size_t remaining = len_ - pos_;
+        std::size_t to_copy = remaining < capacity ? remaining : capacity;
+        
+        for (std::size_t i = 0; i < to_copy; ++i) {
+            buf[i] = data_[pos_++];
+        }
+        
+        bool done = (pos_ >= len_);
+        return {to_copy, done};
+    }
+    
+    constexpr std::size_t total_size() const { return len_; }
+    
+    constexpr void reset() const {
+        pos_ = 0;
+        read_chunk_count = 0;
+    }
+};
+
+static_assert(ProducingStringStreamerLike<ChunkCountingProducer>);
+
+static_assert(
+    []() constexpr {
+        // String longer than default cursor buffer (64 bytes) - should require multiple read_chunk() calls
+        const char data[] = "This is a very long string that exceeds the default buffer size of 64 bytes and should trigger multiple read_chunk calls!";
+        ChunkCountingProducer producer{data, 122};  // 122 chars
+        std::string output;
+        JsonFusion::Serialize(producer, output);
+        // Verify: output contains the string AND multiple read_chunk() calls happened
+        return output.find("This is a very long string") != std::string::npos
+            && producer.read_chunk_count >= 2;  // At least 2 chunks read!
+    }(),
+    "Large string serialized in multiple chunks (verified)"
+);
+
 // Test 15: Reset works correctly
 static_assert(
     []() constexpr {
@@ -520,8 +602,10 @@ struct SmallBufferConsumer {
     
     std::array<char, 128> buffer{};
     std::size_t length = 0;
+    mutable std::size_t consume_count = 0;  // Track chunk count
     
     constexpr bool consume(const char* data, std::size_t len) {
+        consume_count++;
         // Verify chunks are <= buffer_size
         if (len > buffer_size) return false;
         if (length + len > buffer.size()) return false;
@@ -532,7 +616,10 @@ struct SmallBufferConsumer {
     }
     
     constexpr bool finalize(bool success) { return success; }
-    constexpr void reset() { length = 0; }
+    constexpr void reset() { 
+        length = 0; 
+        consume_count = 0;
+    }
     
     constexpr std::string_view view() const {
         return std::string_view(buffer.data(), length);
@@ -547,12 +634,68 @@ static_assert(static_schema::string_write_cursor<SmallBufferConsumer>::buffer_si
 static_assert(
     []() constexpr {
         SmallBufferConsumer consumer{};
-        std::string json = R"("hello world")";
+        std::string json = R"("hello world")";  // 11 chars with buffer_size=8 -> requires 2+ chunks
         auto result = JsonFusion::Parse(consumer, json);
         if (!result) return false;
-        return consumer.view() == "hello world";
+        // Verify: correct content AND multiple chunks used
+        return consumer.view() == "hello world"
+            && consumer.consume_count >= 2;  // At least 2 chunks for 11 chars with 8-byte buffer!
     }(),
-    "Consumer with custom buffer_size"
+    "Consumer with custom buffer_size uses multiple chunks"
+);
+
+// Producer with small buffer size - to verify multiple chunks
+struct SmallBufferProducer {
+    static constexpr std::size_t buffer_size = 10;  // Small buffer
+    
+    const char* data_ = nullptr;
+    std::size_t len_ = 0;
+    mutable std::size_t pos_ = 0;
+    mutable std::size_t read_chunk_count = 0;
+    
+    constexpr SmallBufferProducer() = default;
+    constexpr SmallBufferProducer(const char* d, std::size_t l) : data_(d), len_(l) {}
+    
+    constexpr std::pair<std::size_t, bool> read_chunk(char* buf, std::size_t capacity) const {
+        read_chunk_count++;
+        
+        if (!data_ || pos_ >= len_) {
+            return {0, true};
+        }
+        
+        std::size_t remaining = len_ - pos_;
+        std::size_t to_copy = remaining < capacity ? remaining : capacity;
+        
+        for (std::size_t i = 0; i < to_copy; ++i) {
+            buf[i] = data_[pos_++];
+        }
+        
+        return {to_copy, pos_ >= len_};
+    }
+    
+    constexpr std::size_t total_size() const { return len_; }
+    constexpr void reset() const { 
+        pos_ = 0; 
+        read_chunk_count = 0;
+    }
+};
+
+static_assert(ProducingStringStreamerLike<SmallBufferProducer>);
+
+// Verify buffer_size is picked up from streamer
+static_assert(static_schema::string_read_cursor<SmallBufferProducer>::buffer_size == 10);
+
+static_assert(
+    []() constexpr {
+        const char data[] = "This needs multiple chunks!";  // 27 chars with buffer_size=10
+        SmallBufferProducer producer{data, 27};
+        std::string output;
+        JsonFusion::Serialize(producer, output);
+        // Verify: correct output AND multiple read_chunk() calls
+        return output == R"("This needs multiple chunks!")"
+            && producer.read_chunk_count >= 3;  // At least 3 chunks for 27 chars with 10-byte buffer!
+    }(),
+    "Producer with small buffer_size uses multiple chunks"
 );
 
 // Producer with custom buffer size  
@@ -599,5 +742,131 @@ static_assert(
         return output == R"("large buffer test")";
     }(),
     "Producer with custom buffer_size"
+);
+
+// ============================================================================
+// Part 4: CBOR String Chunking Tests
+// ============================================================================
+
+// Test that CBOR writer's chunked string interface works correctly
+// CBOR has two string encoding modes:
+// 1. Definite-length: when total_size() is known (not SIZE_MAX)
+// 2. Indefinite-length: when total_size() is SIZE_MAX (0x7F...chunks...0xFF)
+
+// Test 1: CBOR with known-size producer (definite-length encoding)
+static_assert(
+    []() constexpr {
+        const char data[] = "cbor test";
+        StringProducer producer{data, 9};
+        
+        std::array<char, 128> buffer{};
+        auto it = buffer.begin();
+        auto res = SerializeWithWriter(producer, CborWriter(it, buffer.end()));
+        if (!res) return false;
+        
+        // Parse it back to verify
+        std::string result;
+        if (!ParseWithReader(result, CborReader(buffer.begin(), buffer.begin() + res.bytesWritten()))) {
+            return false;
+        }
+        
+        return result == "cbor test";
+    }(),
+    "CBOR: String producer with known size (definite-length)"
+);
+
+// Test 2: CBOR with unknown-size producer (indefinite-length encoding)
+static_assert(
+    []() constexpr {
+        const char data[] = "indefinite";
+        StreamingProducer producer{data, 10};  // total_size() returns SIZE_MAX
+        
+        std::array<char, 128> buffer{};
+        auto it = buffer.begin();
+        auto res = SerializeWithWriter(producer, CborWriter(it, buffer.end()));
+        if (!res) return false;
+        
+        // Verify indefinite-length encoding: should start with 0x7F (indefinite text string)
+        unsigned char first_byte = static_cast<unsigned char>(buffer[0]);
+        if (first_byte != 0x7F) return false;
+        
+        // Verify it ends with 0xFF (break marker)
+        unsigned char last_byte = static_cast<unsigned char>(buffer[res.bytesWritten() - 1]);
+        if (last_byte != 0xFF) return false;
+        
+        return true;  // Successfully serialized with indefinite-length encoding
+    }(),
+    "CBOR: String producer with unknown size (indefinite-length encoding verified)"
+);
+
+// Test 3: CBOR with multi-chunk string (verify chunking works)
+static_assert(
+    []() constexpr {
+        // Use SmallBufferProducer to force multiple chunks
+        const char data[] = "This string is long enough to require multiple chunks!";
+        SmallBufferProducer producer{data, 54};  // buffer_size=10, so requires 6 chunks
+        
+        std::array<char, 128> buffer{};
+        auto it = buffer.begin();
+        auto res = SerializeWithWriter(producer, CborWriter(it, buffer.end()));
+        if (!res) return false;
+        
+        // Verify multiple chunks were read
+        if (producer.read_chunk_count < 6) return false;
+        
+        // Parse it back to verify correctness
+        std::string result;
+        if (!ParseWithReader(result, CborReader(buffer.begin(), buffer.begin() + res.bytesWritten()))) {
+            return false;
+        }
+        
+        return result == "This string is long enough to require multiple chunks!";
+    }(),
+    "CBOR: Multi-chunk string producer (verified chunking)"
+);
+
+// Test 4: CBOR string consumer parsing
+static_assert(
+    []() constexpr {
+        ChunkCountingConsumer consumer{};
+        
+        // Create CBOR-encoded string manually for testing
+        std::array<char, 128> cbor_data{};
+        auto it = cbor_data.begin();
+        std::string input = "cbor consumer test";
+        auto res = SerializeWithWriter(input, CborWriter(it, cbor_data.end()));
+        if (!res) return false;
+        
+        // Parse into consumer
+        if (!ParseWithReader(consumer, CborReader(cbor_data.begin(), cbor_data.begin() + res.bytesWritten()))) {
+            return false;
+        }
+        
+        return consumer.view() == "cbor consumer test";
+    }(),
+    "CBOR: String consumer parsing"
+);
+
+// Test 5: CBOR roundtrip with streaming producer and consumer
+static_assert(
+    []() constexpr {
+        const char data[] = "roundtrip test string";
+        StringProducer producer{data, 21};
+        
+        // Serialize with CBOR
+        std::array<char, 128> buffer{};
+        auto it = buffer.begin();
+        auto res = SerializeWithWriter(producer, CborWriter(it, buffer.end()));
+        if (!res) return false;
+        
+        // Parse back with consumer
+        StringConsumer consumer{};
+        if (!ParseWithReader(consumer, CborReader(buffer.begin(), buffer.begin() + res.bytesWritten()))) {
+            return false;
+        }
+        
+        return consumer.view() == "roundtrip test string";
+    }(),
+    "CBOR: Roundtrip with producer and consumer"
 );
 
