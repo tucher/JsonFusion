@@ -449,19 +449,31 @@ concept StringReadable = requires(const C& c) {
 };
 
 // Concept: type supports writing string content during parsing
+// Two interfaces supported:
+// - single_pass=true: static data(), finalize(), view() - no cursor instance needed
+// - single_pass=false: buffer_size(), commit(data, n) - cursor receives data chunks
 template<class C>
-concept StringWritable = requires(C& c, std::size_t n) {
+concept StringWritable = requires(C& c, std::size_t n, const char* data) {
     typename string_write_cursor<C>::char_type;
     requires std::is_constructible_v<string_write_cursor<C>, C&>;
-    { std::declval<string_write_cursor<C>>().prepare_write(n) } -> std::same_as<std::size_t>;
-    { std::declval<string_write_cursor<C>>().write_ptr() } -> std::same_as<char*>;
-    std::declval<string_write_cursor<C>>().commit(n);
     std::declval<string_write_cursor<C>>().finalize();
     { std::declval<string_write_cursor<C>>().size() } -> std::same_as<std::size_t>;
     { std::declval<string_write_cursor<C>>().max_capacity() } -> std::same_as<std::size_t>;
     { std::declval<const string_write_cursor<C>>().view() } -> std::same_as<std::string_view>;
     std::declval<string_write_cursor<C>>().reset();
-};
+} && (
+    // Either: single_pass=true with old interface (prepare_write/write_ptr/commit(n))
+    requires(std::size_t n) {
+        { std::declval<string_write_cursor<C>>().prepare_write(n) } -> std::same_as<std::size_t>;
+        { std::declval<string_write_cursor<C>>().write_ptr() } -> std::same_as<char*>;
+        std::declval<string_write_cursor<C>>().commit(n);
+    }
+    // Or: single_pass=false with new interface (buffer_size/commit(data,n))
+    || requires(const char* data, std::size_t n) {
+        { string_write_cursor<C>::buffer_size() } -> std::convertible_to<std::size_t>;
+        std::declval<string_write_cursor<C>>().commit(data, n);
+    }
+);
 
 // Specialization: std::array<char, N> - fixed size buffer
 // For reading: single chunk containing the whole string (zero-copy)
@@ -661,27 +673,22 @@ public:
     constexpr void reset() const { done_ = false; }
 };
 
-// For writing: uses internal temp buffer + append (optimal for unknown-size strings)
-// Buffer size is implementation detail, not exposed
-// Note: single_pass = false because we use intermediate buffer + append
+// For writing: receives data chunks and appends to string
+// Buffer lives in caller (read_string_with_cursor), cursor just appends
 template<>
 struct string_write_cursor<std::string> {
     using char_type = char;
-    static constexpr bool single_pass = false;  // Uses intermediate buffer + append
+    static constexpr bool single_pass = false;  // Multiple chunks via commit()
+    static constexpr std::size_t buffer_size() { return 64; }
     
 private:
     std::string& str_;
-    static constexpr std::size_t BUFFER_SIZE = 64;  // implementation detail
-    char buffer_[BUFFER_SIZE];
     
 public:
-    constexpr explicit string_write_cursor(std::string& s) : str_(s), buffer_{} {}
+    constexpr explicit string_write_cursor(std::string& s) : str_(s) {}
     
-    constexpr std::size_t prepare_write(std::size_t hint) {
-        return hint < BUFFER_SIZE ? hint : BUFFER_SIZE;
-    }
-    constexpr char* write_ptr() { return buffer_; }
-    constexpr void commit(std::size_t n) { str_.append(buffer_, n); }
+    // Receive data directly - buffer is in caller
+    constexpr void commit(const char* data, std::size_t n) { str_.append(data, n); }
     constexpr void reset() { str_.clear(); }
     constexpr void finalize() { /* nothing needed */ }
     constexpr std::size_t size() const { return str_.size(); }
@@ -739,54 +746,40 @@ consteval std::size_t get_streamer_buffer_size() {
 
 // Specialization: string_write_cursor for ConsumingStringStreamerLike
 // Routes chunks directly to the streamer's consume() method
+// Buffer lives in caller, cursor just routes data to streamer
 template<class Streamer>
     requires static_schema_detail::ConsumingStringStreamerCheck<Streamer>
 struct string_write_cursor<Streamer> {
     using char_type = char;
     static constexpr bool single_pass = false;  // Streaming: multiple chunks
-    static constexpr std::size_t buffer_size = get_streamer_buffer_size<Streamer>();
+    static constexpr std::size_t buffer_size() { return get_streamer_buffer_size<Streamer>(); }
     
 private:
     Streamer& streamer_;
     std::size_t total_written_ = 0;
-    char buffer_[buffer_size];
-    std::size_t pending_ = 0;
     
 public:
-    constexpr explicit string_write_cursor(Streamer& s) : streamer_(s), buffer_{} {}
+    constexpr explicit string_write_cursor(Streamer& s) : streamer_(s) {}
     
     template<class Ctx>
-    constexpr string_write_cursor(Streamer& s, Ctx* ctx) : streamer_(s), buffer_{} {
+    constexpr string_write_cursor(Streamer& s, Ctx* ctx) : streamer_(s) {
         streamer_context_setter(s, ctx);
     }
     
-    // Always ready to receive any amount of data (up to buffer size per chunk)
-    constexpr std::size_t prepare_write(std::size_t hint) {
-        return hint < buffer_size ? hint : buffer_size;
-    }
-    
-    constexpr char* write_ptr() { 
-        pending_ = 0;
-        return buffer_; 
-    }
-    
-    constexpr void commit(std::size_t n) { 
-        // Route to streamer's consume
+    // Receive data directly - buffer is in caller
+    constexpr void commit(const char* data, std::size_t n) { 
         if (n > 0) {
-            streamer_.consume(buffer_, n);
+            streamer_.consume(data, n);
             total_written_ += n;
         }
-        pending_ = 0;
     }
     
     constexpr void reset() { 
         streamer_.reset(); 
         total_written_ = 0;
-        pending_ = 0;
     }
     
     constexpr void finalize() { 
-        // Finalize with success=true (parser completed successfully)
         streamer_.finalize(true); 
     }
     

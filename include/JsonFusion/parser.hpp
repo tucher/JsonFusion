@@ -202,115 +202,42 @@ constexpr bool read_string_into_buffer(
     }
 }
 
-// Helper: read string using cursor abstraction
-// Cursor provides: prepare_write(), write_ptr(), commit(), finalize(), max_capacity()
-// This unified interface works for both static buffers (zero-copy) and dynamic strings (buffered append)
+// Helper: read string using cursor abstraction (for single_pass=false types)
+// Cursor provides: buffer_size(), commit(data, n), finalize(), size()
+// Buffer is local to this function, cursor receives data via commit()
 template<class Reader, class Cursor>
 __attribute__((noinline)) constexpr bool read_string_with_cursor(
     Reader&      reader,
     Cursor&      cursor,
     std::size_t  max_len,   // validator limit or SIZE_MAX
-    ParseError&  err,
-    bool         read_rest_on_overflow = false
+    ParseError&  err
 )
 {
+    constexpr std::size_t buf_size = Cursor::buffer_size();
+    char buffer[buf_size];
+    
     for (;;) {
         // Check if we've hit the validator limit
-        const std::size_t current_size = cursor.size();
-        if (current_size >= max_len) {
-            if (read_rest_on_overflow) {
-                // Consume and discard the rest of the string so the reader ends
-                // in a sane state (past the closing quote).
-                char scratch[STRING_CHUNK_SIZE];
-
-                for (;;) {
-                    JsonFusion::reader::StringChunkResult rest =
-                        reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
-
-                    switch (rest.status) {
-                    case JsonFusion::reader::StringChunkStatus::no_match:
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    case JsonFusion::reader::StringChunkStatus::error:
-                        return false;
-                    case JsonFusion::reader::StringChunkStatus::ok:
-                        break;
-                    }
-
-                    if (rest.done) {
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    }
-
-                    if (rest.bytes_written == 0) {
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    }
-                }
-            } else {
-                err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                return false;
-            }
+        if (cursor.size() >= max_len) {
+            err = ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+            return false;
         }
 
-        // Calculate how much we can write
-        const std::size_t remaining_for_validator = max_len - current_size;
-        const std::size_t ask_hint = remaining_for_validator < STRING_CHUNK_SIZE 
-                                     ? remaining_for_validator : STRING_CHUNK_SIZE;
+        // Calculate how much to request
+        const std::size_t remaining = max_len - cursor.size();
+        const std::size_t ask = remaining < buf_size ? remaining : buf_size;
         
-        // Ask cursor for buffer space
-        const std::size_t available = cursor.prepare_write(ask_hint);
-        if (available == 0) {
-            // Cursor has no more space (container capacity exhausted)
-            if (read_rest_on_overflow) {
-                // Need to consume rest of string
-                char scratch[STRING_CHUNK_SIZE];
-                for (;;) {
-                    JsonFusion::reader::StringChunkResult rest =
-                        reader.read_string_chunk(scratch, STRING_CHUNK_SIZE);
-                    if (rest.status != JsonFusion::reader::StringChunkStatus::ok) {
-                        if (rest.status == JsonFusion::reader::StringChunkStatus::no_match) {
-                            err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
-                        }
-                        return false;
-                    }
-                    if (rest.done) {
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    }
-                    if (rest.bytes_written == 0) {
-                        err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-                        return false;
-                    }
-                }
-            }
-            err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+        auto res = reader.read_string_chunk(buffer, ask);
+
+        if (res.status != reader::StringChunkStatus::ok) {
+            err = (res.status == reader::StringChunkStatus::no_match)
+                ? ParseError::NON_STRING_IN_STRING_STORAGE
+                : ParseError::READER_ERROR;
             return false;
         }
 
-        // Read directly into cursor's buffer
-        char* write_buf = cursor.write_ptr();
-        JsonFusion::reader::StringChunkResult res = reader.read_string_chunk(write_buf, available);
-
-        switch (res.status) {
-        case JsonFusion::reader::StringChunkStatus::no_match:
-            err = JsonFusion::ParseError::NON_STRING_IN_STRING_STORAGE;
-            return false;
-        case JsonFusion::reader::StringChunkStatus::error:
-            return false;
-        case JsonFusion::reader::StringChunkStatus::ok:
-            break;
-        }
-
-        // Defensive check
-        if (res.bytes_written > available) {
-            err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-            return false;
-        }
-
-        // Commit what was written
         if (res.bytes_written > 0) {
-            cursor.commit(res.bytes_written);
+            cursor.commit(buffer, res.bytes_written);
         }
 
         if (res.done) {
@@ -318,15 +245,11 @@ __attribute__((noinline)) constexpr bool read_string_with_cursor(
             return true;
         }
 
-        // Safety net: no progress = bail
         if (res.bytes_written == 0) {
-            err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
+            err = ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
             return false;
         }
     }
-
-    err = JsonFusion::ParseError::FIXED_SIZE_CONTAINER_OVERFLOW;
-    return false;
 }
 
 

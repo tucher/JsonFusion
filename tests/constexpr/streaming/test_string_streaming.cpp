@@ -542,7 +542,7 @@ struct SmallBufferConsumer {
 static_assert(ConsumingStringStreamerLike<SmallBufferConsumer>);
 
 // Verify buffer_size is picked up from streamer
-static_assert(static_schema::string_write_cursor<SmallBufferConsumer>::buffer_size == 8);
+static_assert(static_schema::string_write_cursor<SmallBufferConsumer>::buffer_size() == 8);
 
 static_assert(
     []() constexpr {
