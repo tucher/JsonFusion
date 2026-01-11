@@ -14,13 +14,15 @@ embedded_benchmark::EmbeddedConfig g_config;
 // Parse function - instantiates JsonFusion parser for this model
 // This is what gets measured for code size
 extern "C" __attribute__((used)) bool parse_config(const char* data, size_t size) {
-    auto error = glz::read_json(g_config, std::string_view(data, size));
+    auto error = glz::read<glz::opts_size{}>(g_config, std::string_view(data, size));
     return !error;
 }
 
 extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t size) {
+    
     embedded_benchmark::RpcCommand cmd;
-    auto error = glz::read_json(cmd, std::string_view(data, size));
+
+    auto error = glz::read<glz::opts_size{}>(cmd, std::string_view(data, size));
     return !error;
 }
 // Entry point - ensures parse_config is not eliminated by linker
