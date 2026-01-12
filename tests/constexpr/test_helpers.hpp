@@ -4,7 +4,9 @@
 #include <JsonFusion/serializer.hpp>
 #include <string_view>
 #include <cstddef>
-#include <pfr.hpp>
+#include <pfr/tuple_size.hpp>
+#include <pfr/core.hpp>
+#include <pfr/traits.hpp>
 
 namespace TestHelpers {
 
