@@ -1759,48 +1759,148 @@ public:
         return true;
     }
     
-    __attribute__((noinline)) constexpr bool write_string_chunk(const char* data, std::size_t size) {
-        std::size_t counter = 0;
-        char toOutEscaped[6] = {0, 0, 0, 0, 0, 0};  // Fits \uXXXX
-        char toOutSize = 0;
-        
-        while(counter < size) {
-            char c = data[counter];
-            switch(c) {
-            case '"': toOutEscaped[0] = '\\'; toOutEscaped[1] = '"'; toOutSize = 2; break;
-            case '\\':toOutEscaped[0] = '\\'; toOutEscaped[1] = '\\';toOutSize = 2; break;
-            case '\b':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'b'; toOutSize = 2; break;
-            case '\f':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'f'; toOutSize = 2; break;
-            case '\r':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'r'; toOutSize = 2; break;
-            case '\n':toOutEscaped[0] = '\\'; toOutEscaped[1] = 'n'; toOutSize = 2; break;
-            case '\t':toOutEscaped[0] = '\\'; toOutEscaped[1] = 't'; toOutSize = 2; break;
-            default:
-                if(static_cast<unsigned char>(c) < 32) {
-                    // Control character (0x00-0x1F): escape as \uXXXX per RFC 8259
-                    toOutEscaped[0] = '\\';
-                    toOutEscaped[1] = 'u';
-                    toOutEscaped[2] = '0';
-                    toOutEscaped[3] = '0';
-                    unsigned char uc = static_cast<unsigned char>(c);
-                    toOutEscaped[4] = "0123456789abcdef"[(uc >> 4) & 0xF];
-                    toOutEscaped[5] = "0123456789abcdef"[uc & 0xF];
-                    toOutSize = 6;
-                } else {
-                    toOutEscaped[0] = c;
-                    toOutSize = 1;
-                }
+    __attribute__((noinline))
+    constexpr bool write_string_chunk(const char* data, std::size_t size) {
+        constexpr char hex[] = "0123456789abcdef";
+
+        // Helper for generic (non-pointer) output
+        auto put_generic = [&](char ch) constexpr -> bool {
+            if (m_current == end_) {
+                setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
+                return false;
             }
-            for(int i = 0; i < toOutSize; i++) {
-                if(m_current == end_) {
+            *m_current = ch;
+            ++m_current;
+            ++m_bytesWritten;
+            return true;
+        };
+
+        const char* p = data;
+        const char* e = data + size;
+
+        if constexpr (std::is_pointer_v<decltype(m_current)> && std::is_pointer_v<decltype(end_)>) {
+            // Fast path: contiguous output pointers (still constexpr-friendly: no memcpy)
+            auto* cur = m_current;
+            auto* end = end_;
+            std::size_t bw = m_bytesWritten;
+
+            auto ensure = [&](std::size_t n) constexpr -> bool {
+                if (static_cast<std::size_t>(end - cur) < n) {
                     setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
                     return false;
                 }
-                *m_current++ = toOutEscaped[i]; m_bytesWritten++;
+                return true;
+            };
+
+            auto put2 = [&](char a, char b) constexpr -> bool {
+                if (!ensure(2)) return false;
+                *cur++ = a;
+                *cur++ = b;
+                bw += 2;
+                return true;
+            };
+
+            auto put6_u00 = [&](unsigned char uc) constexpr -> bool {
+                if (!ensure(6)) return false;
+                *cur++ = '\\';
+                *cur++ = 'u';
+                *cur++ = '0';
+                *cur++ = '0';
+                *cur++ = hex[(uc >> 4) & 0xF];
+                *cur++ = hex[uc & 0xF];
+                bw += 6;
+                return true;
+            };
+
+            while (p < e) {
+                // Find next byte that needs escaping: '"' or '\\' or control (<0x20)
+                const char* run = p;
+                while (run < e) {
+                    unsigned char uc = static_cast<unsigned char>(*run);
+                    if (*run == '"' || *run == '\\' || uc < 0x20) break;
+                    ++run;
+                }
+
+                // Bulk-copy the safe run (constexpr-friendly loop)
+                if (run != p) {
+                    const std::size_t n = static_cast<std::size_t>(run - p);
+                    if (!ensure(n)) return false;
+                    for (std::size_t i = 0; i < n; ++i) {
+                        cur[i] = p[i];
+                    }
+                    cur += n;
+                    bw += n;
+                    p = run;
+                    continue;
+                }
+
+                // Slow path: one byte requiring escaping
+                unsigned char uc = static_cast<unsigned char>(*p++);
+                switch (uc) {
+                case '"':  if (!put2('\\', '"'))  return false; break;
+                case '\\': if (!put2('\\', '\\')) return false; break;
+                case '\b': if (!put2('\\', 'b'))  return false; break;
+                case '\f': if (!put2('\\', 'f'))  return false; break;
+                case '\n': if (!put2('\\', 'n'))  return false; break;
+                case '\r': if (!put2('\\', 'r'))  return false; break;
+                case '\t': if (!put2('\\', 't'))  return false; break;
+                default:
+                    if (uc < 0x20) {
+                        if (!put6_u00(uc)) return false;
+                    } else {
+                        // Shouldn't happen (handled by run scan), but keep correctness.
+                        if (!ensure(1)) return false;
+                        *cur++ = static_cast<char>(uc);
+                        bw += 1;
+                    }
+                    break;
+                }
             }
-            counter++;
+
+            // Commit locals back to members
+            m_current = cur;
+            m_bytesWritten = bw;
+            return true;
+        } else {
+            // Generic path: works for any output iterator (byte-by-byte)
+            while (p < e) {
+                // Safe run (still scanning, but emitting is per-byte)
+                const char* run = p;
+                while (run < e) {
+                    unsigned char uc = static_cast<unsigned char>(*run);
+                    if (*run == '"' || *run == '\\' || uc < 0x20) break;
+                    ++run;
+                }
+
+                while (p < run) {
+                    if (!put_generic(*p++)) return false;
+                }
+
+                if (p == e) break;
+
+                unsigned char uc = static_cast<unsigned char>(*p++);
+                switch (uc) {
+                case '"':  if (!put_generic('\\') || !put_generic('"'))  return false; break;
+                case '\\': if (!put_generic('\\') || !put_generic('\\')) return false; break;
+                case '\b': if (!put_generic('\\') || !put_generic('b'))  return false; break;
+                case '\f': if (!put_generic('\\') || !put_generic('f'))  return false; break;
+                case '\n': if (!put_generic('\\') || !put_generic('n'))  return false; break;
+                case '\r': if (!put_generic('\\') || !put_generic('r'))  return false; break;
+                case '\t': if (!put_generic('\\') || !put_generic('t'))  return false; break;
+                default:
+                    if (uc < 0x20) {
+                        if (!put_generic('\\') || !put_generic('u') || !put_generic('0') || !put_generic('0')) return false;
+                        if (!put_generic(hex[(uc >> 4) & 0xF]) || !put_generic(hex[uc & 0xF])) return false;
+                    } else {
+                        if (!put_generic(static_cast<char>(uc))) return false;
+                    }
+                    break;
+                }
+            }
+            return true;
         }
-        return true;
     }
+
     
     __attribute__((noinline)) constexpr bool write_string_end() {
         if(m_current == end_) {
