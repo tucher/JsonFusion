@@ -251,11 +251,15 @@ int main(int argc, char* argv[]) {
                 std::uint8_t * b = reinterpret_cast<std::uint8_t *>(serialize_buffer.data());
                 if(auto res = JsonFusion::SerializeWithWriter(modelFromCBOR, JsonFusion::CborWriter(b, b + serialize_buffer.size())); !res) {
                     throw std::runtime_error(std::format("JsonFusion CBOR serialize error"));
+                } else {
+                    final_size = res.bytesWritten();
                 }
 
             });
 
-
+            if(final_size!= cbor_out_ref.size()) {
+                std::cout << std::format("CBOR  expected/actual: {}/{}", cbor_out_ref.size(), final_size) << std::endl;
+            }
 
         }
 

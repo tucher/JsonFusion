@@ -222,8 +222,8 @@ public:
     // Parser calls this for:
     //   - JSON-like "string values",
     //   - JSON-like "object keys" (for struct field lookup / maps).
-    __attribute__((noinline)) constexpr reader::StringChunkResult read_string_chunk(char* out,
-                                                               std::size_t capacity) {
+    __attribute__((noinline))
+    constexpr reader::StringChunkResult read_string_chunk(char* out, std::size_t capacity) {
         reader::StringChunkResult res{};
         res.status        = reader::StringChunkStatus::error;
         res.bytes_written = 0;
@@ -235,29 +235,26 @@ public:
         }
 
         if (!value_str_active_) {
-            // First call for this string.
             if (!ensure_bytes()) {
                 return res;
             }
 
-            const std::uint8_t ib = *cur_;
+            const std::uint8_t ib    = static_cast<std::uint8_t>(*cur_);
             const std::uint8_t major = ib >> 5;
             const std::uint8_t ai    = ib & 0x1F;
 
-            // Treat both text (major 3) and byte string (major 2) as "string-like".
             if (major != 2 && major != 3) {
                 res.status = reader::StringChunkStatus::no_match;
+                res.bytes_written = 0;
+                res.done = false;
                 return res;
             }
 
-            std::uint64_t len;
+            std::uint64_t len = 0;
             if (!decode_length(ai, len)) {
-                // decode_length sets error on failure.
                 return res;
             }
 
-            // After decode_length, cur_ points to the first byte of string data.
-            // For forward-only iterators, we don't save this position - just track progress.
             value_str_len_    = static_cast<std::size_t>(len);
             value_str_offset_ = 0;
             value_str_active_ = true;
@@ -265,14 +262,32 @@ public:
 
         const std::size_t remaining = value_str_len_ - value_str_offset_;
         const std::size_t n         = remaining < capacity ? remaining : capacity;
-        
-        for(std::size_t i = 0; i < n; i ++) {
-            if (!ensure_bytes()) {  // Check before each read
-                return res;  // Error already set by ensure_bytes()
+
+        if constexpr (std::is_pointer_v<decltype(cur_)> && std::is_pointer_v<decltype(end_)>) {
+            // Fast path: pointer range
+            // Ensure we have at least n bytes available at once.
+            if (static_cast<std::size_t>(end_ - cur_) < n) {
+                setError(ParseError::UNEXPECTED_END_OF_DATA);
+                return res;
             }
-            out[i] = *cur_;
-            ++cur_;
+
+            // constexpr-friendly copy
+            for (std::size_t i = 0; i < n; ++i) {
+                out[i] = static_cast<char>(cur_[i]);
+            }
+            cur_ += n;
+
+        } else {
+            // Generic forward-only path: read byte-by-byte with bounds check
+            for (std::size_t i = 0; i < n; ++i) {
+                if (!ensure_bytes()) {
+                    return res;
+                }
+                out[i] = static_cast<char>(*cur_);
+                ++cur_;
+            }
         }
+
         value_str_offset_ += n;
 
         res.status        = reader::StringChunkStatus::ok;
@@ -280,7 +295,6 @@ public:
         res.done          = (value_str_offset_ >= value_str_len_);
 
         if (res.done) {
-            // Advance underlying cursor past the string bytes.
             reset_value_string_state();
         }
 
@@ -767,69 +781,88 @@ private:
     // Decode "length-like" argument (used for strings / arrays / maps).
     // Note: All *cur_ dereferences MUST cast to std::uint8_t to avoid sign extension.
     constexpr bool decode_length(std::uint8_t ai, std::uint64_t& len) {
-        if (ai < 24) {
-            ++cur_;
-            len = ai;
-            return true;
+        // CBOR definite lengths only in v1
+        if (ai == 31) {
+            setError(ParseError::NOT_IMPLEMENTED);
+            return false;
         }
 
-        if (ai == 24) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
-            if (!ensure_bytes()) return false;
-            len = static_cast<std::uint8_t>(*cur_);
-            ++cur_;
-            return true;
-        }
-
-        if (ai == 25) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
-
-            std::uint16_t v = 0;
-            for(int i = 0; i < 2; i ++) {
-                if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint16_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (1-i)));
-                ++ cur_;
-            }
-            len = v;
-            return true;
-        }
-
-        if (ai == 26) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
-
-            std::uint32_t v = 0;
-            for(int i = 0; i < 4; i ++) {
-                if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint32_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (3-i)));
-                ++ cur_;
+        // Header byte must exist
+        if constexpr (std::is_pointer_v<decltype(cur_)> && std::is_pointer_v<decltype(end_)>) {
+            if (cur_ == end_) {
+                setError(ParseError::UNEXPECTED_END_OF_DATA);
+                return false;
             }
 
-            len = v;
-            return true;
-        }
+            // Consume the initial byte (major+ai)
+            auto* p = cur_;
+            ++p;
 
-        if (ai == 27) {
-            if (!ensure_bytes()) return false;
-            ++cur_;
+            if (ai < 24) {
+                len  = ai;
+                cur_ = p; // now at first byte of payload
+                return true;
+            }
+
+            std::size_t need = 0;
+            switch (ai) {
+            case 24: need = 1; break;
+            case 25: need = 2; break;
+            case 26: need = 4; break;
+            case 27: need = 8; break;
+            default:
+                setError(ParseError::NOT_IMPLEMENTED);
+                return false;
+            }
+
+            if (static_cast<std::size_t>(end_ - p) < need) {
+                setError(ParseError::UNEXPECTED_END_OF_DATA);
+                return false;
+            }
 
             std::uint64_t v = 0;
-            for(int i = 0; i < 8; i ++) {
-                if (!ensure_bytes()) return false;
-                v |= (static_cast<std::uint64_t>(static_cast<std::uint8_t>(*cur_)) << (8 * (7-i)));
-                ++ cur_;
+            for (std::size_t i = 0; i < need; ++i) {
+                v = (v << 8) | static_cast<std::uint8_t>(p[i]);
+            }
+            p += need;
 
+            len  = v;
+            cur_ = p; // now at first byte of payload
+            return true;
+
+        } else {
+            // Generic forward-only path
+            if (!ensure_bytes()) return false;
+
+            // Consume the initial byte
+            ++cur_;
+
+            if (ai < 24) {
+                len = ai;
+                return true;
+            }
+
+            std::size_t need = 0;
+            switch (ai) {
+            case 24: need = 1; break;
+            case 25: need = 2; break;
+            case 26: need = 4; break;
+            case 27: need = 8; break;
+            default:
+                setError(ParseError::NOT_IMPLEMENTED);
+                return false;
+            }
+
+            std::uint64_t v = 0;
+            for (std::size_t i = 0; i < need; ++i) {
+                if (!ensure_bytes()) return false;
+                v = (v << 8) | static_cast<std::uint8_t>(*cur_);
+                ++cur_;
             }
 
             len = v;
             return true;
         }
-
-        // Indefinite length or unknown: not supported in v1
-        setError(ParseError::NOT_IMPLEMENTED);
-        return false;
     }
 
     // Decode major-type 0/1 integer payload (u64) and advance cur_.
@@ -1289,23 +1322,50 @@ public:
     }
     
     __attribute__((noinline)) constexpr bool write_string_chunk(const char* data, std::size_t size) {
+        // If we're writing an indefinite-length CBOR text string, each chunk must be
+        // preceded by a definite-length text-string header.
         if (m_indefinite_string_) {
-            // Each chunk is a definite-length text string
             if (!write_major_type_with_length(/*major=*/3, size)) {
                 return false;
             }
         }
-        // Write the data bytes
-        for (std::size_t i = 0; i < size; ++i) {
-            if (m_current == end_) {
-                m_bytesWritten += i;
+
+        if constexpr (std::is_pointer_v<decltype(m_current)> && std::is_pointer_v<decltype(end_)>) {
+            // Fast path: contiguous output pointers (constexpr-friendly, no memcpy)
+            auto* cur = m_current;
+            auto* end = end_;
+
+            if (static_cast<std::size_t>(end - cur) < size) {
+                // Preserve "bytesWritten" semantics: count what we could have written
+                // in this call before overflow (old behavior used i).
+                const std::size_t avail = static_cast<std::size_t>(end - cur);
+                m_bytesWritten += avail;
+                m_current = end;
                 setError(CborWriterError::sink_error);
                 return false;
             }
-            *m_current++ = data[i];
+
+            for (std::size_t i = 0; i < size; ++i) {
+                cur[i] = data[i];
+            }
+            cur += size;
+
+            m_current = cur;
+            m_bytesWritten += size;
+            return true;
+        } else {
+            // Generic path: works for any output iterator
+            for (std::size_t i = 0; i < size; ++i) {
+                if (m_current == end_) {
+                    m_bytesWritten += i;
+                    setError(CborWriterError::sink_error);
+                    return false;
+                }
+                *m_current++ = data[i];
+            }
+            m_bytesWritten += size;
+            return true;
         }
-        m_bytesWritten += size;
-        return true;
     }
     
     __attribute__((noinline)) constexpr bool write_string_end() {
