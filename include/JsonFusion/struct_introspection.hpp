@@ -6,6 +6,7 @@
 #include <boost/pfr/tuple_size.hpp>
 #include <boost/pfr/core.hpp>
 #include <boost/pfr/core_name.hpp>
+using namespace boost;
 #else 
 #include <pfr/tuple_size.hpp>
 #include <pfr/core.hpp>
