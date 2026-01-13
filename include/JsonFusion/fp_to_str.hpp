@@ -148,12 +148,12 @@ constexpr inline bool parse_decimal_number(const char* buf, DecimalNumber& out) 
 }
 
 
-constexpr long double scale_by_power_of_10(long double value, int32_t exp10) noexcept {
+constexpr double scale_by_power_of_10(double value, int32_t exp10) noexcept {
     if (exp10 == 0 || value == 0.0L) {
         return value;
     }
 
-    static constexpr long double kPow10Pos[] = {
+    static constexpr double kPow10Pos[] = {
         1e1L,    // 10^1
         1e2L,    // 10^2
         1e4L,    // 10^4
@@ -165,7 +165,7 @@ constexpr long double scale_by_power_of_10(long double value, int32_t exp10) noe
         1e256L   // 10^256
     };
 
-    static constexpr long double kPow10Neg[] = {
+    static constexpr double kPow10Neg[] = {
         1e-1L,    // 10^-1
         1e-2L,    // 10^-2
         1e-4L,    // 10^-4
@@ -181,7 +181,7 @@ constexpr long double scale_by_power_of_10(long double value, int32_t exp10) noe
     uint32_t e = static_cast<uint32_t>(negative_exp ? -exp10 : exp10);
 
     // parse_decimal_number already clamps to ±400, so e <= 400 here.
-    long double result = value;
+    double result = value;
     unsigned idx = 0;
 
     while (e != 0 && idx < sizeof(kPow10Pos) / sizeof(kPow10Pos[0])) {
@@ -209,7 +209,7 @@ constexpr inline bool parse_number_to_double(const char * buf, double& out) {
         return true;
     }
 
-    long double v = static_cast<long double>(dec.mantissa);
+    double v = static_cast<double>(dec.mantissa);
     v = detail::scale_by_power_of_10(v, dec.exp10);
 
     if (dec.negative) {
@@ -260,8 +260,7 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
         *first++ = '-';
     }
 
-    // Work in long double to reduce rounding error in digit generation
-    long double v = static_cast<long double>(value);
+    double v = static_cast<double>(value);
 
     // Normalize v to [1, 10) and compute decimal exponent: value = v * 10^exp10
     int32_t exp10 = 0;
@@ -269,10 +268,10 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
     // Optimized normalization: scale by large powers first (much faster than single-step loop)
     if (v >= 10.0L) {
         // Scale down by powers of 10^16, 10^8, 10^4, 10^2, 10^1
-        constexpr long double p16 = 1e16L;
-        constexpr long double p8  = 1e8L;
-        constexpr long double p4  = 1e4L;
-        constexpr long double p2  = 1e2L;
+        constexpr double p16 = 1e16L;
+        constexpr double p8  = 1e8L;
+        constexpr double p4  = 1e4L;
+        constexpr double p2  = 1e2L;
         
         while (v >= p16) { v /= p16; exp10 += 16; }
         while (v >= p8)  { v /= p8;  exp10 += 8;  }
@@ -281,10 +280,10 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
         while (v >= 10.0L) { v /= 10.0L; ++exp10; }
     } else if (v < 1.0L) {
         // Scale up by powers of 10^16, 10^8, 10^4, 10^2, 10^1
-        constexpr long double p16 = 1e16L;
-        constexpr long double p8  = 1e8L;
-        constexpr long double p4  = 1e4L;
-        constexpr long double p2  = 1e2L;
+        constexpr double p16 = 1e16L;
+        constexpr double p8  = 1e8L;
+        constexpr double p4  = 1e4L;
+        constexpr double p2  = 1e2L;
         
         while (v > 0.0L && v < 1e-15L) { v *= p16; exp10 -= 16; }
         while (v > 0.0L && v < 1e-7L)  { v *= p8;  exp10 -= 8;  }
@@ -299,7 +298,7 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
         int d = static_cast<int>(v);
         if (d > 9) d = 9;  // safety clamp in case of tiny FP error
         digits[i] = d;
-        v = (v - static_cast<long double>(d)) * 10.0L;
+        v = (v - static_cast<double>(d)) * 10.0L;
     }
 
     // Round using the guard digit (simple round-half-up)
