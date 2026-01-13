@@ -2,10 +2,15 @@
 
 #include <cstddef>
 #include <string_view>
+#if __has_include(<boost/pfr.hpp>)
+#include <boost/pfr/tuple_size.hpp>
+#include <boost/pfr/core.hpp>
+#include <boost/pfr/core_name.hpp>
+#else 
 #include <pfr/tuple_size.hpp>
 #include <pfr/core.hpp>
 #include <pfr/core_name.hpp>
-
+#endif
 #include "const_string.hpp"
 #include "annotated.hpp"
 
