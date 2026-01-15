@@ -667,6 +667,7 @@ private:
         bool seenDigitBeforeExp = false;
         bool seenDigitAfterExp  = false;
         bool firstDigit       = true;  // Track first digit for leading zero check (RFC 8259)
+        bool leadingZero      = false; // Track if first digit was '0' (for RFC 8259 leading zero check)
 
         if (atEnd())   {
             setError(JsonIteratorReaderError::UNEXPECTED_END_OF_DATA);
@@ -710,14 +711,16 @@ private:
             char c = *current_;
 
             if (c >= '0' && c <= '9') {
-                // RFC 8259: Leading zeros not allowed (except "0" itself)
+                // RFC 8259: Leading zeros not allowed (except "0" itself, "0.x", "0eX")
+                // If first digit was '0' and we see another digit without dot/exp, it's invalid.
+                // This check uses state instead of peek-ahead to support single-pass iterators.
+                if (leadingZero && !seenDot && !inExp) {
+                    setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
+                    return false;
+                }
+
                 if (firstDigit && c == '0') {
-                    auto peek = current_;
-                    ++peek;
-                    if (peek != end_ && *peek >= '0' && *peek <= '9') {
-                        setError(JsonIteratorReaderError::ILLFORMED_NUMBER);
-                        return false;
-                    }
+                    leadingZero = true;
                 }
                 firstDigit = false;  // Mark that we've seen the first digit
 
