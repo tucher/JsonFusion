@@ -134,20 +134,20 @@ tests/constexpr/
 │
 ├── primitives/               # Primitive type tests (11 files)
 ├── composite/                # Nested structs, arrays, optionals, unique_ptr, vectors (15 files)
-├── validation/               # Validation constraints (14 files)
+├── validation/               # Validation constraints (15 files)
 ├── json_spec/                # JSON RFC 8259 compliance (7 files)
 ├── errors/                   # Error handling & JSON path tracking (7 files)
-├── serialization/            # Serialization tests (6 files)
+├── serialization/            # Serialization tests (9 files)
 ├── streaming/                # Streaming producers & consumers (6 files)
 ├── fp/                       # IEEE-754 floating-point tests (5 files)
 ├── concepts/                 # Type detection & concepts (8 files)
 ├── limits/                   # Performance limits (4 files)
 ├── wire_sink/                # Raw JSON capture (4 files)
 ├── roundtrip/                # Parse→Serialize→Parse (3 files)
-├── cbor/                     # CBOR binary format (2 files)
+├── cbor/                     # CBOR binary format (4 files)
 ├── io/                       # Custom iterator support (1 file)
 ├── options/                  # Annotation options (1 file)
-├── transformers/             # Custom transformers (1 file)
+├── transformers/             # Custom transformers (2 files)
 └── interaction/              # C interop (1 file)
 ```
 
@@ -155,7 +155,7 @@ tests/constexpr/
 
 See `CHECKLIST.md` for detailed progress tracking.
 
-**Current:** 97 test files across 17 categories
+**Current:** 104 test files across 17 categories
 
 **Coverage:**
 - ✅ All primitive types (integers, bool, strings, floats)

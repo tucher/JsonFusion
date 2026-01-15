@@ -58,7 +58,7 @@ The in-house floating-point parser is constexpr-compatible. Do not use `JSONFUSI
 - [x] test_json_strings_unicode.cpp - Unicode escapes, surrogate pairs, RFC 8259 compliance
 - [x] test_json_numbers_format.cpp - RFC 8259 number format compliance
 
-## validation/ (14 files) ✅ COMPLETE
+## validation/ (15 files) ✅ COMPLETE
 - [x] test_map_validators.cpp - All map validators (45 tests)
   - `min_properties`, `max_properties`
   - `min_key_length`, `max_key_length`
@@ -77,14 +77,18 @@ The in-house floating-point parser is constexpr-compatible. Do not use `JSONFUSI
 - [x] test_validation_combined_string.cpp - Multiple string validators
 - [x] test_validation_combined_array.cpp - Multiple array validators
 - [x] test_validation_combined_map.cpp - Multiple map validators
+- [x] test_fn_validator.cpp - Custom function validators (`fn_validator<Event, Lambda>`)
 
-## serialization/ (6 files) ✅ COMPLETE
+## serialization/ (9 files) ✅ COMPLETE
 - [x] test_serialize_int.cpp
 - [x] test_serialize_bool.cpp
 - [x] test_serialize_float.cpp
 - [x] test_serialize_integers_all_types.cpp
 - [x] test_serialize_strings.cpp
 - [x] test_float_decimals.cpp
+- [x] test_pretty_print.cpp - Pretty-printed JSON output (`JsonIteratorWriter<..., Pretty=true>`)
+- [x] test_size_estimation.cpp - Compile-time size estimation (`EstimateMaxSerializedSize`)
+- [x] test_skip_nulls.cpp - Skip null optional fields during serialization (`skip_nulls`)
 
 ## roundtrip/ (3 files) ✅ COMPLETE
 - [x] test_roundtrip_primitives.cpp
@@ -127,15 +131,18 @@ The in-house floating-point parser is constexpr-compatible. Do not use `JSONFUSI
 - [x] test_wire_sink_json_integration.cpp - JSON parser integration
 - [x] test_wire_sink_static_schema.cpp - Static schema definition
 
-## cbor/ (2 files) ✅ COMPLETE
+## cbor/ (4 files) ✅ COMPLETE
 - [x] test_cbor_primitives.cpp - CBOR serialization/deserialization
 - [x] test_cbor_wiresink_roundtrip.cpp - CBOR with WireSink
+- [x] test_cbor_int_key.cpp - Integer keys with `int_key<N>` annotation (CBOR-native)
+- [x] test_cbor_indexes_as_keys.cpp - Automatic index keys with `indexes_as_keys` (CBOR-native)
 
 ## options/ (1 file) ✅ COMPLETE
 - [x] test_annotated_skip_json.cpp - Fast-skip annotation
 
-## transformers/ (1 file) ✅ COMPLETE
+## transformers/ (2 files) ✅ COMPLETE
 - [x] test_lambda_transformer.cpp - Custom transformation lambdas
+- [x] test_variant_oneof.cpp - `VariantOneOf` transformer for `std::variant`
 
 ## json_schema/ (1 file) ✅ COMPLETE
 - [x] test_json_schema_combined.cpp - Combined schema validators
@@ -145,7 +152,7 @@ The in-house floating-point parser is constexpr-compatible. Do not use `JSONFUSI
 
 ---
 
-**Total: 97 test files across 17 categories**
+**Total: 104 test files across 17 categories**
 
 All categories complete.
 
