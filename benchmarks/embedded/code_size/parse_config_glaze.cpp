@@ -1,4 +1,4 @@
-
+#define GLZ_DISABLE_ALWAYS_INLINE
 #include <string_view>
 // #include <glaze/json.hpp>
 #include <cstdlib>

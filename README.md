@@ -361,10 +361,10 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 contiguous buffers and is not iterator-generic or streaming-friendly in the same way JsonFusion is.
 - It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight
 into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
-- **Embedded code size trade-off**: Glaze uses template metaprogramming for performance, but this extensive inlining strategy
-causes significant code duplication when parsing multiple types. Our [embedded benchmarks](#binary-size-embedded-focus) show **larger -Os code size** 
+- **Embedded code size trade-off**: Our [embedded benchmarks](#binary-size-embedded-focus) show **larger -Os code size** 
 compared to JsonFusion and other libraries. The larger code size may be a consideration for resource-constrained
-embedded systems where flash memory is limited.
+embedded systems where flash memory is limited. Note: Glaze requires special configuration for maximum code size 
+optimization: `#define GLZ_DISABLE_ALWAYS_INLINE` and using `glz::opts_size{}` (see `benchmarks/embedded/code_size/parse_config_glaze.cpp`).
 - **Error reporting approach**: Glaze reports errors with line/column information and text context:
   ```
   1:17: expected_comma
@@ -591,7 +591,7 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 | jsmn                                |   21.8 KB   |   19.6 KB   |   32.0 KB   |   29.0 KB   |
 | cJSON                               |   20.0 KB   |   18.7 KB   |   32.5 KB   |   28.2 KB   |
 | JsonFusion CBOR (parse + serialize) |   36.0 KB   |   18.1 KB   |   45.6 KB   |   26.1 KB   |
-| Glaze                               |   24.5 KB   |   43.5 KB   |   28.4 KB   |   57.3 KB   |
+| Glaze                               |   24.2 KB   |   25.4 KB   |   28.6 KB   |   31.1 KB   |
 
 **Key Takeaways:**
 
