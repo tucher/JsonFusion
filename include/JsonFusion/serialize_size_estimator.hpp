@@ -63,6 +63,7 @@
 #include "options.hpp"
 #include "struct_introspection.hpp"
 #include "validators.hpp"
+#include "serializer.hpp"
 #include <type_traits>
 #include <limits>
 #include <cstdint>
@@ -119,6 +120,32 @@ template <typename Type>
     requires SerializableValue<Type>
 constexpr std::size_t EstimateMaxSizeImpl();
 
+// Helper to calculate precise serialized size of a compile-time string
+constexpr std::size_t CalculateSerializedStringSize(std::string_view str) {
+    // Worst case: every char as \u00XX (6 bytes) + 2 quotes
+    const std::size_t max_escaped_size = str.size() * 6 + 2;
+    
+    // We can't actually serialize at runtime in constexpr context without allocated buffer
+    // For now, we'll use a simpler approach: count what would be escaped
+    std::size_t size = 2; // opening and closing quotes
+    
+    for (std::size_t i = 0; i < str.size(); ++i) {
+        unsigned char uc = static_cast<unsigned char>(str[i]);
+        
+        // Check if character needs escaping
+        if (uc == '"' || uc == '\\' || uc == '\b' || uc == '\f' || 
+            uc == '\n' || uc == '\r' || uc == '\t') {
+            size += 2; // \X
+        } else if (uc < 0x20) {
+            size += 6; // \u00XX
+        } else {
+            size += 1; // regular character
+        }
+    }
+    
+    return size;
+}
+
 // Size for boolean: "true" or "false" → 5 bytes max
 template <typename T>
     requires BoolLike<T>
@@ -155,9 +182,10 @@ constexpr std::size_t EstimateStringSize() {
         static_assert(sizeof(T) == 0, "EstimateStringSize: only fixed-size string types (std::array<char, N>) are supported");
     }
     
-    // Add quotes (2 bytes) + account for escaped characters (worst case: every char escaped = 2x)
-    // Conservative estimate: 2 * max_len + 2 for quotes
-    return 2 * max_len + 2;
+    // Add quotes (2 bytes) + account for escaped characters
+    // Worst case: every char is a control character escaped as \u00XX (6 bytes each)
+    // Conservative estimate: 6 * max_len + 2 for quotes
+    return 6 * max_len + 2;
 }
 
 // Size for arrays/vectors
@@ -220,7 +248,8 @@ constexpr std::size_t EstimateMapSize() {
         // String keys: must be fixed-size
         if constexpr (requires { std::tuple_size<KeyT>::value; }) {
             constexpr std::size_t N = std::tuple_size<KeyT>::value;
-            key_size = 2 * N + 2; // escaped + quotes
+            // Worst case: every char escaped as \u00XX (6 bytes) + quotes
+            key_size = 6 * N + 2;
         } else {
             static_assert(sizeof(T) == 0, "EstimateMapSize: map keys must be fixed-size arrays");
         }
@@ -260,17 +289,19 @@ constexpr std::size_t EstimateObjectSize() {
                 return 0zu;
             } else {
                 // "fieldname":value
-                std::string_view field_name;
+                // Calculate precise serialized key size at compile-time
+                std::size_t serialized_key_size;
                 if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
                     using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
-                    field_name = KeyOpt::desc.toStringView();
+                    constexpr std::string_view field_name = KeyOpt::desc.toStringView();
+                    serialized_key_size = CalculateSerializedStringSize(field_name);
                 } else {
-                    field_name = introspection::structureElementNameByIndex<Idx, T>;
+                    constexpr std::string_view field_name = introspection::structureElementNameByIndex<Idx, T>;
+                    serialized_key_size = CalculateSerializedStringSize(field_name);
                 }
+                
                 std::size_t field_size = 0;
-                field_size += 1; // '"' before key
-                field_size += field_name.size(); // key name
-                field_size += 1; // '"' after key
+                field_size += serialized_key_size; // Precise serialized key size (includes quotes)
                 field_size += 1; // ':'
                 field_size += EstimateMaxSizeImpl<Field>(); // value
                 
