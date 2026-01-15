@@ -361,10 +361,7 @@ JsonFusion sits next to Glaze and reflect-cpp in the "typed C++ ↔ JSON" space,
 contiguous buffers and is not iterator-generic or streaming-friendly in the same way JsonFusion is.
 - It focuses on "shape-driven" deserialization: once key dispatch is resolved (often via generated lookup tables / perfect hashing), it writes straight
 into fields with very little per-element overhead. That's a big part of why it's so fast on fixed, known schemas.
-- **Embedded code size trade-off**: Our [embedded benchmarks](#binary-size-embedded-focus) show **larger -Os code size** 
-compared to JsonFusion and other libraries. The larger code size may be a consideration for resource-constrained
-embedded systems where flash memory is limited. Note: Glaze requires special configuration for maximum code size 
-optimization: `#define GLZ_DISABLE_ALWAYS_INLINE` and using `glz::opts_size{}` (see `benchmarks/embedded/code_size/parse_config_glaze.cpp`).
+- **Embedded code size**: With proper embedded configuration, Glaze behaves similarly to JsonFusion regarding code size (tested from 2 to 20+ C++ models). Note: Glaze requires special configuration for maximum code size optimization: `#define GLZ_DISABLE_ALWAYS_INLINE` and using `glz::opts_size{}` (see `benchmarks/embedded/code_size/parse_config_glaze.cpp`).
 - **Error reporting approach**: Glaze reports errors with line/column information and text context:
   ```
   1:17: expected_comma
@@ -603,15 +600,13 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 
 2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) requires 18.1 KB on M7 `-Os` vs 16.7 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
-3. **Glaze -Os template code bloating:** With `-Os`, Glaze produces **larger code than others**.
-
-4. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
+3. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
    - **M7**: Shrink 36% with `-Os` (26.0 KB → 16.7 KB)
    - **M0+**: Shrink 38% with `-Os` (34.2 KB → 21.2 KB)
    
    Manual C code (jsmn, cJSON) barely compresses (~10-15%) because each type gets unique hand-written functions that don't deduplicate. JsonFusion's shared Reader infrastructure + type-specific dispatch compresses well.
 
-5. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
+4. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
 
 ---
 
