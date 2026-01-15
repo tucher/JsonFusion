@@ -22,7 +22,7 @@ struct key_tag{};
 struct numeric_key_tag{};
 struct allow_excess_fields_tag{};
 
-struct binary_fields_search_tag{};
+// struct binary_fields_search_tag{};
 struct description_tag{};
 
 struct as_array_tag {};

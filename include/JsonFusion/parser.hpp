@@ -597,7 +597,8 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
                 cursor.finalize(false);
                 return ctx.withSchemaError(reader);
             }
-            key_sv = std::string_view(reinterpret_cast<char*>(&key), sizeof(key)); // TODO
+            // key_sv = std::string_view(reinterpret_cast<char*>(&key), sizeof(key)); // TODO
+            key_sv = std::string_view(); // TODO
         }
 
 
@@ -737,12 +738,11 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
                 return ctx.withReaderError(reader);
             }
 
-             // TODO
             for(arrayIndex = 0; arrayIndex < FH::fieldIndexes.size(); arrayIndex ++) {
                 auto p = FH::fieldIndexes[arrayIndex];
                 if(p.first == index_to_find) {
                     structIndex = p.second;
-                    key_sv = std::string_view(reinterpret_cast<char*>(&arrayIndex), sizeof(arrayIndex));
+                    key_sv = std::string_view(); //TODO
                     break;
                 }
             }
