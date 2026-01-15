@@ -32,3 +32,36 @@ void reflectcpp_parse_populate(int iterations, const std::string& json_data) {
     });
 }
 
+void reflectcpp_serialize(int iterations, const std::string& json_data) {
+    TwitterDataReflectCpp model;
+    std::string copy = json_data;
+
+    auto result = rfl::json::read<TwitterDataReflectCpp, rfl::DefaultIfMissing>(copy);
+
+    // Check if parsing failed
+    if (!result) {
+        const auto& err = result.error();
+        throw std::runtime_error(
+            std::format("reflect-cpp parse error: {}", err.what())
+            );
+    }
+
+    model = std::move(result.value());
+
+
+
+    benchmark("reflect-cpp serializing", iterations, [&]() {
+
+
+        auto result = rfl::json::write(model);
+
+        // Check if parsing failed
+        if (!result.length()) {
+
+            throw std::runtime_error(
+                std::format("reflect-cpp serialize error")
+                );
+        }
+
+    });
+}

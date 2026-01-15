@@ -128,50 +128,48 @@ No need to declare objects or specify types explicitly.
 ```
 tests/constexpr/
 ├── test_helpers.hpp          # All helper functions
-├── run_tests.sh              # Test runner (searches all subdirectories)
+├── run_tests.sh              # Test runner (parallel compilation)
 ├── README.md                 # This file
-├── TEST_PLAN.md              # Comprehensive test roadmap (150+ tests)
 ├── CHECKLIST.md              # Progress tracker
 │
-├── primitives/               # Primitive type tests (int, bool, string)
-│   ├── test_parse_int.cpp
-│   ├── test_parse_bool.cpp
-│   └── test_parse_char_array.cpp
-│
-├── serialization/            # Serialization & round-trip tests
-│   ├── test_serialize_int.cpp
-│   └── test_serialize_bool.cpp
-│
-├── errors/                   # Error handling tests
-│   └── test_error_demo.cpp
-│
-├── composite/                # Nested structs, arrays, optionals, unique_ptr
-├── validation/               # Validation constraints (range, length, items)
-├── annotations/              # Annotated<> options (key, as_array, exclude)
-├── streaming/                # Streaming producers & consumers
-├── json_spec/                # JSON RFC 8259 compliance
-├── limits/                   # Performance & limits (nesting depth, large arrays, many fields)
-└── integration/              # Real-world scenarios
+├── primitives/               # Primitive type tests (11 files)
+├── composite/                # Nested structs, arrays, optionals, unique_ptr, vectors (15 files)
+├── validation/               # Validation constraints (14 files)
+├── json_spec/                # JSON RFC 8259 compliance (7 files)
+├── errors/                   # Error handling & JSON path tracking (7 files)
+├── serialization/            # Serialization tests (6 files)
+├── streaming/                # Streaming producers & consumers (6 files)
+├── fp/                       # IEEE-754 floating-point tests (5 files)
+├── concepts/                 # Type detection & concepts (8 files)
+├── limits/                   # Performance limits (4 files)
+├── wire_sink/                # Raw JSON capture (4 files)
+├── roundtrip/                # Parse→Serialize→Parse (3 files)
+├── cbor/                     # CBOR binary format (2 files)
+├── io/                       # Custom iterator support (1 file)
+├── options/                  # Annotation options (1 file)
+├── transformers/             # Custom transformers (1 file)
+└── interaction/              # C interop (1 file)
 ```
 
 ## Coverage Status
 
 See `CHECKLIST.md` for detailed progress tracking.
 
-**Current:** 53+ test files, comprehensive coverage
+**Current:** 97 test files across 17 categories
 
-**Planned:** 90+ tests covering:
-- ✅ All primitive types (integers, bool, strings)
-- ✅ Composite types (nested structs, arrays, optionals, unique_ptr)
-- ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode
-- ✅ Validation constraints (range, length, items, not_required, required, allow_excess_fields, map validators)
-- ✅ Annotated<> options (key, as_array, skip)
+**Coverage:**
+- ✅ All primitive types (integers, bool, strings, floats)
+- ✅ Composite types (nested structs, arrays, optionals, unique_ptr, vectors, strings)
+- ✅ JSON spec compliance (RFC 8259) - whitespace, field order, null, syntax, Unicode, numbers
+- ✅ Validation constraints (range, length, items, constant, enum_values, required, not_required, allow_excess_fields, map validators)
+- ✅ Annotated<> options (key, as_array, skip, float_decimals)
 - ✅ Error handling (JSON path tracking, depth calculation)
 - ✅ Streaming (producers & consumers for arrays and maps)
 - ✅ Limits (nesting depth, large arrays, many fields, many map keys)
-- 🔲 Additional error handling tests
-- 🔲 Additional serialization tests
-- ✅ WireSink
+- ✅ Floating-point (IEEE-754 boundary values, difficult cases, subnormals, exponent extremes)
+- ✅ WireSink (raw JSON capture)
+- ✅ CBOR (binary format support)
+- ✅ Serialization & round-trips
 
 
 ## Examples
@@ -234,10 +232,9 @@ static_assert(TestRoundTrip(R"({"port":8080,"enabled":true})",
 ## Notes
 
 - **C++23 required** - Takes advantage of improved constexpr support
-- **Floats tested separately** - Not constexpr-compatible with current implementation
+- **Floats fully constexpr** - In-house FP parser is constexpr-compatible
 - **Null-termination guaranteed** - Char arrays are always null-terminated by parser
 
 ## See Also
 
-- `TEST_PLAN.md` - Comprehensive test coverage plan
 - `CHECKLIST.md` - Implementation progress

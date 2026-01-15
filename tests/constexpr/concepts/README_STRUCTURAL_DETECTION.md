@@ -143,18 +143,5 @@ cd tests/constexpr
 ./run_tests.sh
 ```
 
-All assertions are `static_assert`, so:
-- ✅ If compilation succeeds → All tests pass
-- ❌ If compilation fails → Test failure with specific error
-
-## Test Philosophy
-
-> "A type should be **exactly what it is**, and **nothing else**."
-
-This test suite embodies defensive programming:
-- Test not just **what should match**
-- Test also **what should NOT match**
-- Verify mutual exclusivity to catch classification bugs early
-
-**These tests are the foundation** - if type detection is broken, the entire system fails.
+All assertions are `static_assert` - if compilation succeeds, all tests pass.
 

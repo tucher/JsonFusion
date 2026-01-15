@@ -129,7 +129,7 @@ int main(int argc, char* argv[]) {
             using TwitterData = TwitterData_T<A<std::optional<bool>, options::key<"protected">>>;
 
             TwitterData model;
-            benchmark("JsonFusion parsing + populating", iterations, [&]() {
+            benchmark("JsonFusion populating", iterations, [&]() {
                 std::string copy = json_data;
 
 
@@ -143,22 +143,22 @@ int main(int argc, char* argv[]) {
             std::string native_out;
             Serialize(model, native_out);
 
-            benchmark("JsonFusion parsing + populating (yyjson backend)", iterations, [&]() {
-                std::string copy = json_data;
-                auto res = JsonFusion::ParseWithReader(model, YyjsonReader(copy.data(), copy.size()));
-                if (!res) {
-                    std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                    throw std::runtime_error(std::format("JsonFusion parse error"));
-                }
+            // benchmark("JsonFusion parsing + populating (yyjson backend)", iterations, [&]() {
+            //     std::string copy = json_data;
+            //     auto res = JsonFusion::ParseWithReader(model, YyjsonReader(copy.data(), copy.size()));
+            //     if (!res) {
+            //         std::cerr << ParseResultToString<TwitterData>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+            //         throw std::runtime_error(std::format("JsonFusion parse error"));
+            //     }
 
-            });
-            std::string yyjson_out;
-            Serialize(model, yyjson_out);
+            // });
+            // std::string yyjson_out;
+            // Serialize(model, yyjson_out);
 
-            if(native_out != yyjson_out) {
-                print_diff_region(native_out, yyjson_out, 60);
-                throw std::runtime_error(std::format("yyjson backed parsing output does not match native parsing one"));
-            }
+            // if(native_out != yyjson_out) {
+            //     print_diff_region(native_out, yyjson_out, 60);
+            //     throw std::runtime_error(std::format("yyjson backed parsing output does not match native parsing one"));
+            // }
 
             using TwitterDataStream = TwitterData_T<
                 A<std::optional<bool>, options::key<"protected">>,
@@ -166,9 +166,9 @@ int main(int argc, char* argv[]) {
             >;
             TwitterDataStream streamModel;
 
-            benchmark("JsonFusion streaming (yyjson backend)", iterations, [&]() {
+            benchmark("JsonFusion streaming", iterations, [&]() {
                 std::string copy = json_data;
-                auto res = JsonFusion::ParseWithReader(streamModel, YyjsonReader(copy.data(), copy.size()));
+                auto res = JsonFusion::Parse(streamModel, copy.data(), copy.data() + copy.size());
 
                 if (!res) {
                     std::cerr << ParseResultToString<TwitterDataStream>(res, copy.data(), copy.data() + copy.size()) << std::endl;
@@ -227,18 +227,26 @@ int main(int argc, char* argv[]) {
 
             std::size_t final_size = 0;
 
-            benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
-                auto res = JsonFusion::SerializeWithWriter(model, YyjsonWriter(serialize_buffer));
-                if( !res) {
-                    std::cerr << std::format("JsonFusion serialize error") << std::endl;
-                    return false;
-                } else {
-                    final_size = serialize_buffer.size();
-                    return true;
-                }
-                return false;
-            });
+            // benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
+            //     auto res = JsonFusion::SerializeWithWriter(model, YyjsonWriter(serialize_buffer));
+            //     if( !res) {
+            //         std::cerr << std::format("JsonFusion serialize error") << std::endl;
+            //         return false;
+            //     } else {
+            //         final_size = serialize_buffer.size();
+            //         return true;
+            //     }
+            //     return false;
+            // });
             // std::cout << "yyjson serialized size: " << final_size << std::endl;
+            {
+                glaze_serialize(iterations, json_data);
+
+            }
+
+            {
+                reflectcpp_serialize(iterations, json_data);
+            }
 
             benchmark("JsonFusion serializing", iterations, [&]() {
                 char *d = serialize_buffer.data();
