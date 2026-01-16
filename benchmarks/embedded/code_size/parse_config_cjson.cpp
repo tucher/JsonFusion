@@ -4,7 +4,7 @@
 // Include cJSON implementation (single-file library pattern)
 extern "C" {
 
-#include "libs/cJSON.h"
+#include "cJSON.h"
 }
 #include "embedded_config.hpp"
 #include <cstring>
@@ -528,5 +528,5 @@ extern "C" __attribute__((used)) int main() {
 }
 
 extern "C" {
-    #include "libs/cJSON.c"
+    #include "cJSON.c"
 }

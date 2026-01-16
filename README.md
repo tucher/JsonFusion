@@ -581,20 +581,20 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 
 **Results (`.text` section - code size in flash):**
 
-| Library                               |     M7      |     M0+     |
-|---------------------------------------|-------------|-------------|
-| **JsonFusion**                        | **14.8 KB** | **19.3 KB** |
-| ArduinoJson                           |   15.4 KB   |   23.9 KB   |
-| cJSON                                 |   18.7 KB   |   28.2 KB   |
-| jsmn                                  |   19.6 KB   |   29.0 KB   |
-| Glaze (with embedded-friendly config) |   16.6 KB   |   22.4 KB   |
-| JsonFusion CBOR (parse + serialize)   |   17.0 KB   |   24.2 KB   |
+| Library                               |     M7    |    M0+    |  Version   |
+|---------------------------------------|-----------|-----------|------------|
+| **JsonFusion**                        |  14.8 KB |  19.3 KB | 8654c431   |
+| ArduinoJson                           |  15.4 KB |  23.9 KB | v7.4.2     |
+| Glaze(with embedded-friendly config)  |  16.6 KB |  22.4 KB | a4af9507   |
+| **JsonFusion CBOR <->**               |  17.0 KB |  24.2 KB | 8654c431   |
+| cJSON                                 |  18.8 KB |  28.2 KB | c859b25d   |
+| jsmn                                  |  19.7 KB |  29.1 KB | 25647e69   |
 
 **Key Takeaways:**
 
 1. **JsonFusion with `-Os` is smallest on both M7 and M0+**  while ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling)
 
-2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) requires 17.0 KB on M7 `-Os` vs 14.8 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
+2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) adds minimal overhead compared to JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
 ---
 
@@ -606,27 +606,24 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 - **Compilation**: `-Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
 - **Linking**: `-Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on ESP32 (16.4 KB)**
+**TL;DR:** ✅ **JsonFusion is smallest on ESP32**
 
 **Results (`.text` section - code size in flash):**
 
-| Library                               |             |
-|---------------------------------------|-------------|
-| **JsonFusion**                        | **16.4 KB** |
-| ArduinoJson                           |   18.7 KB   |
-| cJSON                                 |   33.4 KB   |
-| jsmn                                  |   34.6 KB   |
-| Glaze (with embedded-friendly config) |   19.5 KB   |
-| JsonFusion CBOR (parse + serialize)   |   20.3 KB   |
+| Library                               |   ESP32   |  Version   |
+|---------------------------------------|-----------|------------|
+| **JsonFusion**                        |  16.4 KB | 8654c431   |
+| ArduinoJson                           |  18.7 KB | v7.4.2     |
+| Glaze(with embedded-friendly config)  |  19.5 KB | a4af9507   |
+| **JsonFusion CBOR <->**               |  20.3 KB | 8654c431   |
+| cJSON                                 |  33.4 KB | c859b25d   |
+| jsmn                                  |  34.6 KB | 25647e69   |
 
 **Key Takeaways:**
 
-1. **Cross-platform consistency (relative to M7 baseline):**
-   - **ARM M7**: 14.8 KB
-   - **ESP32**: 16.4 KB (+13%)
-   - **ARM M0+**: 19.3 KB (+29%)
+1. **Cross-platform consistency:** JsonFusion maintains similar code size across different architectures (ARM M7, ESP32, ARM M0+), with the size varying primarily based on the target's instruction set density rather than the library's architecture-specific code.
 
-2. **CBOR overhead remains reasonable:** 20.3 KB for full parse + serialize support (22% larger than JSON-parse-only)
+2. **CBOR overhead remains reasonable:** Full CBOR parse + serialize support adds minimal overhead compared to JSON-parse-only.
 
 ---
 

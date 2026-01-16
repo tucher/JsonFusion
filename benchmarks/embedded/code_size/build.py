@@ -164,16 +164,13 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
             name="cJSON",
             source_file="parse_config_cjson.cpp",
             description="cJSON - lightweight JSON parser in C",
-            dependencies=[
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.h",
-                "https://raw.githubusercontent.com/DaveGamble/cJSON/master/cJSON.c",
-            ],
+            dependencies=["git:https://github.com/DaveGamble/cJSON.git"],
         ),
         Library(
             name="jsmn",
             source_file="parse_config_jsmn.cpp",
             description="jsmn - minimalist JSON tokenizer",
-            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
+            dependencies=["git:https://github.com/zserge/jsmn.git"],
         )
     ]
     
@@ -244,9 +241,12 @@ class EmbeddedBenchmark:
         self.includes = [
             f"-I{self.project_root}/include",
             f"-I{self.script_dir}",
-            f"-I{self.script_dir}/libs",  # For downloaded headers (ArduinoJson, jsmn, cJSON)
+            f"-I{self.script_dir}/libs",  # For downloaded headers (ArduinoJson)
             f"-I{self.script_dir}/libs/glaze/include",  # For Glaze library
+            f"-I{self.script_dir}/libs/cJSON",  # For cJSON library
+            f"-I{self.script_dir}/libs/jsmn",  # For jsmn library
         ]
+        self.version_info = {}  # Store version/commit info for each library
         self.results: Dict[str, Dict[str, int]] = {}  # config -> {lib: text_size}
     
     def clean(self):
@@ -305,8 +305,30 @@ class EmbeddedBenchmark:
                 continue
             
             for dep in lib.dependencies:
-                if dep.startswith("http"):
-                    # Extract filename from URL
+                if dep.startswith("git:"):
+                    # Git clone dependency
+                    git_url = dep[4:]  # Remove "git:" prefix
+                    repo_name = git_url.rstrip('/').split('/')[-1].replace('.git', '')
+                    repo_dir = libs_dir / repo_name
+                    
+                    if repo_dir.exists():
+                        print(f"✓ {repo_name} repository already exists")
+                    else:
+                        print(f"Cloning {repo_name} from {git_url}...")
+                        try:
+                            result = subprocess.run(
+                                ["git", "clone", "--depth", "1", git_url, str(repo_dir)],
+                                capture_output=True,
+                                text=True,
+                                check=True
+                            )
+                            print(Colors.green(f"✓ Cloned {repo_name}"))
+                        except subprocess.CalledProcessError as e:
+                            print(Colors.red(f"✗ Failed to clone {repo_name}: {e.stderr}"))
+                            sys.exit(1)
+                
+                elif dep.startswith("http"):
+                    # HTTP download dependency
                     filename = Path(dep).name
                     dest_path = libs_dir / filename
                     
@@ -580,7 +602,7 @@ class EmbeddedBenchmark:
         
         print()
         
-        # Results table
+        # Results table with versions
         if self.results:
             print("Code Size Summary (.text section):")
             print()
@@ -589,11 +611,12 @@ class EmbeddedBenchmark:
             config_names = list(self.results.keys())
             lib_names = list(self.results[config_names[0]].keys())
             max_lib_name_width = max(len(lib_name) for lib_name in lib_names)
+            
             print(f"{'Library':<{max_lib_name_width}}", end="")
             for config_name in config_names:
                 print(f" {config_name:<20}", end="")
-            print()
-            print("-" * (20 + 20 * len(config_names)))
+            print(f" {'Version':<12}")
+            print("-" * (max_lib_name_width + 20 * len(config_names) + 13))
             
             # Data
             for lib_name in lib_names:
@@ -602,12 +625,130 @@ class EmbeddedBenchmark:
                     size = self.results[config_name].get(lib_name, 0)
                     size_kb = size / 1024
                     print(f" {size_kb:6.1f} KB          ", end="")
-                print()
+                version = self.version_info.get(lib_name, "unknown")
+                print(f" {version:<12}")
         
         print()
         print(Colors.green("Done!"))
     
-    def run(self, clean: bool = True):
+    def get_library_version(self, lib: Library) -> str:
+        """Get version information for a library (git commit or version from URL)"""
+        lib_name = lib.name
+        
+        # JsonFusion and CBOR - get git commit (same codebase)
+        if "JsonFusion" in lib_name:
+            try:
+                result = subprocess.run(
+                    ["git", "rev-parse", "--short=8", "HEAD"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                return result.stdout.strip()
+            except subprocess.CalledProcessError:
+                return "unknown"
+        
+        # Glaze - get git commit from submodule
+        elif "Glaze" in lib_name or "glaze" in lib_name.lower():
+            glaze_dir = self.script_dir / "libs" / "glaze"
+            if glaze_dir.exists():
+                try:
+                    result = subprocess.run(
+                        ["git", "rev-parse", "--short=8", "HEAD"],
+                        cwd=glaze_dir,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    return result.stdout.strip()
+                except subprocess.CalledProcessError:
+                    return "unknown"
+            return "unknown"
+        
+        # cJSON - get git commit
+        elif lib_name == "cJSON":
+            cjson_dir = self.script_dir / "libs" / "cJSON"
+            if cjson_dir.exists():
+                try:
+                    result = subprocess.run(
+                        ["git", "rev-parse", "--short=8", "HEAD"],
+                        cwd=cjson_dir,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    return result.stdout.strip()
+                except subprocess.CalledProcessError:
+                    return "unknown"
+            return "unknown"
+        
+        # jsmn - get git commit
+        elif lib_name == "jsmn":
+            jsmn_dir = self.script_dir / "libs" / "jsmn"
+            if jsmn_dir.exists():
+                try:
+                    result = subprocess.run(
+                        ["git", "rev-parse", "--short=8", "HEAD"],
+                        cwd=jsmn_dir,
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    return result.stdout.strip()
+                except subprocess.CalledProcessError:
+                    return "unknown"
+            return "unknown"
+        
+        # Other libraries - extract version from dependency URLs
+        elif lib.dependencies:
+            for dep in lib.dependencies:
+                # ArduinoJson - extract version
+                if "ArduinoJson" in dep:
+                    import re
+                    match = re.search(r'v(\d+\.\d+\.\d+)', dep)
+                    if match:
+                        return match.group(0)  # Return with 'v' prefix
+            return "downloaded"
+        
+        return "unknown"
+    
+    def collect_version_info(self):
+        """Collect version information for all libraries"""
+        print(Colors.blue("Collecting version information..."))
+        for lib in self.libraries:
+            version = self.get_library_version(lib)
+            self.version_info[lib.name] = version
+            print(f"  {lib.name}: {version}")
+        print()
+    
+    def save_results_json(self):
+        """Save results to JSON file for automated processing"""
+        import json
+        
+        output = {
+            "platform": self.platform.name,
+            "compiler": f"{self.platform.compiler_prefix}g++",
+            "versions": self.version_info,
+            "results": {}
+        }
+        
+        for config_name in self.results:
+            output["results"][config_name] = {}
+            for lib_name, size in self.results[config_name].items():
+                output["results"][config_name][lib_name] = {
+                    "bytes": size,
+                    "kb": round(size / 1024, 1)
+                }
+        
+        output_file = self.script_dir / f"results_{self.platform.name.lower().replace(' ', '_').replace('(', '').replace(')', '')}.json"
+        with open(output_file, 'w') as f:
+            json.dump(output, f, indent=2)
+        
+        print(Colors.blue(f"Results saved to: {output_file}"))
+        print()
+    
+    def run(self, clean: bool = True, save_json: bool = True):
         """Main build process"""
         print(Colors.green("=== Embedded Binary Size Benchmark ==="))
         print(Colors.blue(f"Target Platform: {self.platform.name}"))
@@ -621,6 +762,9 @@ class EmbeddedBenchmark:
         
         # Download dependencies
         self.download_dependencies()
+        
+        # Collect version information
+        self.collect_version_info()
         
         # Build all combinations
         for config in self.platform.build_configs:
@@ -638,6 +782,11 @@ class EmbeddedBenchmark:
         
         # Print summary
         self.print_summary()
+        
+        # Save results to JSON for automated processing
+        if save_json:
+            self.save_results_json()
+        
         self.clean()
 
 
