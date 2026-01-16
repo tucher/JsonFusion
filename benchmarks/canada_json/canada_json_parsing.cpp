@@ -145,37 +145,37 @@ int main(int argc, char* argv[]) {
 
     {
         Canada  canada;
-        benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
-            std::string copy = json_data;
+        // benchmark("JsonFusion Parse + Populate (yyjson backend)", iterations, [&]() {
+        //     std::string copy = json_data;
 
-            auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()));
-            if (!res) {
-                std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                return false;
-            } else {
-                return true;
-            }
-        });
+        //     auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()));
+        //     if (!res) {
+        //         std::cerr << ParseResultToString<Canada>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+        //         return false;
+        //     } else {
+        //         return true;
+        //     }
+        // });
     }
 
     {
         CanadaStatsCounter<Point> canada;
-        benchmark("JsonFusion Stream + count objects (yyjson backend)", iterations, [&]() {
-            std::string copy = json_data;
+        // benchmark("JsonFusion Stream + count objects (yyjson backend)", iterations, [&]() {
+        //     std::string copy = json_data;
 
-            Stats stats;
+        //     Stats stats;
 
-            canada.features.set_jsonfusion_context(&stats);
+        //     canada.features.set_jsonfusion_context(&stats);
 
-            auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()), &stats);
+        //     auto res = ParseWithReader(canada, YyjsonReader(copy.data(), copy.size()), &stats);
 
-            if (!res) {
-                std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
-                return false;
-            } else {
-                return true;
-            }
-        });
+        //     if (!res) {
+        //         std::cerr << ParseResultToString<CanadaStatsCounter<Point>>(res, copy.data(), copy.data() + copy.size()) << std::endl;
+        //         return false;
+        //     } else {
+        //         return true;
+        //     }
+        // });
     }
 
 
@@ -230,16 +230,16 @@ int main(int argc, char* argv[]) {
     serialize_buffer.resize(10000000);
     {
         std::size_t final_size = 0;
-        benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
-            auto res = JsonFusion::SerializeWithWriter(canadaPopulated, YyjsonWriter(serialize_buffer));
-            if( !res) {
-                std::cerr << std::format("JsonFusion serialize error") << std::endl;
-                return false;
-            } else {
-                return true;
-            }
-            return false;
-        });
+        // benchmark("JsonFusion serializing(yyjson backend)", iterations, [&]() {
+        //     auto res = JsonFusion::SerializeWithWriter(canadaPopulated, YyjsonWriter(serialize_buffer));
+        //     if( !res) {
+        //         std::cerr << std::format("JsonFusion serialize error") << std::endl;
+        //         return false;
+        //     } else {
+        //         return true;
+        //     }
+        //     return false;
+        // });
         // std::cout << "JsonFusion+yyjson serialized size: " << final_size << std::endl;
     }
 

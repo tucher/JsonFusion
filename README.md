@@ -129,9 +129,8 @@ how it is usually done in Python, Java, Go, etc..
 - **Competitive performance**: Matches or exceeds RapidJSON + hand-written mapping in real-world parse-validate-populate 
  workflows on realistic data (see [Benchmarks](#benchmarks)). What would take hundreds of 
  lines of manual mapping/validation code collapses into a single `Parse()` call—you just define your structs 
- (which you'd need anyway) and JsonFusion handles the rest. With optional yyjson backend, JsonFusion is significantly faster than RapidJSON and faster than reflect-cpp.
+ (which you'd need anyway) and JsonFusion handles the rest. On structurally complex payloads like twitter.json JsonFusion is slightly faster than reflect-cpp, another zero-boilerplate reflection-based library.
 - **Competitive binary footprint**: On embedded ARM (Cortex-M7 and Cortex-M0+) and on Esp32, on typical application setup with `-Os` JsonFusion matches or beats popular json embedded libraries while maintaining modern C++23 type safety and declarative validation. 
-- Consistently competitive with both `-O3` (speed) and `-Os` (size) optimizations across platforms, from resource-constrained MCUs to high-performance servers.
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
 - No macros, no codegen, no registration – relies on PFR-driven introspection
@@ -369,6 +368,7 @@ into fields with very little per-element overhead. That's a big part of why it's
                   ^
   ```
   JsonFusion provides structural JSON path tracking (e.g., `$.users[3].address.street: type mismatch`) in addition to buffer position. The choice depends on whether you prioritize text-oriented debugging or structural position within the JSON hierarchy.
+- **Floating-point handling**: Glaze provides precise floating-point parsing with full round-trip guarantees. JsonFusion's default in-house FP parser/serializer is simpler and sufficient for typical use cases, but does not guarantee perfect round-trip precision (see [Limitations](#limitations-and-when-not-to-use) for details on alternative FP backends).
 - Its design is heavily optimized around single-pass parses into C++ types with contiguous input and no dynamic "byte-by-byte" streaming; JsonFusion
 trades some of that peak speed to support generic iterators, and streaming while staying fully header-only and constexpr-friendly.
 - Uses its own metadata/registration style rather than "the types are the schema + inline annotations" like `A<T, opts...>` in JsonFusion.
@@ -574,39 +574,27 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 **Test Setup:**
 - **Compiler**: `arm-none-eabi-gcc 14.2.1`
 - **Targets**: ARM Cortex-M7 (`-mcpu=cortex-m7 -mthumb`) and Cortex-M0+ (`-mcpu=cortex-m0plus -mthumb`)
-- **Compilation**: `-fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
+- **Compilation**: `-Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
 - **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ (21.2 KB), slightly larger than ArduinoJson on Cortex-M7 (16.7 KB vs 15.4 KB)** — modern C++23 type safety with competitive code size while eliminating manual boilerplate and adding declarative validation.
+**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ and Cortex-M7 on -Os build** — while eliminating manual boilerplate and adding declarative validation.
 
 **Results (`.text` section - code size in flash):**
 
-| Library                             | M7 -O3      | M7 -Os      | M0+ -O3     | M0+ -Os     |
-|-------------------------------------|-------------|-------------|-------------|-------------|
-| **JsonFusion**                      | **26.0 KB** | **16.7 KB** | **34.2 KB** | **21.2 KB** |
-| ArduinoJson                         |   41.8 KB   |   15.4 KB   |   54.2 KB   |   23.9 KB   |
-| jsmn                                |   21.8 KB   |   19.6 KB   |   32.0 KB   |   29.0 KB   |
-| cJSON                               |   20.0 KB   |   18.7 KB   |   32.5 KB   |   28.2 KB   |
-| JsonFusion CBOR (parse + serialize) |   36.0 KB   |   18.1 KB   |   45.6 KB   |   26.1 KB   |
-| Glaze                               |   24.2 KB   |   25.4 KB   |   28.6 KB   |   31.1 KB   |
+| Library                               |     M7      |     M0+     |
+|---------------------------------------|-------------|-------------|
+| **JsonFusion**                        | **14.8 KB** | **19.3 KB** |
+| ArduinoJson                           |   15.4 KB   |   23.9 KB   |
+| cJSON                                 |   18.8 KB   |   28.2 KB   |
+| jsmn                                  |   19.7 KB   |   29.1 KB   |
+| Glaze (with embedded-friendly config) |   25.4 KB   |   31.1 KB   |
+| JsonFusion CBOR (parse + serialize)   |   17.0 KB   |   24.2 KB   |
 
 **Key Takeaways:**
 
-1. **JsonFusion with `-Os` is smallest on M0+, competitive on M7:**  
-   - **M0+**: 21.2 KB — **smallest of all tested** (smaller than ArduinoJson, smaller than jsmn/cJSON)
-   - **M7**: 16.7 KB — slightly larger than ArduinoJson, but **smaller than jsmn/cJSON**
-   
-   While ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling), JsonFusion delivers the same validation with **zero manual code**—just define your structs.
+1. **JsonFusion with `-Os` is smallest on both M7 and M0+**  while ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling)
 
-2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) requires 18.1 KB on M7 `-Os` vs 16.7 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
-
-3. **Type-driven code optimizes predictably:** JsonFusion's architecture allows the compiler to:
-   - **M7**: Shrink 36% with `-Os` (26.0 KB → 16.7 KB)
-   - **M0+**: Shrink 38% with `-Os` (34.2 KB → 21.2 KB)
-   
-   Manual C code (jsmn, cJSON) barely compresses (~10-15%) because each type gets unique hand-written functions that don't deduplicate. JsonFusion's shared Reader infrastructure + type-specific dispatch compresses well.
-
-4. **Consistent across platforms:** JsonFusion remains competitive whether targeting high-performance Cortex-M7 or resource-constrained Cortex-M0+, with both `-O3` (speed) and `-Os` (size) optimizations. Same codebase, predictable behavior.
+2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) requires 17.0 KB on M7 `-Os` vs 14.8 KB for JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
 ---
 
@@ -615,29 +603,29 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 **Test Setup:**
 - **Compiler**: `xtensa-esp-elf-gcc 14.2.0`
 - **Target**: ESP32 (Xtensa LX6 architecture)
-- **Compilation**: `-fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
+- **Compilation**: `-Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
 - **Linking**: `-Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion and ArduinoJson are smallest on ESP32 (18.7 KB)**
+**TL;DR:** ✅ **JsonFusion is smallest on ESP32 (16.4 KB)**
 
 **Results (`.text` section - code size in flash):**
 
-| Library                             | ESP32 -O3   | ESP32 -Os   |
-|-------------------------------------|-------------|-------------|
-| **JsonFusion**                      | **32.0 KB** | **18.7 KB** |
-| ArduinoJson                         |   45.8 KB   |   18.7 KB   |
-| jsmn                                |   37.7 KB   |   34.6 KB   |
-| cJSON                               |   34.9 KB   |   33.4 KB   |
-| JsonFusion CBOR (parse + serialize) |   41.5 KB   |   21.8 KB   |
+| Library                             |             |
+|-------------------------------------|-------------|
+| **JsonFusion**                      | **16.4 KB** |
+| ArduinoJson                         |   18.7 KB   |
+| jsmn                                |   34.6 KB   |
+| cJSON                               |   33.4 KB   |
+| JsonFusion CBOR (parse + serialize) |   20.3 KB   |
 
 **Key Takeaways:**
 
-1. **Cross-platform consistency:**
-   - **ARM M7**: 16.7 KB
-   - **ESP32**: 18.7 KB (+12%)
-   - **ARM M0+**: 21.2 KB (+27%)
+1. **Cross-platform consistency (relative to M7 baseline):**
+   - **ARM M7**: 14.8 KB
+   - **ESP32**: 16.4 KB (+13%)
+   - **ARM M0+**: 19.3 KB (+29%)
 
-2. **CBOR overhead remains reasonable:** 21.8 KB for full parse + serialize support (17% larger than JSON-parse-only)
+2. **CBOR overhead remains reasonable:** 20.3 KB for full parse + serialize support (22% larger than JSON-parse-only)
 
 ---
 
@@ -647,12 +635,12 @@ JsonFusion **compiles for AVR ATmega2560** (8-bit Arduino) **without any code ch
 
 **AVR Results (`.text` section - code size in flash)**, same benchmarks:
 
-| Library       | -O3 | -Os |
-|---------------|-----|-----|
-| jsmn          | 15.0 KB | 10.2 KB |
-| cJSON         | 19.1 KB |  9.1 KB |
-| ArduinoJson   | 69.4 KB | 20.7 KB |
-| **JsonFusion** | **42.9 KB** | **31.2 KB** |
+| Library         |             |
+|-----------------|-------------|
+| jsmn            |   10.2 KB   |
+| cJSON           |    9.1 KB   |
+| ArduinoJson     |   20.7 KB   |
+| **JsonFusion**  | **25.8 KB** |
 
 On 8-bit AVR, JsonFusion's generic code incurs overhead compared to minimal C parsers, but remains competitive with ArduinoJson. The value proposition: modern C++23 with type safety and the same codebase that runs on 8-bit AVR and 64-bit servers, versus manual parsing.
 
@@ -721,18 +709,16 @@ JsonFusion: parse, validate, populate. This is an apples-to-apples comparison of
 The canada.json benchmark tests numeric-heavy GeoJSON—a pure array/number stress test.
 
 **Parse-and-populate** (production use case):
-- JsonFusion (iterator) is ~15% slower than RapidJSON (with manual populate)
-- **JsonFusion + yyjson: nearly 3× faster than RapidJSON** - yyjson's optimized numeric parsing shines on this workload
+- JsonFusion is ~15% slower than RapidJSON (with manual populate)
 
 **Streaming for object counting**:
 - Hand-written RapidJSON SAX serves as baseline
 - JsonFusion typed streaming is ~80% slower, but provides **fully generic, type-safe API** that handles complex schemas the same way as simple ones—no
 manual state machines
 - **JsonFusion with selective skipping: ~60% faster than hand-written RapidJSON SAX** by declaring unneeded values as `skip` in the model
-- **JsonFusion + yyjson (streaming): ~80% faster than RapidJSON SAX** with the same type-safe, generic API
 
 The typed streaming approach trades some speed on trivial regular data for universal composability. Where RapidJSON SAX requires custom code per schema,
-JsonFusion's declarative skipping works uniformly across any model. With the yyjson backend, you get both performance and composability.
+JsonFusion's declarative skipping works uniformly across any model.
 
 📁 **Canada.json benchmark**: [`benchmarks/canada_json_parsing.cpp`](benchmarks/canada_json_parsing.cpp)
 
@@ -742,13 +728,11 @@ The twitter.json benchmark tests realistic deeply nested objects with optionals 
 
 **C++ Library Comparison:**
 
-JsonFusion with yyjson backend delivers full type-safe mapping with validation and is:
-- **30% faster than reflect-cpp** (both use yyjson internally, but JsonFusion's compile-time design and single-pass architecture is more efficient for
-this setup and data)
-- **Over 2× faster than RapidJSON + manual populate** (eliminates 450+ lines of hand-written mapping code)
-- **With streaming API: 40% faster than reflect-cpp, 60% faster than RapidJSON + manual**
-- **However, Glaze is ~2× faster than JsonFusion + yyjson** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by
-trading off streaming flexibility, generic iterators, and other abstractions. Or it is just written better😄
+JsonFusion is:
+- **slightly faster than reflect-cpp** (but JsonFusion does not use 2-pass approach with yyjson and DOM building)
+- **About 1.5× faster than RapidJSON + manual populate** (eliminates 450+ lines of hand-written mapping code)
+- **However, Glaze is ~3× faster than JsonFusion** - Glaze's hand-tuned, contiguous-buffer-optimized design achieves exceptional raw speed by
+trading off some streaming flexibility, generic iterators, and path-based errors-handling. Or it is just written better😄
 
 
 **Cross-Language Comparison:**
@@ -759,20 +743,18 @@ delivers near-native performance even in managed languages.
 - **C# System.Text.Json** (source generation + JIT): ~1600 µs — in the same ballpark as RapidJSON + manual C++.
 
 This demonstrates that modern managed runtimes can be competitive, especially with compile-time code generation. However, optimized C++ still provides
-advantages: Glaze is 2.5× faster than Java DSL-JSON, JsonFusion + yyjson is 1.25× faster than Java.
+advantages: Glaze is 2.5× faster than Java DSL-JSON.
 
 **Performance Summary (twitter.json, parse + populate + validate, same arm64 Ubuntu Linux 24.04 machine, GCC 14.3):**
 
 | Library | Language | Approach | Time (µs/iter) |
 |---------|----------|----------|----------------|
-| Glaze | C++ | Hand-optimized, contiguous | 356 |
-| JsonFusion + yyjson (streaming) | C++ | Pluggable backend, streaming | 679 |
-| JsonFusion + yyjson | C++ | Pluggable backend | 761 |
+| Glaze | C++ | Default, no external deps | 360 |
 | **Java DSL-JSON** | **Java** | **Compile-time generation** | **950** |
-| JsonFusion (iterator) | C++ | Default, no external deps | 1062 |
-| reflect-cpp + yyjson | C++ | DOM-based, two-pass | 1097 |
+| JsonFusion          | C++ | Default, no external deps | 1020 |
+| reflect-cpp + yyjson | C++ | DOM-based, two-pass | 1130 |
 | **C# System.Text.Json** | **C#** | **Source generation + JIT** | **1600** |
-| RapidJSON + manual | C++ | DOM + hand-written mapping | 1618 |
+| RapidJSON + manual | C++ | DOM + hand-written mapping | 1620 |
 
 📁 **C++ benchmark**: [`benchmarks/twitter_json/`](benchmarks/twitter_json/)  
 📁 **Java benchmark**: [`benchmarks/twitter_json_java/`](benchmarks/twitter_json_java/)  
@@ -889,9 +871,10 @@ However, **you trade JsonFusion's design philosophy (streaming, zero-allocation,
 | **Input sources** | ✅ Any (files, sockets, etc.) | ❌ Contiguous memory only |
 
 
-**Performance results:** See [Benchmarks](#benchmarks) section for detailed comparisons. The yyjson backend is primarily included to demonstrate the
-reader abstraction works and to provide an apples-to-apples comparison with libraries that use yyjson internally (like reflect-cpp) or at least some
-architecture-specific optimizations.
+**Performance results:** The yyjson backend is primarily included to demonstrate the
+reader abstraction works. The main boost is achieved on floating-points heavy data, because JsonFusion's small in-house parser is slower than those from many other libraries.
+
+Another important application for DOM-based readers implementations are applications with complex schema algebra. `WireSink` for such readers can be implemented in a very efficient way (like in reference `YyjsonReader`), which allows to eliminate any actual reparsing of input data. Related to all kinds of Variant-like transformers, etc.
 
 
 ### Constexpr Parsing & Serialization
@@ -1171,4 +1154,4 @@ g++-14 -std=c++23 -I./include -o /tmp/json_schema_demo ./examples/json_schema_de
 - Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable.
 - Relies on PFR; a few exotic compilers/ABIs may not be supported.
 - **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
-- **Floating-point numbers handling**: JsonFusion uses an in-house constexpr-compatible FP parser/serializer by default (`JSONFUSION_FP_BACKEND=0`). While tested for correctness and sufficient for typical use cases, it is not as precise or fast as state-of-the-art implementations like fast_float. For applications with extreme FP requirements, the backend is swappable—see [docs/FP_BACKEND_ARCHITECTURE.md](docs/FP_BACKEND_ARCHITECTURE.md) for details on alternative backends or implementing custom FP handling.
+- **Floating-point numbers handling**: JsonFusion uses an in-house constexpr-compatible FP parser/serializer by default (`JSONFUSION_FP_BACKEND=0`). While tested for correctness and sufficient for typical use cases, it is not as precise or fast as state-of-the-art implementations like fast_float. For applications with extreme FP requirements, the backend is swappable—see [docs/FP_BACKEND_ARCHITECTURE.md](docs/FP_BACKEND_ARCHITECTURE.md) for details on alternative backends or implementing custom FP handling. Or just use `YyjsonReader` to get both speed boost and FP correctness.

@@ -2,7 +2,10 @@
 #include <JsonFusion/parser.hpp>
 #include <JsonFusion/validators.hpp>
 #include <string_view>
-
+// #define JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
+#ifdef JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
+#include "additional_models.hpp"
+#endif
 using namespace JsonFusion;
 using namespace JsonFusion::options;
 using std::array;
@@ -158,6 +161,118 @@ extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t
     auto result = JsonFusion::Parse(cmd, std::string_view(data, size));
     return !!result;
 }
+
+#ifdef JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
+// Single unified parsing function for all additional models
+extern "C" __attribute__((used)) bool parse_additional_model(int model_id, const char* data, size_t size) {
+    std::string_view json(data, size);
+    
+    switch(model_id) {
+        case 1: {
+            code_size_test::DeviceMetadata model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 2: {
+            code_size_test::SensorReadings model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 3: {
+            code_size_test::SystemStats model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 4: {
+            code_size_test::NetworkPacket model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 5: {
+            code_size_test::ImageDescriptor model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 6: {
+            code_size_test::AudioConfig model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 7: {
+            code_size_test::CacheEntry model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 8: {
+            code_size_test::FileMetadata model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 9: {
+            code_size_test::TransactionRecord model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 10: {
+            code_size_test::TelemetryPacket model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 11: {
+            code_size_test::RobotCommand model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 12: {
+            code_size_test::WeatherData model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 13: {
+            code_size_test::DatabaseQuery model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 14: {
+            code_size_test::VideoStream model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 15: {
+            code_size_test::EncryptionContext model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 16: {
+            code_size_test::MeshNode model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 17: {
+            code_size_test::GameState model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 18: {
+            code_size_test::LogEntry model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 19: {
+            code_size_test::CalendarEvent model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        case 20: {
+            code_size_test::HardwareProfile model;
+            auto result = JsonFusion::Parse(model, json);
+            return !!result;
+        }
+        default:
+            return false;
+    }
+}
+#endif
 // Entry point - ensures parse_config is not eliminated by linker
 // In a real embedded system, this would be your main loop
 int main() {
@@ -166,7 +281,13 @@ int main() {
     volatile bool rpc_result = parse_rpc_command("", 0);
     (void)result;
     (void)rpc_result;
-    
+#ifdef JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
+    // Call additional model parser for all 20 models to ensure they're included in binary
+    for (int i = 1; i <= 20; i++) {
+        volatile bool r = parse_additional_model(i, "", 0);
+        (void)r;
+    }
+#endif
     // Infinite loop (typical for embedded without OS)
     while(1) {}
     return 0;

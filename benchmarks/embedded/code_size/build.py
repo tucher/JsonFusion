@@ -73,13 +73,13 @@ ARM_CORTEX_M = TargetPlatform(
     compiler_prefix="arm-none-eabi-",
     linker_specs=["-specs=nano.specs", "-specs=nosys.specs"],
     build_configs=[
-        BuildConfig("M7 -O3", ["-O3", "-flto",
-            "-mcpu=cortex-m7",
-            "-mthumb",
-            "-mfloat-abi=hard",
-            "-mfpu=fpv5-d16",
-            "-fno-threadsafe-statics",
-        ]),
+        # BuildConfig("M7 -O3", ["-O3", "-flto",
+        #     "-mcpu=cortex-m7",
+        #     "-mthumb",
+        #     "-mfloat-abi=hard",
+        #     "-mfpu=fpv5-d16",
+        #     "-fno-threadsafe-statics",
+        # ]),
         BuildConfig("M7 -Os", ["-Os", "-flto",
             "-mcpu=cortex-m7",
             "-mthumb",
@@ -87,12 +87,12 @@ ARM_CORTEX_M = TargetPlatform(
             "-mfpu=fpv5-d16",
             "-fno-threadsafe-statics",
         ]),
-        BuildConfig("M0+ -O3", ["-O3", "-flto",
-            "-mcpu=cortex-m0plus",
-            "-mthumb",
-            "-mfloat-abi=soft",
-            "-fno-threadsafe-statics",
-        ]),
+        # BuildConfig("M0+ -O3", ["-O3", "-flto",
+        #     "-mcpu=cortex-m0plus",
+        #     "-mthumb",
+        #     "-mfloat-abi=soft",
+        #     "-fno-threadsafe-statics",
+        # ]),
         BuildConfig("M0+ -Os", ["-Os", "-flto",
             "-mcpu=cortex-m0plus",
             "-mthumb",
@@ -108,11 +108,11 @@ ESP32 = TargetPlatform(
     compiler_prefix="xtensa-esp-elf-",
     linker_specs=[],  # ESP32 doesn't use nano.specs
     build_configs=[
-        BuildConfig("ESP32 -O3", ["-O3", "-flto",
-            "-mlongcalls",           # Required for Xtensa
-            "-mtext-section-literals",  # Place literals in .text
-            "-fno-threadsafe-statics",  # Reduce code size
-        ]),
+        # BuildConfig("ESP32 -O3", ["-O3", "-flto",
+        #     "-mlongcalls",           # Required for Xtensa
+        #     "-mtext-section-literals",  # Place literals in .text
+        #     "-fno-threadsafe-statics",  # Reduce code size
+        # ]),
         BuildConfig("ESP32 -Os", ["-Os", "-flto",
             "-mlongcalls",
             "-mtext-section-literals",
@@ -127,12 +127,12 @@ AVR_ATMEGA = TargetPlatform(
     compiler_prefix="avr-",
     linker_specs=[],
     build_configs=[
-        BuildConfig("ATmega -O3", ["-O3", "-flto",
-            "-I/libstdcpp",
-            "-mmcu=atmega2560",
-            "-g0",
-            "-fno-threadsafe-statics",
-        ]),
+        # BuildConfig("ATmega -O3", ["-O3", "-flto",
+        #     "-I/libstdcpp",
+        #     "-mmcu=atmega2560",
+        #     "-g0",
+        #     "-fno-threadsafe-statics",
+        # ]),
         BuildConfig("ATmega -Os", ["-Os", "-flto",
             "-I/libstdcpp",
             "-mmcu=atmega2560",
@@ -161,12 +161,6 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
             dependencies=["https://github.com/bblanchon/ArduinoJson/releases/download/v7.4.2/ArduinoJson-v7.4.2.h"],
         ),
         Library(
-            name="jsmn",
-            source_file="parse_config_jsmn.cpp",
-            description="jsmn - minimalist JSON tokenizer",
-            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
-        ),
-        Library(
             name="cJSON",
             source_file="parse_config_cjson.cpp",
             description="cJSON - lightweight JSON parser in C",
@@ -176,10 +170,11 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
             ],
         ),
         Library(
-            name="JsonFusion CBOR <->",
-            source_file="parse_config_cbor.cpp",
-            description="JsonFusion CBOR parser",
-        ),
+            name="jsmn",
+            source_file="parse_config_jsmn.cpp",
+            description="jsmn - minimalist JSON tokenizer",
+            dependencies=["https://raw.githubusercontent.com/zserge/jsmn/master/jsmn.h"],
+        )
     ]
     
     # Glaze only supported on ARM Cortex-M (not AVR or ESP32) Esp32 build is pulling deps on atomics via std::chrono
@@ -188,13 +183,20 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
     if platform.compiler_prefix == "arm-none-eabi-":
         libraries.append(
             Library(
-                name="Glaze",
+                name="Glaze(with embedded-friendly config)",
                 source_file="parse_config_glaze.cpp",
                 description="Glaze - probably the fastest JSON parser in C++",
                 dependencies=[],
             )
         )
-    
+    if platform.compiler_prefix != "avr-":
+        libraries.append(
+            Library(
+                name="JsonFusion CBOR <->",
+                source_file="parse_config_cbor.cpp",
+                description="JsonFusion CBOR parser",
+            )
+        )
     return libraries
 
 # Linker warning patterns to filter out
@@ -586,8 +588,8 @@ class EmbeddedBenchmark:
             # Header
             config_names = list(self.results.keys())
             lib_names = list(self.results[config_names[0]].keys())
-            
-            print(f"{'Library':<20}", end="")
+            max_lib_name_width = max(len(lib_name) for lib_name in lib_names)
+            print(f"{'Library':<{max_lib_name_width}}", end="")
             for config_name in config_names:
                 print(f" {config_name:<20}", end="")
             print()
@@ -595,7 +597,7 @@ class EmbeddedBenchmark:
             
             # Data
             for lib_name in lib_names:
-                print(f"{lib_name:<20}", end="")
+                print(f"{lib_name:<{max_lib_name_width}}", end="")
                 for config_name in config_names:
                     size = self.results[config_name].get(lib_name, 0)
                     size_kb = size / 1024

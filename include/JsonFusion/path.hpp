@@ -27,17 +27,17 @@ struct PathElement {
     char        buf[InlineKeyCapacity > 0 ? InlineKeyCapacity : 1] = {};
 
 
-    PathElement() = default;
+    __attribute__((noinline)) constexpr PathElement() = default;
 
     // For `{index}`
-    constexpr PathElement(std::size_t index)
+    __attribute__((noinline)) constexpr PathElement(std::size_t index)
         : array_index(index)
         , field_name{}
         , is_static(true)
     {}
 
     // For `{max, key, is_static}`
-    constexpr PathElement(std::size_t index, std::string_view key, bool is_static_ = true)
+    __attribute__((noinline)) constexpr PathElement(std::size_t index, std::string_view key, bool is_static_ = true)
         : array_index(index)
         , field_name(key)
         , is_static(is_static_)
@@ -52,7 +52,7 @@ struct PathElement {
 
 
     // Copy ctor
-    constexpr PathElement(const PathElement& other)
+    __attribute__((noinline)) constexpr PathElement(const PathElement& other)
         : array_index(other.array_index),
         is_static(other.is_static)
     {
@@ -69,7 +69,7 @@ struct PathElement {
     }
 
     // Copy assignment
-    constexpr PathElement& operator=(const PathElement& other) {
+    __attribute__((noinline)) constexpr PathElement& operator=(const PathElement& other) {
         if (this == &other) return *this;
 
         array_index = other.array_index;
@@ -87,10 +87,10 @@ struct PathElement {
     }
 
     // Move = same as copy (buf is inline anyway)
-    constexpr PathElement(PathElement&& other) noexcept
+    __attribute__((noinline)) constexpr PathElement(PathElement&& other) noexcept
         : PathElement(static_cast<const PathElement&>(other)) {}
 
-    constexpr PathElement& operator=(PathElement&& other) noexcept {
+    __attribute__((noinline)) constexpr PathElement& operator=(PathElement&& other) noexcept {
         return *this = static_cast<const PathElement&>(other);
     }
 };
@@ -114,7 +114,7 @@ struct Path {
     }
 
 
-    constexpr void push_child(PathElementT && el) {
+    __attribute__((noinline)) constexpr void push_child(PathElementT && el) {
         if constexpr(!unbounded) {
             storage[currentLength] = el;
         } else {
@@ -122,11 +122,54 @@ struct Path {
         }
         currentLength ++;
     }
-    constexpr void pop() {
+    __attribute__((noinline)) constexpr void pop() {
         if constexpr (unbounded) {
             storage.pop_back();
         }
         currentLength --;
+    }
+
+    // Direct write functions - bypass PathElement construction/assignment
+    
+    __attribute__((noinline)) 
+    constexpr void push_field_direct(std::string_view key, bool is_static) {
+        if constexpr (unbounded) {
+            // For unbounded, need to emplace_back
+            storage.emplace_back(std::numeric_limits<std::size_t>::max(), key, is_static);
+        } else {
+            // For bounded, direct write to storage
+            auto& elem = storage[currentLength];
+            
+            elem.array_index = std::numeric_limits<std::size_t>::max();
+            elem.field_name = key;
+            elem.is_static = is_static;
+            
+            // For map fields (is_static=false), copy key to buffer
+            if (!is_static && InlineKeyCapacity > 0) {
+                const std::size_t len = std::min(key.size(), InlineKeyCapacity);
+                for (std::size_t i = 0; i < len; i++) {
+                    elem.buf[i] = key[i];
+                }
+                elem.field_name = std::string_view(elem.buf, len);
+            }
+        }
+        currentLength++;
+    }
+    
+    __attribute__((noinline))
+    constexpr void push_index_direct(std::size_t index) {
+        if constexpr (unbounded) {
+            // For unbounded, need to emplace_back
+            storage.emplace_back(index);
+        } else {
+            // For bounded, direct write to storage
+            auto& elem = storage[currentLength];
+            
+            elem.array_index = index;
+            elem.field_name = {};
+            elem.is_static = true;
+        }
+        currentLength++;
     }
 
     template <class ... PathElems>

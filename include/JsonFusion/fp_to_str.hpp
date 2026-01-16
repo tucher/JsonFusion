@@ -149,32 +149,32 @@ constexpr inline bool parse_decimal_number(const char* buf, DecimalNumber& out) 
 
 
 constexpr double scale_by_power_of_10(double value, int32_t exp10) noexcept {
-    if (exp10 == 0 || value == 0.0L) {
+    if (exp10 == 0 || value == 0.0) {
         return value;
     }
 
     static constexpr double kPow10Pos[] = {
-        1e1L,    // 10^1
-        1e2L,    // 10^2
-        1e4L,    // 10^4
-        1e8L,    // 10^8
-        1e16L,   // 10^16
-        1e32L,   // 10^32
-        1e64L,   // 10^64
-        1e128L,  // 10^128
-        1e256L   // 10^256
+        1e1,    // 10^1
+        1e2,    // 10^2
+        1e4,    // 10^4
+        1e8,    // 10^8
+        1e16,   // 10^16
+        1e32,   // 10^32
+        1e64,   // 10^64
+        1e128,  // 10^128
+        1e256   // 10^256
     };
 
     static constexpr double kPow10Neg[] = {
-        1e-1L,    // 10^-1
-        1e-2L,    // 10^-2
-        1e-4L,    // 10^-4
-        1e-8L,    // 10^-8
-        1e-16L,   // 10^-16
-        1e-32L,   // 10^-32
-        1e-64L,   // 10^-64
-        1e-128L,  // 10^-128
-        1e-256L   // 10^-256
+        1e-1,    // 10^-1
+        1e-2,    // 10^-2
+        1e-4,    // 10^-4
+        1e-8,    // 10^-8
+        1e-16,   // 10^-16
+        1e-32,   // 10^-32
+        1e-64,   // 10^-64
+        1e-128,  // 10^-128
+        1e-256   // 10^-256
     };
 
     bool negative_exp = exp10 < 0;
@@ -266,30 +266,30 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
     int32_t exp10 = 0;
     
     // Optimized normalization: scale by large powers first (much faster than single-step loop)
-    if (v >= 10.0L) {
+    if (v >= 10.0) {
         // Scale down by powers of 10^16, 10^8, 10^4, 10^2, 10^1
-        constexpr double p16 = 1e16L;
-        constexpr double p8  = 1e8L;
-        constexpr double p4  = 1e4L;
-        constexpr double p2  = 1e2L;
+        constexpr double p16 = 1e16;
+        constexpr double p8  = 1e8;
+        constexpr double p4  = 1e4;
+        constexpr double p2  = 1e2;
         
         while (v >= p16) { v /= p16; exp10 += 16; }
         while (v >= p8)  { v /= p8;  exp10 += 8;  }
         while (v >= p4)  { v /= p4;  exp10 += 4;  }
         while (v >= p2)  { v /= p2;  exp10 += 2;  }
-        while (v >= 10.0L) { v /= 10.0L; ++exp10; }
-    } else if (v < 1.0L) {
+        while (v >= 10.0) { v /= 10.0; ++exp10; }
+    } else if (v < 1.0) {
         // Scale up by powers of 10^16, 10^8, 10^4, 10^2, 10^1
-        constexpr double p16 = 1e16L;
-        constexpr double p8  = 1e8L;
-        constexpr double p4  = 1e4L;
-        constexpr double p2  = 1e2L;
+        constexpr double p16 = 1e16;
+        constexpr double p8  = 1e8;
+        constexpr double p4  = 1e4;
+        constexpr double p2  = 1e2;
         
-        while (v > 0.0L && v < 1e-15L) { v *= p16; exp10 -= 16; }
-        while (v > 0.0L && v < 1e-7L)  { v *= p8;  exp10 -= 8;  }
-        while (v > 0.0L && v < 1e-3L)  { v *= p4;  exp10 -= 4;  }
-        while (v > 0.0L && v < 1e-1L)  { v *= p2;  exp10 -= 2;  }
-        while (v > 0.0L && v < 1.0L)   { v *= 10.0L; --exp10; }
+        while (v > 0.0 && v < 1e-15) { v *= p16; exp10 -= 16; }
+        while (v > 0.0 && v < 1e-7)  { v *= p8;  exp10 -= 8;  }
+        while (v > 0.0 && v < 1e-3)  { v *= p4;  exp10 -= 4;  }
+        while (v > 0.0 && v < 1e-1)  { v *= p2;  exp10 -= 2;  }
+        while (v > 0.0 && v < 1.0)   { v *= 10.0; --exp10; }
     }
 
     // Generate digits: we produce prec+1 digits, the last is a guard for rounding
@@ -298,7 +298,7 @@ constexpr  inline char* format_double_to_chars(char* first, double value, std::s
         int d = static_cast<int>(v);
         if (d > 9) d = 9;  // safety clamp in case of tiny FP error
         digits[i] = d;
-        v = (v - static_cast<double>(d)) * 10.0L;
+        v = (v - static_cast<double>(d)) * 10.0;
     }
 
     // Round using the guard digit (simple round-half-up)

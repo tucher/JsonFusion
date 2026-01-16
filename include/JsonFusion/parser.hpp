@@ -35,12 +35,7 @@ constexpr bool allowed_dynamic_error_stack() {
 
 namespace  parser_details {
 
-// ========================================================================
-// Shared field lookup function - NOT a template, shared across all models!
-// This reduces per-model code size by ~200-250 bytes
-// ========================================================================
 
-// Non-template field lookup function
 // Returns the field descriptor if found, or nullptr if not found
 constexpr inline __attribute__((noinline))
 const string_search::StringDescr* find_field_in_buffer(
@@ -81,14 +76,6 @@ class DeserializationContext {
 
 
 public:
-    struct PathGuard {
-        DeserializationContext & ctx;
-
-        __attribute__((noinline)) constexpr ~PathGuard() {
-            if(ctx.error == ParseError::NO_ERROR)
-                ctx.currentPath.pop();
-        }
-    };
 
 
     __attribute__((noinline)) constexpr bool withParseError(ParseError err, const reader::ReaderLike auto & reader) {
@@ -120,13 +107,14 @@ public:
     __attribute__((noinline)) constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
 
 
-    __attribute__((noinline)) constexpr PathGuard getArrayItemGuard(std::size_t index) {
-        currentPath.push_child({index});
-        return PathGuard{*this};
+    constexpr void pushArrayItem(std::size_t index) {
+        currentPath.push_index_direct(index);  
     }
-    __attribute__((noinline)) constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
-        currentPath.push_child({std::numeric_limits<std::size_t>::max(), key, is_static});
-        return PathGuard{*this};
+    constexpr void pushMapItem(std::string_view key, bool is_static = true) {
+        currentPath.push_field_direct(key, is_static); 
+    }
+    constexpr void popPath() {
+        currentPath.pop();  // No check needed - only called on success path
     }
 };
 
@@ -437,7 +425,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
         }
 
         typename FH::element_type & newItem = cursor.get_slot();
-        typename CTX::PathGuard guard = ctx.getArrayItemGuard(parsed_items_count);
+        ctx.pushArrayItem(parsed_items_count);
 
         using Meta = options::detail::annotation_meta_getter<typename FH::element_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(newItem), reader, ctx, userCtx)) {
@@ -465,6 +453,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             cursor.finalize(false);
             return ctx.withReaderError(reader);
         }
+        ctx.popPath();
     }
     if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::array_parsing_finished>(obj, ctx.validationCtx(), parsed_items_count)) {
         cursor.finalize(false);
@@ -645,7 +634,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
 
         // Parse value
         typename FH::mapped_type& value = cursor.value_ref();
-        typename CTX::PathGuard guard = ctx.getMapItemGuard(key_sv, false);
+        ctx.pushMapItem(key_sv, false);
 
         using Meta = options::detail::annotation_meta_getter<typename FH::mapped_type>;
         if(!ParseValue<typename Meta::options>(Meta::getRef(value), reader, ctx, userCtx)) {
@@ -677,6 +666,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             cursor.finalize(false);
             return ctx.withReaderError(reader);
         }
+        ctx.popPath();
     }
 
     if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::map_parsing_finished>(obj, ctx.validationCtx(), parsed_entries_count)) {
@@ -852,7 +842,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
                 return ctx.withParseError(ParseError::DUPLICATE_KEY_IN_MAP, reader);
             }
 
-            typename CTX::PathGuard guard = ctx.getMapItemGuard(key_sv);
+            ctx.pushMapItem(key_sv);
 
             if(!ParseStructField(obj, reader, ctx, std::make_index_sequence<FH::rawFieldsCount>{}, structIndex, userCtx)) {
                 return false;
@@ -862,6 +852,7 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::object_field_parsed>(obj, ctx.validationCtx(), arrayIndex, FH{})) {
                 return ctx.withSchemaError(reader);
             }
+            ctx.popPath();
         }
 
         iterStatus = reader.advance_after_value(fr);
