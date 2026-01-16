@@ -180,7 +180,7 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
     # Glaze only supported on ARM Cortex-M (not AVR or ESP32) Esp32 build is pulling deps on atomics via std::chrono
     # ESP32: uses unimplemented atomic operations
     # AVR: 8-bit architecture not supported
-    if platform.compiler_prefix == "arm-none-eabi-":
+    if True or platform.compiler_prefix == "arm-none-eabi-":
         libraries.append(
             Library(
                 name="Glaze(with embedded-friendly config)",

@@ -585,9 +585,9 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 |---------------------------------------|-------------|-------------|
 | **JsonFusion**                        | **14.8 KB** | **19.3 KB** |
 | ArduinoJson                           |   15.4 KB   |   23.9 KB   |
-| cJSON                                 |   18.8 KB   |   28.2 KB   |
-| jsmn                                  |   19.7 KB   |   29.1 KB   |
-| Glaze (with embedded-friendly config) |   25.4 KB   |   31.1 KB   |
+| cJSON                                 |   18.7 KB   |   28.2 KB   |
+| jsmn                                  |   19.6 KB   |   29.0 KB   |
+| Glaze (with embedded-friendly config) |   16.6 KB   |   22.4 KB   |
 | JsonFusion CBOR (parse + serialize)   |   17.0 KB   |   24.2 KB   |
 
 **Key Takeaways:**
@@ -610,13 +610,14 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 
 **Results (`.text` section - code size in flash):**
 
-| Library                             |             |
-|-------------------------------------|-------------|
-| **JsonFusion**                      | **16.4 KB** |
-| ArduinoJson                         |   18.7 KB   |
-| jsmn                                |   34.6 KB   |
-| cJSON                               |   33.4 KB   |
-| JsonFusion CBOR (parse + serialize) |   20.3 KB   |
+| Library                               |             |
+|---------------------------------------|-------------|
+| **JsonFusion**                        | **16.4 KB** |
+| ArduinoJson                           |   18.7 KB   |
+| cJSON                                 |   33.4 KB   |
+| jsmn                                  |   34.6 KB   |
+| Glaze (with embedded-friendly config) |   19.5 KB   |
+| JsonFusion CBOR (parse + serialize)   |   20.3 KB   |
 
 **Key Takeaways:**
 
