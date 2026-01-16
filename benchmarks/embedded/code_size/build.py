@@ -280,7 +280,7 @@ class EmbeddedBenchmark:
         
         for lib in self.libraries:
             # Special handling for Glaze - clone entire repository
-            if lib.name == "Glaze":
+            if lib.name == "Glaze(with embedded-friendly config)":
                 glaze_dir = libs_dir / "glaze"
                 if glaze_dir.exists():
                     print(f"✓ Glaze library already exists at {glaze_dir}")
