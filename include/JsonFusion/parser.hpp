@@ -35,6 +35,32 @@ constexpr bool allowed_dynamic_error_stack() {
 
 namespace  parser_details {
 
+// ========================================================================
+// Shared field lookup function - NOT a template, shared across all models!
+// This reduces per-model code size by ~200-250 bytes
+// ========================================================================
+
+// Non-template field lookup function
+// Returns the field descriptor if found, or nullptr if not found
+constexpr inline __attribute__((noinline))
+const string_search::StringDescr* find_field_in_buffer(
+    const string_search::StringDescr* fields_begin,
+    const string_search::StringDescr* fields_end,
+    const char* field_name_buffer,
+    std::size_t field_name_len
+) {
+    std::string_view field_sv(field_name_buffer, field_name_len);
+    
+    // Linear search through field descriptors
+    for (const auto* it = fields_begin; it != fields_end; ++it) {
+        if (it->name == field_sv) {
+            return it;
+        }
+    }
+    
+    return nullptr;  // Not found
+}
+
 
 template <class InpIter, std::size_t SchemaDepth, bool SchemaHasMaps, class ReaderError>
 class DeserializationContext {
@@ -58,14 +84,14 @@ public:
     struct PathGuard {
         DeserializationContext & ctx;
 
-        constexpr ~PathGuard() {
+        __attribute__((noinline)) constexpr ~PathGuard() {
             if(ctx.error == ParseError::NO_ERROR)
                 ctx.currentPath.pop();
         }
     };
 
 
-    constexpr bool withParseError(ParseError err, const reader::ReaderLike auto & reader) {
+    __attribute__((noinline)) constexpr bool withParseError(ParseError err, const reader::ReaderLike auto & reader) {
         error = err;
         if(err == ParseError::NO_ERROR) {
             error = ParseError::READER_ERROR;
@@ -75,13 +101,13 @@ public:
         return false;
     }
 
-    constexpr bool withReaderError(const reader::ReaderLike auto & reader) {
+    __attribute__((noinline)) constexpr bool withReaderError(const reader::ReaderLike auto & reader) {
         error = ParseError::READER_ERROR;
         reader_error = reader.getError();
         m_pos = reader.current();
         return false;
     }
-    constexpr bool withSchemaError(const reader::ReaderLike auto & reader) {
+    __attribute__((noinline)) constexpr bool withSchemaError(const reader::ReaderLike auto & reader) {
         error = ParseError::SCHEMA_VALIDATION_ERROR;
         m_pos = reader.current();
         return false;
@@ -91,14 +117,14 @@ public:
     constexpr ParseResult<InpIter, ReaderError, SchemaDepth, SchemaHasMaps> result() const {
         return ParseResult<InpIter, ReaderError, SchemaDepth, SchemaHasMaps>(error, reader_error, _validationCtx.result(), m_pos, currentPath);
     }
-    constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
+    __attribute__((noinline)) constexpr validators::validators_detail::ValidationCtx & validationCtx() {return _validationCtx;}
 
 
-    constexpr PathGuard getArrayItemGuard(std::size_t index) {
+    __attribute__((noinline)) constexpr PathGuard getArrayItemGuard(std::size_t index) {
         currentPath.push_child({index});
         return PathGuard{*this};
     }
-    constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
+    __attribute__((noinline)) constexpr PathGuard getMapItemGuard(std::string_view key, bool is_static = true) {
         currentPath.push_child({std::numeric_limits<std::size_t>::max(), key, is_static});
         return PathGuard{*this};
     }
@@ -760,36 +786,45 @@ constexpr bool ParseNonNullValue(ObjT& obj, Reader & reader, CTX &ctx, UserCtx *
             constexpr std::size_t effective_max_field_len = 
                 std::max(FH::maxFieldNameLength, max_validator_field_len);
             
-            string_search::AdaptiveStringSearch<effective_max_field_len> searcher{
-                FH::fieldIndexesToFieldNames.data(), FH::fieldIndexesToFieldNames.data() + FH::fieldIndexesToFieldNames.size()
-            };
-            char * b = searcher.buffer();
-
-            // Use shared helper for direct buffer access (faster than cursor abstraction)
+            // Stack-allocated buffer for field name (replaces AdaptiveStringSearch's internal buffer)
+            char buffer[effective_max_field_len];
             std::size_t field_len = 0;
             ParseError err{ParseError::NO_ERROR};
-            if(!read_string_into_buffer(reader, b, effective_max_field_len, err, field_len)) {
+            bool overflowed = false;
+            
+            // Read field name into buffer
+            if(!read_string_into_buffer(reader, buffer, effective_max_field_len, err, field_len)) {
                 if(err == ParseError::NON_STRING_IN_STRING_STORAGE) {
                     return ctx.withParseError(err, reader);
                 } else if (err == ParseError::FIXED_SIZE_CONTAINER_OVERFLOW) {
-                    searcher.set_overflow();
+                    overflowed = true;
                 } else {
                     return ctx.withReaderError(reader);
                 }
             }
-            // Update searcher with parsed length and null-terminate
-            searcher.current_length() = field_len;
-            if (field_len < effective_max_field_len) b[field_len] = '\0';
-            auto res = searcher.result();
-            if( searcher.result() != FH::fieldIndexesToFieldNames.end()) {
-                arrayIndex = res - FH::fieldIndexesToFieldNames.begin();
-                structIndex = res->originalIndex;
-                key_sv = res->name;
+            
+            // Call shared field lookup function (not instantiated per model!)
+            // Only search if we have a complete field name (not overflowed)
+            const string_search::StringDescr* found_field = nullptr;
+            if (!overflowed) {
+                found_field = parser_details::find_field_in_buffer(
+                    FH::fieldIndexesToFieldNames.data(),
+                    FH::fieldIndexesToFieldNames.data() + FH::fieldIndexesToFieldNames.size(),
+                    buffer,
+                    field_len
+                );
+            }
+            
+            if(found_field != nullptr) {
+                // Field found in struct
+                arrayIndex = found_field - FH::fieldIndexesToFieldNames.data();
+                structIndex = found_field->originalIndex;
+                key_sv = found_field->name;
             } else {
                 // Field not found in struct - it's an excess field
-                // Validate forbidden fields before searcher goes out of scope
+                // Validate forbidden fields
                 if(arrayIndex == std::size_t(-1)) {
-                    std::string_view excess_field_name(b, searcher.current_length());
+                    std::string_view excess_field_name(buffer, field_len);
                     if(!validatorsState.template validate<validators::validators_detail::parsing_events_tags::excess_field_occured>(obj, ctx.validationCtx(), excess_field_name, FH{})) {
                         if (!reader.move_to_value(fr)) {
                             return ctx.withReaderError(reader);
