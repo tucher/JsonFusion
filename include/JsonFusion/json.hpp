@@ -1570,7 +1570,7 @@ private:
 
 public:
 
-    constexpr bool write_array_begin(const std::size_t &, ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_array_begin(const std::size_t &, ArrayFrame& frame) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1584,7 +1584,7 @@ public:
         }
         return true;
     }
-    constexpr bool write_map_begin(const std::size_t &, MapFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_map_begin(const std::size_t &, MapFrame& frame) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1599,7 +1599,7 @@ public:
         return true;
     }
 
-    constexpr bool advance_after_value(ArrayFrame&) {
+    __attribute__((noinline))constexpr bool advance_after_value(ArrayFrame&) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1611,7 +1611,7 @@ public:
         }
         return true;
     }
-    constexpr bool advance_after_value(MapFrame&) {
+    __attribute__((noinline)) constexpr bool advance_after_value(MapFrame&) {
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
             return false;
@@ -1623,7 +1623,7 @@ public:
         }
         return true;
     }
-    constexpr bool move_to_value(MapFrame&) {
+    __attribute__((noinline)) constexpr bool move_to_value(MapFrame&) {
 
         if(m_current == end_) {
             setError(JsonIteratorWriterError::OUTPUT_OVERFLOW);
@@ -1671,7 +1671,7 @@ public:
         return true;
     }
 
-    constexpr bool write_array_end(ArrayFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_array_end(ArrayFrame& frame) {
         if constexpr (Pretty) {
             m_indent_level = frame.depth;
             if (!write_indent()) return false;
@@ -1684,7 +1684,7 @@ public:
         *m_current ++ = ']'; m_bytesWritten ++;
         return true;
     }
-    constexpr bool write_map_end(MapFrame& frame) {
+    __attribute__((noinline)) constexpr bool write_map_end(MapFrame& frame) {
         if constexpr (Pretty) {
             m_indent_level = frame.depth;
             if (!write_indent()) return false;

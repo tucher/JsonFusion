@@ -397,24 +397,12 @@ constexpr bool SerializeOneStructField(std::size_t & count, std::size_t & jfInde
                 if constexpr (FieldOpts::template has_option<options::detail::key_tag>) {
                     using KeyOpt = typename FieldOpts::template get_option<options::detail::key_tag>;
                     const auto & f =  KeyOpt::desc.toStringView();
-                    if(!writer.write_string_begin(f.size())) {
-                        return ctx.withWriterError(writer);
-                    }
-                    if(!writer.write_string_chunk(f.data(), f.size())) {
-                        return ctx.withWriterError(writer);
-                    }
-                    if(!writer.write_string_end()) {
+                    if(!writer.write_string(f.data(), f.size())) {
                         return ctx.withWriterError(writer);
                     }
                 } else {
                     const auto & f =   introspection::structureElementNameByIndex<StructIndex, ObjT>;
-                    if(!writer.write_string_begin(f.size())) {
-                        return ctx.withWriterError(writer);
-                    }
-                    if(!writer.write_string_chunk(f.data(), f.size())) {
-                        return ctx.withWriterError(writer);
-                    }
-                    if(!writer.write_string_end()) {
+                    if(!writer.write_string(f.data(), f.size())) {
                         return ctx.withWriterError(writer);
                     }
                 }
