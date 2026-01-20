@@ -75,23 +75,24 @@ file(GLOB JSON_FUSION
 # )
 # target_link_libraries(consteval_tests PRIVATE yyjson)
 
-add_executable(sax_demo
-    tests/sax_demo.cpp
-    ${JSON_FUSION}
-)
+# add_executable(sax_demo
+#     tests/sax_demo.cpp
+#     ${JSON_FUSION}
+# )
 
 # YyJSON WireSink integration example
-add_executable(yyjson_wiresink_example
-    examples/yyjson_wiresink.cpp
-    ${JSON_FUSION}
-)
-target_link_libraries(yyjson_wiresink_example PRIVATE yyjson)
+# add_executable(yyjson_wiresink_example
+#     examples/yyjson_wiresink.cpp
+#     ${JSON_FUSION}
+# )
+# target_link_libraries(yyjson_wiresink_example PRIVATE yyjson)
 
 
-add_executable(migration_example
-    examples/schema_evolution_bool_to_enum.cpp
-    ${JSON_FUSION}
-)
+# add_executable(migration_example
+#     examples/schema_evolution_bool_to_enum.cpp
+#     ${JSON_FUSION}
+# )
+# target_link_libraries(migration_example PRIVATE yyjson)
 
 add_executable(canada_json_parsing
     benchmarks/canada_json/canada_json_parsing.cpp

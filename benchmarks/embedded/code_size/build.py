@@ -166,12 +166,12 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
             description="cJSON - lightweight JSON parser in C",
             dependencies=["git:https://github.com/DaveGamble/cJSON.git"],
         ),
-        Library(
-            name="jsmn",
-            source_file="parse_config_jsmn.cpp",
-            description="jsmn - minimalist JSON tokenizer",
-            dependencies=["git:https://github.com/zserge/jsmn.git"],
-        )
+        # Library(
+        #     name="jsmn",
+        #     source_file="parse_config_jsmn.cpp",
+        #     description="jsmn - minimalist JSON tokenizer",
+        #     dependencies=["git:https://github.com/zserge/jsmn.git"],
+        # )
     ]
     
     # Glaze only supported on ARM Cortex-M (not AVR or ESP32) Esp32 build is pulling deps on atomics via std::chrono
@@ -189,7 +189,7 @@ def get_libraries_for_platform(platform: TargetPlatform) -> List[Library]:
     if platform.compiler_prefix != "avr-":
         libraries.append(
             Library(
-                name="JsonFusion CBOR <->",
+                name="JsonFusion CBOR",
                 source_file="parse_config_cbor.cpp",
                 description="JsonFusion CBOR parser",
             )

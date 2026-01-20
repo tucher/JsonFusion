@@ -560,9 +560,9 @@ a hack – C++26 is expected to standardize native reflection, making this appro
 
 ### Binary Size (Embedded Focus)
 
-JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** (STM32, SAMV7) and **ESP32** (Xtensa LX6). All tests use a realistic workload: parsing **two distinct JSON message types**—a configuration object and an RPC command structure—with nested objects, arrays, validation constraints, and optional fields.
+JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** (STM32, SAMV7) and **ESP32** (Xtensa LX6). All tests use a realistic workload: parsing and serializing **two distinct JSON message types**—a configuration object and an RPC command structure—with nested objects, arrays, validation constraints, and optional fields.
 
-**What we're measuring:** Complete workflow for **two models**: **parse JSON + populate structs + validate constraints**. This simulates real embedded systems that handle multiple message types (config, commands, telemetry, etc.).
+**What we're measuring:** Complete workflow for **two models**: **parse JSON + populate structs + validate constraints + serialize again**. This simulates real embedded systems that handle multiple message types (config, commands, telemetry, etc.).
 
 📁 **Benchmark**: [`benchmarks/embedded/code_size/`](benchmarks/embedded/code_size/)  
 📁 **Models**: [`embedded_config.hpp`](benchmarks/embedded/code_size/embedded_config.hpp) (EmbeddedConfig + RpcCommand)
@@ -577,22 +577,21 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 - **Compilation**: `-Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -Wall` (zero warnings)
 - **Linking**: `-specs=nano.specs -specs=nosys.specs -Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on Cortex-M0+ and Cortex-M7 on -Os build** — while eliminating manual boilerplate and adding declarative validation.
+**TL;DR:** ✅ **JsonFusion is one of the smallest on Cortex-M0+ and Cortex-M7 on -Os build** — while eliminating manual boilerplate and adding declarative validation.
 
 **Results (`.text` section - code size in flash):**
 
 | Library                               |     M7    |    M0+    |  Version   |
 |---------------------------------------|-----------|-----------|------------|
-| **JsonFusion**                        |  14.8 KB |  19.3 KB | 2834849f   |
-| ArduinoJson                           |  15.4 KB |  23.9 KB | v7.4.2     |
-| **JsonFusion CBOR <->**               |  17.0 KB |  24.2 KB | 2834849f   |
-| Glaze(with embedded-friendly config)  |  17.8 KB |  24.1 KB | ddea99c5   |
-| cJSON                                 |  18.8 KB |  28.2 KB | c859b25d   |
-| jsmn                                  |  19.7 KB |  29.1 KB | 25647e69   |
+| **JsonFusion CBOR**                   |  17.0 KB |  24.2 KB | 0c8ff196   |
+| ArduinoJson                           |  20.0 KB |  29.2 KB | v7.4.2     |
+| **JsonFusion**                        |  21.5 KB |  31.4 KB | 0c8ff196   |
+| cJSON                                 |  25.3 KB |  35.2 KB | c859b25d   |
+| Glaze(with embedded-friendly config)  |  28.5 KB |  37.1 KB | ddea99c5   |
 
 **Key Takeaways:**
 
-1. **JsonFusion with `-Os` is smallest on both M7 and M0+**  while ArduinoJson, jsmn, and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling)
+1. **JsonFusion with `-Os` is relatively small on both M7 and M0+**  while ArduinoJson and cJSON require **hundreds of lines of manual, error-prone boilerplate** (type-unsafe field access, manual validation, manual error handling)
 
 2. **CBOR support is very compact:** JsonFusion's CBOR implementation (parse + serialize) adds minimal overhead compared to JSON parsing only—providing full bidirectional binary protocol support with the same type-safe API.
 
@@ -606,18 +605,17 @@ JsonFusion is benchmarked on multiple embedded platforms: **ARM Cortex-M7/M0+** 
 - **Compilation**: `-Os -fno-exceptions -fno-rtti -fno-threadsafe-statics -ffunction-sections -fdata-sections -DNDEBUG -flto -mlongcalls -mtext-section-literals`
 - **Linking**: `-Wl,--gc-sections -flto`
 
-**TL;DR:** ✅ **JsonFusion is smallest on ESP32**
+**TL;DR:** ✅ **JsonFusion is one of the smallest on ESP32**
 
 **Results (`.text` section - code size in flash):**
 
 | Library                               |   ESP32   |  Version   |
 |---------------------------------------|-----------|------------|
-| **JsonFusion**                        |  16.4 KB | 2834849f   |
-| ArduinoJson                           |  18.7 KB | v7.4.2     |
-| **JsonFusion CBOR <->**               |  20.3 KB | 2834849f   |
-| Glaze(with embedded-friendly config)  |  21.5 KB | ddea99c5   |
-| cJSON                                 |  33.4 KB | c859b25d   |
-| jsmn                                  |  34.6 KB | 25647e69   |
+| **JsonFusion CBOR**                   |  20.3 KB | 0c8ff196   |
+| ArduinoJson                           |  25.1 KB | v7.4.2     |
+| **JsonFusion**                        |  25.7 KB | 0c8ff196   |
+| Glaze(with embedded-friendly config)  |  34.0 KB | ddea99c5   |
+| cJSON                                 |  65.1 KB | c859b25d   |
 
 **Key Takeaways:**
 

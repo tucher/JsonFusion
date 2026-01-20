@@ -96,7 +96,8 @@ struct glz::meta<embedded_benchmark::RpcCommand::Parameter> {
 
     static constexpr auto value = object(
         &T::key, &T::int_value,
-        "float_value", read_constraint<&T::float_value, validate_float, ERR>,
+        // "float_value", read_constraint<&T::float_value, validate_float, ERR>, // TODO: does not work for round-trip, need to report this to Glaze team
+        "float_value", &T::float_value,
         &T::bool_value, &T::string_value
     );
     static constexpr bool requires_key(std::string_view key, bool) {
@@ -160,7 +161,11 @@ embedded_benchmark::EmbeddedConfig g_config;
 
 extern "C" __attribute__((used)) bool parse_config(const char* data, size_t size) {
     auto error = glz::read<glz::opts_size{}>(g_config, std::string_view(data, size));
-    return !error;
+
+    char* d = const_cast<char*>(data);
+    auto w_err = glz::write<glz::opts_size{}>(g_config, d);
+
+    return !error && !w_err;
 }
 
 struct opts_size_strict : glz::opts_size {
@@ -170,7 +175,10 @@ struct opts_size_strict : glz::opts_size {
 extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t size) {
     embedded_benchmark::RpcCommand cmd;
     auto error = glz::read<opts_size_strict{}>(cmd, std::string_view(data, size));
-    return !error;
+
+    char* d = const_cast<char*>(data);
+    auto w_err = glz::write<glz::opts_size{}>(cmd, d);
+    return !error && !w_err;
 }
 
 #ifdef JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS

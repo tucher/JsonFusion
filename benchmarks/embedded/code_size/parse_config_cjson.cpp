@@ -206,6 +206,100 @@ bool parse_logging(const cJSON* obj, embedded_benchmark::EmbeddedConfig::Logging
     return true;
 }
 
+// Serialize Network to cJSON object
+cJSON* serialize_network(const embedded_benchmark::EmbeddedConfig::Network& net) {
+    cJSON* obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(obj, "name", net.name.data());
+    cJSON_AddStringToObject(obj, "address", net.address.data());
+    cJSON_AddNumberToObject(obj, "port", net.port);
+    cJSON_AddBoolToObject(obj, "enabled", net.enabled);
+    return obj;
+}
+
+// Serialize Motor to cJSON object
+cJSON* serialize_motor(const embedded_benchmark::EmbeddedConfig::Controller::Motor& motor) {
+    cJSON* obj = cJSON_CreateObject();
+    cJSON_AddNumberToObject(obj, "id", static_cast<double>(motor.id));
+    cJSON_AddStringToObject(obj, "name", motor.name.data());
+
+    cJSON* pos_arr = cJSON_CreateArray();
+    for (int i = 0; i < 3; ++i) {
+        cJSON_AddItemToArray(pos_arr, cJSON_CreateNumber(motor.position[i]));
+    }
+    cJSON_AddItemToObject(obj, "position", pos_arr);
+
+    cJSON* vel_arr = cJSON_CreateArray();
+    for (int i = 0; i < 3; ++i) {
+        cJSON_AddItemToArray(vel_arr, cJSON_CreateNumber(motor.vel_limits[i]));
+    }
+    cJSON_AddItemToObject(obj, "vel_limits", vel_arr);
+
+    cJSON_AddBoolToObject(obj, "inverted", motor.inverted);
+    return obj;
+}
+
+// Serialize Sensor to cJSON object
+cJSON* serialize_sensor(const embedded_benchmark::EmbeddedConfig::Controller::Sensor& sensor) {
+    cJSON* obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(obj, "type", sensor.type.data());
+    cJSON_AddStringToObject(obj, "model", sensor.model.data());
+    cJSON_AddNumberToObject(obj, "range_min", sensor.range_min);
+    cJSON_AddNumberToObject(obj, "range_max", sensor.range_max);
+    cJSON_AddBoolToObject(obj, "active", sensor.active);
+    return obj;
+}
+
+// Serialize EmbeddedConfig to buffer
+size_t serialize_config_cjson(const embedded_benchmark::EmbeddedConfig& config, char* buffer, size_t buffer_size) {
+    cJSON* root = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(root, "app_name", config.app_name.data());
+    cJSON_AddNumberToObject(root, "version_major", config.version_major);
+    cJSON_AddNumberToObject(root, "version_minor", config.version_minor);
+
+    cJSON_AddItemToObject(root, "network", serialize_network(config.network));
+
+    if (config.fallback_network_conf.has_value()) {
+        cJSON_AddItemToObject(root, "fallback_network_conf", serialize_network(*config.fallback_network_conf));
+    }
+
+    cJSON* ctrl_obj = cJSON_CreateObject();
+    cJSON_AddStringToObject(ctrl_obj, "name", config.controller.name.data());
+    cJSON_AddNumberToObject(ctrl_obj, "loop_hz", config.controller.loop_hz);
+
+    cJSON* motors_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < config.controller.motors_count; ++i) {
+        cJSON_AddItemToArray(motors_arr, serialize_motor(config.controller.motors[i]));
+    }
+    cJSON_AddItemToObject(ctrl_obj, "motors", motors_arr);
+
+    cJSON* sensors_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < config.controller.sensors_count; ++i) {
+        cJSON_AddItemToArray(sensors_arr, serialize_sensor(config.controller.sensors[i]));
+    }
+    cJSON_AddItemToObject(ctrl_obj, "sensors", sensors_arr);
+
+    cJSON_AddItemToObject(root, "controller", ctrl_obj);
+
+    cJSON* log_obj = cJSON_CreateObject();
+    cJSON_AddBoolToObject(log_obj, "enabled", config.logging.enabled);
+    cJSON_AddStringToObject(log_obj, "path", config.logging.path.data());
+    cJSON_AddNumberToObject(log_obj, "max_files", config.logging.max_files);
+    cJSON_AddItemToObject(root, "logging", log_obj);
+
+    char* printed = cJSON_PrintUnformatted(root);
+    size_t len = 0;
+    if (printed) {
+        len = strlen(printed);
+        if (len < buffer_size) {
+            memcpy(buffer, printed, len + 1);
+        }
+        free(printed);
+    }
+    cJSON_Delete(root);
+    return len;
+}
+
 // Main parsing function
 extern "C" __attribute__((used)) bool parse_config_cjson(const char* data, size_t size) {
     // Parse JSON into DOM tree
@@ -213,7 +307,7 @@ extern "C" __attribute__((used)) bool parse_config_cjson(const char* data, size_
     if (!root) {
         return false;
     }
-    
+
     // Declare all variables at the top (C++ goto requirement)
     bool success = true;
     cJSON* app_name;
@@ -223,35 +317,35 @@ extern "C" __attribute__((used)) bool parse_config_cjson(const char* data, size_
     cJSON* fallback_network;
     cJSON* controller;
     cJSON* logging;
-    
+
     // Parse top-level fields
     app_name = cJSON_GetObjectItem(root, "app_name");
     if (!copy_cjson_string(app_name, g_config_cjson.app_name.data(), g_config_cjson.app_name.size())) {
         success = false;
         goto cleanup;
     }
-    
+
     version_major = cJSON_GetObjectItem(root, "version_major");
     if (!cJSON_IsNumber(version_major)) {
         success = false;
         goto cleanup;
     }
     g_config_cjson.version_major = static_cast<uint16_t>(version_major->valueint);
-    
+
     version_minor = cJSON_GetObjectItem(root, "version_minor");
     if (!cJSON_IsNumber(version_minor)) {
         success = false;
         goto cleanup;
     }
     g_config_cjson.version_minor = version_minor->valueint;
-    
+
     // network (required)
     network = cJSON_GetObjectItem(root, "network");
     if (!parse_network(network, g_config_cjson.network)) {
         success = false;
         goto cleanup;
     }
-    
+
     // fallback_network_conf (optional)
     fallback_network = cJSON_GetObjectItem(root, "fallback_network_conf");
     if (fallback_network && !cJSON_IsNull(fallback_network)) {
@@ -263,25 +357,100 @@ extern "C" __attribute__((used)) bool parse_config_cjson(const char* data, size_
     } else {
         g_config_cjson.fallback_network_conf.reset();
     }
-    
+
     // controller (required)
     controller = cJSON_GetObjectItem(root, "controller");
     if (!parse_controller(controller, g_config_cjson.controller)) {
         success = false;
         goto cleanup;
     }
-    
+
     // logging (required)
     logging = cJSON_GetObjectItem(root, "logging");
     if (!parse_logging(logging, g_config_cjson.logging)) {
         success = false;
         goto cleanup;
     }
-    
+
 cleanup:
     // Free the DOM tree
     cJSON_Delete(root);
+
+    if (success) {
+        // Serialize back to buffer
+        char* d = const_cast<char*>(data);
+        size_t written = serialize_config_cjson(g_config_cjson, d, size);
+        success = written > 0;
+    }
+
     return success;
+}
+
+// Serialize RpcCommand to buffer
+size_t serialize_rpc_command_cjson(const embedded_benchmark::RpcCommand& cmd, char* buffer, size_t buffer_size) {
+    cJSON* root = cJSON_CreateObject();
+
+    cJSON_AddStringToObject(root, "command_id", cmd.command_id.data());
+    cJSON_AddNumberToObject(root, "timestamp_us", static_cast<double>(cmd.timestamp_us));
+    cJSON_AddNumberToObject(root, "sequence", cmd.sequence);
+    cJSON_AddNumberToObject(root, "priority", cmd.priority);
+
+    cJSON* targets_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < cmd.targets_count; ++i) {
+        cJSON* target_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(target_obj, "device_id", cmd.targets[i].device_id.data());
+        cJSON_AddStringToObject(target_obj, "subsystem", cmd.targets[i].subsystem.data());
+        cJSON_AddItemToArray(targets_arr, target_obj);
+    }
+    cJSON_AddItemToObject(root, "targets", targets_arr);
+
+    cJSON* params_arr = cJSON_CreateArray();
+    for (size_t i = 0; i < cmd.params_count; ++i) {
+        cJSON* param_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(param_obj, "key", cmd.params[i].key.data());
+        if (cmd.params[i].int_value.has_value()) {
+            cJSON_AddNumberToObject(param_obj, "int_value", static_cast<double>(*cmd.params[i].int_value));
+        }
+        if (cmd.params[i].float_value.has_value()) {
+            cJSON_AddNumberToObject(param_obj, "float_value", *cmd.params[i].float_value);
+        }
+        if (cmd.params[i].bool_value.has_value()) {
+            cJSON_AddBoolToObject(param_obj, "bool_value", *cmd.params[i].bool_value);
+        }
+        if (cmd.params[i].string_value.has_value()) {
+            cJSON_AddStringToObject(param_obj, "string_value", cmd.params[i].string_value->data());
+        }
+        cJSON_AddItemToArray(params_arr, param_obj);
+    }
+    cJSON_AddItemToObject(root, "params", params_arr);
+
+    if (cmd.execution.has_value()) {
+        cJSON* exec_obj = cJSON_CreateObject();
+        cJSON_AddNumberToObject(exec_obj, "timeout_ms", cmd.execution->timeout_ms);
+        cJSON_AddBoolToObject(exec_obj, "retry_on_failure", cmd.execution->retry_on_failure);
+        cJSON_AddNumberToObject(exec_obj, "max_retries", cmd.execution->max_retries);
+        cJSON_AddItemToObject(root, "execution", exec_obj);
+    }
+
+    if (cmd.response_config.has_value()) {
+        cJSON* resp_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(resp_obj, "callback_url", cmd.response_config->callback_url.data());
+        cJSON_AddBoolToObject(resp_obj, "acknowledge", cmd.response_config->acknowledge);
+        cJSON_AddBoolToObject(resp_obj, "send_result", cmd.response_config->send_result);
+        cJSON_AddItemToObject(root, "response_config", resp_obj);
+    }
+
+    char* printed = cJSON_PrintUnformatted(root);
+    size_t len = 0;
+    if (printed) {
+        len = strlen(printed);
+        if (len < buffer_size) {
+            memcpy(buffer, printed, len + 1);
+        }
+        free(printed);
+    }
+    cJSON_Delete(root);
+    return len;
 }
 
 // Parse RpcCommand
@@ -289,7 +458,7 @@ extern "C" __attribute__((used)) bool parse_rpc_command_cjson(const char* data, 
     embedded_benchmark::RpcCommand rpc_cmd;  // Local variable
     cJSON* root = cJSON_ParseWithLength(data, size);
     if (!root) return false;
-    
+
     // Declare all variables at the top
     bool success = true;
     cJSON* command_id;
@@ -514,6 +683,14 @@ extern "C" __attribute__((used)) bool parse_rpc_command_cjson(const char* data, 
     
 cleanup:
     cJSON_Delete(root);
+
+    if (success) {
+        // Serialize back to buffer
+        char* d = const_cast<char*>(data);
+        size_t written = serialize_rpc_command_cjson(rpc_cmd, d, size);
+        success = written > 0;
+    }
+
     return success;
 }
 

@@ -1,5 +1,6 @@
 
 #include <JsonFusion/parser.hpp>
+#include <JsonFusion/serializer.hpp>
 #include <JsonFusion/validators.hpp>
 #include <string_view>
 // #define JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
@@ -153,13 +154,21 @@ EmbeddedConfig g_config;
 // This is what gets measured for code size
 extern "C" __attribute__((used)) bool parse_config(const char* data, size_t size) {
     auto result = JsonFusion::Parse(g_config, std::string_view(data, size));
-    return !!result;
+
+    char* d = const_cast<char*>(data);
+    auto result_s = JsonFusion::Serialize(g_config, d, d + size);
+
+    return !!result  && !!result_s;
 }
 
 extern "C" __attribute__((used)) bool parse_rpc_command(const char* data, size_t size) {
     RpcCommand cmd;
     auto result = JsonFusion::Parse(cmd, std::string_view(data, size));
-    return !!result;
+    
+    char* d = const_cast<char*>(data);
+    auto result_s = JsonFusion::Serialize(cmd, d, d + size);
+        
+    return !!result && !!result_s;
 }
 
 #ifdef JSON_FUSION_BENCHMARK_ADDITIONAL_MODELS
