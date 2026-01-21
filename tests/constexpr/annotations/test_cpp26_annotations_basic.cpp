@@ -358,4 +358,168 @@ constexpr bool test_both_syntaxes_different_validators() {
 static_assert(test_both_syntaxes_different_validators(), 
     "Complex mixed struct with both syntaxes and different validators");
 
+// ============================================================================
+// Test: Non-POD types (C++26 reflection advantage over PFR)
+// ============================================================================
+
+// Non-POD structs defined at namespace scope to avoid overload ambiguity
+
+// Non-POD: Has user-defined constructor (PFR can't handle this!)
+struct NonPodWithConstructor {
+    [[=OptionsPack<range<0, 100>>{}]] int value;
+    std::string name;
+    
+    constexpr NonPodWithConstructor() : value(0), name() {}
+};
+
+constexpr bool test_non_pod_with_constructor() {
+    NonPodWithConstructor obj{};
+    std::string json = R"({"value": 50, "name": "test"})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.value == 50 && obj.name == "test";
+}
+static_assert(test_non_pod_with_constructor(), 
+    "C++26 reflection works with non-aggregate types (user-defined constructor)");
+
+// Non-POD: Validation on type with constructor
+struct NonPodForValidation {
+    [[=OptionsPack<range<0, 100>>{}]] int value;
+    
+    constexpr NonPodForValidation() : value(0) {}
+};
+
+constexpr bool test_non_pod_with_constructor_validation() {
+    NonPodForValidation obj{};
+    std::string json = R"({"value": 150})";
+    auto result = Parse(obj, json);
+    
+    return !result && result.validationErrors().error() == SchemaError::number_out_of_range;
+}
+static_assert(test_non_pod_with_constructor_validation(), 
+    "Validation works on non-aggregate types");
+
+// Non-POD: Has default member initializers
+struct NonPodWithDefaults {
+    [[=OptionsPack<range<1, 65535>>{}]] int port = 8080;
+    int timeout = 30;
+    
+    constexpr NonPodWithDefaults() = default;
+};
+
+constexpr bool test_non_pod_with_default_values() {
+    NonPodWithDefaults obj{};
+    std::string json = R"({"port": 443, "timeout": 60})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.port == 443 && obj.timeout == 60;
+}
+static_assert(test_non_pod_with_default_values(), 
+    "C++26 reflection works with default member initializers");
+
+// Non-POD: Partial JSON (some fields keep defaults)
+constexpr bool test_non_pod_partial_json() {
+    NonPodWithDefaults obj{};
+    std::string json = R"({"port": 443})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.port == 443 && obj.timeout == 30;
+}
+static_assert(test_non_pod_partial_json(), 
+    "Non-POD type: unprovided fields keep their default values");
+
+// Non-POD: Has methods (reflection only sees data members)
+struct NonPodWithMethods {
+    [[=OptionsPack<range<0, 100>>{}]] int percentage;
+    
+    constexpr NonPodWithMethods() : percentage(0) {}
+    
+    // Methods don't interfere with reflection
+    constexpr int doubled() const { return percentage * 2; }
+    constexpr bool is_half() const { return percentage == 50; }
+};
+
+constexpr bool test_non_pod_with_methods() {
+    NonPodWithMethods obj{};
+    std::string json = R"({"percentage": 50})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.percentage == 50 && obj.doubled() == 100 && obj.is_half();
+}
+static_assert(test_non_pod_with_methods(), 
+    "C++26 reflection ignores methods, only sees data members");
+
+// ============================================================================
+// Test: C-style arrays in structs (another PFR limitation)
+// ============================================================================
+
+// Simple 1D C array
+struct WithCArray1D {
+    [[=OptionsPack<range<0, 100>>{}]] int values[3];
+};
+
+constexpr bool test_c_array_1d() {
+    WithCArray1D obj{};
+    std::string json = R"({"values": [10, 20, 30]})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.values[0] == 10 && obj.values[1] == 20 && obj.values[2] == 30;
+}
+static_assert(test_c_array_1d(), 
+    "C++26 reflection works with 1D C-style arrays");
+
+// 2D C array (nested)
+struct WithCArray2D {
+    int matrix[2][2];
+};
+
+constexpr bool test_c_array_2d() {
+    WithCArray2D obj{};
+    std::string json = R"({"matrix": [[1, 2], [3, 4]]})";
+    auto result = Parse(obj, json);
+    
+    return result 
+        && obj.matrix[0][0] == 1 && obj.matrix[0][1] == 2
+        && obj.matrix[1][0] == 3 && obj.matrix[1][1] == 4;
+}
+static_assert(test_c_array_2d(), 
+    "C++26 reflection works with 2D C-style arrays");
+
+// Mixed: C array + other fields
+struct WithMixedCArray {
+    int id;
+    [[=OptionsPack<range<0, 255>>{}]] int rgb[3];
+    std::string name;
+};
+
+constexpr bool test_c_array_mixed() {
+    WithMixedCArray obj{};
+    std::string json = R"({"id": 42, "rgb": [128, 64, 255], "name": "color"})";
+    auto result = Parse(obj, json);
+    
+    // Note: rgb[2] = 255 is at boundary, should pass
+    return result 
+        && obj.id == 42
+        && obj.rgb[0] == 128 && obj.rgb[1] == 64 && obj.rgb[2] == 255
+        && obj.name == "color";
+}
+static_assert(test_c_array_mixed(), 
+    "C++26 reflection works with mixed C-arrays and other fields");
+
+// C array size validation (min_items/max_items)
+struct WithCArraySizeValidation {
+    [[=OptionsPack<min_items<2>, max_items<4>>{}]] int values[4];
+};
+
+constexpr bool test_c_array_size_validation() {
+    WithCArraySizeValidation obj{};
+    // Provide exactly 3 items - within [2, 4] range
+    std::string json = R"({"values": [1, 2, 3]})";
+    auto result = Parse(obj, json);
+    
+    return result && obj.values[0] == 1 && obj.values[1] == 2 && obj.values[2] == 3;
+}
+static_assert(test_c_array_size_validation(), 
+    "Array size validation works on C-style arrays");
+
 #endif // JSONFUSION_USE_REFLECTION

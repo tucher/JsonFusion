@@ -845,8 +845,13 @@ struct is_json_object {
         }else if constexpr (!std::is_class_v<U>) {
             return false;
         } else if constexpr (!std::is_aggregate_v<U>) {
-            // static_assert(false, "Type is not aggregate, this is not supported");
-            return false;
+            #if JSONFUSION_USE_REFLECTION
+                // C++26 reflection can handle non-aggregate types (classes with constructors, etc.)
+                return true;
+            #else
+                // PFR requires aggregates
+                return false;
+            #endif
         } else {
             // Aggregate class, non-scalar, non-string, non-range -> treat as JSON object
 

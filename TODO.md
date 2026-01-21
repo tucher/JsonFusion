@@ -5,3 +5,5 @@
 
 
 # custom error messages for validators?
+
+# Automatic flattening of options packs for better reusability
