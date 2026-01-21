@@ -1,0 +1,59 @@
+# Conan ignore file - excludes files from export
+# See: https://docs.conan.io/en/latest/reference/conanfile/attributes.html#exports
+
+# Build directories
+build/
+build*/
+cmake-build-*/
+ubuntu_bld/
+
+# IDE files
+.vscode/
+.idea/
+*.user
+*.suo
+*.sdf
+*.opensdf
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Test and benchmark files
+tests/
+benchmarks/
+examples/
+
+# Documentation (will be separate)
+docs/
+
+# Scripts
+scripts/
+
+# Temporary files
+*.pyc
+__pycache__/
+*.log
+*.tmp
+
+# Conan local files (test_package is now in packaging/conan/)
+conaninfo.txt
+conanbuildinfo.*
+graph_info.json
+
+# vcpkg
+vcpkg_test/
+
+# Other package managers
+*.json
+!conandata.yml
+
+# Markdown files (except LICENSE)
+*.md
+!CONAN.md

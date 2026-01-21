@@ -13,3 +13,16 @@ benchmarks/glaze_like
 benchmarks/twitter_json_c_sharp/ubuntu-bld
 benchmarks/embedded/code_size/results_arm_cortex-m.json
 benchmarks/embedded/code_size/results_esp32_xtensa_lx6.json
+settings.local.json
+consteval_tests.cpp
+
+# Conan generated files
+CMakeUserPresets.json
+conaninfo.txt
+conanbuildinfo.*
+graph_info.json
+
+# CMake build directories
+cmake-build-*
+CMakeFiles/
+CMakeCache.txt

@@ -1,0 +1,6 @@
+[requires]
+jsonfusion/0.710.0
+
+[generators]
+CMakeDeps
+CMakeToolchain

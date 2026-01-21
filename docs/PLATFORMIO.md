@@ -78,8 +78,8 @@ framework = stm32cube  ; Instead of arduino
 
 ## More Information
 
-- [Main README](README.md) - Full feature documentation
-- [Annotations Reference](docs/ANNOTATIONS_REFERENCE.md) - Validation and options
-- [Embedded Benchmarks](benchmarks/embedded/code_size/) - Code size analysis
-- [Examples](examples/) - Complete working examples
+- [Main README](../README.md) - Full feature documentation
+- [Annotations Reference](ANNOTATIONS_REFERENCE.md) - Validation and options
+- [Embedded Benchmarks](../benchmarks/embedded/code_size/) - Code size analysis
+- [Examples](../examples/) - Complete working examples
 

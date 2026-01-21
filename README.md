@@ -91,9 +91,10 @@ JsonFusion::Serialize(conf, output);
 
 ## Installation
 
-JsonFusion is a **header-only library**. Simply copy the include/ directory into your project’s include path 
+JsonFusion is a **header-only library**. Simply copy the `include/` directory into your project's include path 
 (e.g. so `#include <JsonFusion/parser.hpp>` works and `pfr.hpp` is visible).
 
+Package managers: [Conan](docs/conan_usage.md), [vcpkg](docs/vcpkg_usage.md), [PlatformIO](docs/PLATFORMIO.md)
 
 ### Requirements
 
