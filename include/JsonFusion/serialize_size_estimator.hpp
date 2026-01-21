@@ -157,10 +157,11 @@ constexpr std::size_t EstimateBoolSize() {
 template <typename T>
     requires NumberLike<T>
 constexpr std::size_t EstimateNumberSize() {
-    if constexpr (std::is_integral_v<T>) {
-        return max_integer_digits<T>();
+    using U = AnnotatedValue<T>;
+    if constexpr (std::is_integral_v<U>) {
+        return max_integer_digits<U>();
     } else {
-        return max_float_size<T>();
+        return max_float_size<U>();
     }
 }
 

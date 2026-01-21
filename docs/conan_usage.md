@@ -5,7 +5,7 @@
 Add to your `conanfile.txt`:
 ```ini
 [requires]
-jsonfusion/1.0.0
+jsonfusion/1.0.1
 
 [generators]
 CMakeDeps
@@ -50,7 +50,7 @@ Then `conan create .` will automatically use the new version.
 ## Publishing
 
 ### To Conan Center (Public)
-1. Create a GitHub release: `git tag v1.0.0 && git push origin v1.0.0`
+1. Create a GitHub release: `git tag v1.0.1 && git push origin v1.0.1`
 2. Fork [conan-center-index](https://github.com/conan-io/conan-center-index)
 3. Follow their [contribution guide](https://github.com/conan-io/conan-center-index/blob/master/docs/how_to_add_packages.md)
 4. Submit a pull request
@@ -59,7 +59,7 @@ Then `conan create .` will automatically use the new version.
 ```bash
 conan remote add myremote <url>
 conan remote login myremote
-conan upload jsonfusion/1.0.0 -r=myremote --all
+conan upload jsonfusion/1.0.1 -r=myremote --all
 ```
 
 ## Requirements

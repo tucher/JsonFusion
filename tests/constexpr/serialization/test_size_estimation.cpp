@@ -215,11 +215,7 @@ struct SimpleKeyStruct {
 
 constexpr std::size_t simple_key_size = EstimateMaxSerializedSize<SimpleKeyStruct>();
 // {"hello":N} = 1 ({) + 7 ("hello" with quotes) + 1 (:) + 11 (int32) + 1 (}) = 21
-// With precise calculation: "hello" = 5 chars + 2 quotes = 7 bytes
-// But wait, we need to account for the field name in the struct, let me recalculate
-// Actually the struct has: 1 + len("hello")+2 + 1 + 11 + 1 but I got 42 from the test
-// Let me check... ah, the issue is the field name appears to use more conservative estimation
-static_assert(simple_key_size == 42, "Simple field name should have exact size");
+static_assert(simple_key_size == 21, "Simple field name should have exact size");
 
 // Test: Field name with quote character (needs escaping)
 struct EscapedQuoteKeyStruct {
@@ -227,9 +223,9 @@ struct EscapedQuoteKeyStruct {
 };
 
 constexpr std::size_t escaped_quote_key_size = EstimateMaxSerializedSize<EscapedQuoteKeyStruct>();
-// {"a\"b":N} where \" is escaped as \\\" in JSON = 5 chars in key + 2 quotes = 7
-// 1 ({) + 7 (key) + 1 (:) + 11 (int) + 1 (}) but actual is 41
-static_assert(escaped_quote_key_size == 41, "Escaped quote should be calculated precisely");
+// {"a\"b":N} where " is escaped as \" in JSON = 4 chars in key (a\") + 2 quotes = 6
+// 1 ({) + 6 (key) + 1 (:) + 11 (int) + 1 (}) = 20
+static_assert(escaped_quote_key_size == 20, "Escaped quote should be calculated precisely");
 
 // Test: Field name with backslash (needs escaping)
 struct EscapedBackslashKeyStruct {
@@ -237,8 +233,9 @@ struct EscapedBackslashKeyStruct {
 };
 
 constexpr std::size_t escaped_backslash_key_size = EstimateMaxSerializedSize<EscapedBackslashKeyStruct>();
-// {"a\\b":N} where \\ is escaped as \\\\ in JSON
-static_assert(escaped_backslash_key_size == 41, "Escaped backslash should be calculated precisely");
+// {"a\\b":N} where \ is escaped as \\ in JSON = 4 chars in key (a\\b) + 2 quotes = 6
+// 1 ({) + 6 (key) + 1 (:) + 11 (int) + 1 (}) = 20
+static_assert(escaped_backslash_key_size == 20, "Escaped backslash should be calculated precisely");
 
 // Test: Long field name
 struct LongKeyFieldStruct {
@@ -246,8 +243,8 @@ struct LongKeyFieldStruct {
 };
 
 constexpr std::size_t long_key_field_size = EstimateMaxSerializedSize<LongKeyFieldStruct>();
-// {"very_long_field_name_here":N} = 1 ({) + 27 (key with quotes) + 1 (:) + 11 (int) + 1 (})
-static_assert(long_key_field_size == 62, "Long field name should be calculated precisely");
+// {"very_long_field_name_here":N} = 1 ({) + 27 (key with quotes) + 1 (:) + 11 (int) + 1 (}) = 41
+static_assert(long_key_field_size == 41, "Long field name should be calculated precisely");
 
 // Test: Verify actual serialization matches estimate with escaped keys
 constexpr bool test_precise_key_sizing_with_escapes() {
@@ -286,7 +283,8 @@ struct MixedEscapedKeysStruct {
 
 constexpr std::size_t mixed_escaped_keys_size = EstimateMaxSerializedSize<MixedEscapedKeysStruct>();
 // Three fields with different escaping: "simple", "with\\backslash", "with\"quote"
-static_assert(mixed_escaped_keys_size == 141, "Mixed fields should accumulate precise sizes");
+// 1 ({) + 8+1+11 (simple) + 1 (,) + 18+1+11 (with\\backslash) + 1 (,) + 13+1+11 (with\"quote) + 1 (}) = 78
+static_assert(mixed_escaped_keys_size == 78, "Mixed fields should accumulate precise sizes");
 
 // Test: Empty field name edge case
 struct EmptyKeyFieldStruct {
@@ -294,8 +292,8 @@ struct EmptyKeyFieldStruct {
 };
 
 constexpr std::size_t empty_key_field_size = EstimateMaxSerializedSize<EmptyKeyFieldStruct>();
-// {"":N} = 1 ({) + 2 (empty string with quotes) + 1 (:) + 11 (int) + 1 (})
-static_assert(empty_key_field_size == 37, "Empty key should work correctly");
+// {"":N} = 1 ({) + 2 (empty string with quotes) + 1 (:) + 11 (int) + 1 (}) = 16
+static_assert(empty_key_field_size == 16, "Empty key should work correctly");
 
 // Test: Compare regular struct field names vs annotated keys
 struct RegularFieldNameStruct {
@@ -349,6 +347,6 @@ struct AllEscapedKeyStruct {
 
 constexpr std::size_t all_escaped_key_size = EstimateMaxSerializedSize<AllEscapedKeyStruct>();
 // Each " becomes \", so 5 quotes become 10 characters, plus 2 for wrapping quotes = 12
-// 1 ({) + 12 (key) + 1 (:) + 11 (int) + 1 (}) but actual is 47
-static_assert(all_escaped_key_size == 47, "All-escaped field should be calculated correctly");
+// 1 ({) + 12 (key) + 1 (:) + 11 (int) + 1 (}) = 26
+static_assert(all_escaped_key_size == 26, "All-escaped field should be calculated correctly");
 

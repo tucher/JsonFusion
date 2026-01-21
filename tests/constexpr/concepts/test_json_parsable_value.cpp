@@ -78,12 +78,18 @@ static_assert(!static_schema::ParsableValue<void>);
 // Nested optionals (optional<optional<T>> should not be valid)
 static_assert(!static_schema::ParsableValue<std::optional<std::optional<int>>>);
 
-// Optional of non-parsable type
+// Optional of non-parsable type (in C++20/C++23 mode)
 struct NonAggregate {
     NonAggregate() {}  // Constructor makes it non-aggregate
     int x;
 };
+#if !JSONFUSION_USE_REFLECTION
+// PFR mode: non-aggregates are NOT parsable
 static_assert(!static_schema::ParsableValue<std::optional<NonAggregate>>);
+#else
+// C++26 reflection mode: non-aggregates ARE parsable
+static_assert(static_schema::ParsableValue<std::optional<NonAggregate>>);
+#endif
 
 // Containers of non-parsable types
 static_assert(!static_schema::ParsableValue<std::vector<int*>>);

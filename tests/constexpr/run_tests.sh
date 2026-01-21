@@ -12,6 +12,11 @@ echo "Running JsonFusion constexpr tests..."
 echo "======================================="
 
 : ${CXX:=g++}
+: ${CXX_FLAGS:=-std=c++23}
+
+echo "Compiler: $CXX"
+echo "Flags: $CXX_FLAGS"
+echo ""
 $CXX -v
 
 PASS=0
@@ -26,7 +31,7 @@ if [ -f "$STRUCTURAL_TEST" ]; then
     category="concepts"
     printf "%-20s %-20s ... " "$category" "$test_name"
     
-    if $CXX -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
+    if $CXX $CXX_FLAGS -I"$INCLUDE_DIR" -Itests/constexpr -c "$STRUCTURAL_TEST" -o "$TMP_DIR/$test_name.o" 2>&1 | tee "$TMP_DIR/$test_name.log" | grep -q "error:"; then
         echo "❌ FAIL"
         echo ""
         echo "============================================================"
@@ -66,7 +71,7 @@ run_test() {
     test_name=$(basename "$test_file" .cpp)
     category=$(basename $(dirname "$test_file"))
     
-    if $CXX -std=c++23 -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
+    if $CXX $CXX_FLAGS -I"$INCLUDE_DIR" -Itests/constexpr -c "$test_file" -o "$TMP_DIR/$test_name.o" 2>&1 > "$TMP_DIR/$test_name.log" 2>&1; then
         if ! grep -q "warning:" "$TMP_DIR/$test_name.log" | grep -qv "overriding deployment version from"; then
             echo "PASS|$category|$test_name"
         else
@@ -82,6 +87,7 @@ export -f run_test
 export INCLUDE_DIR
 export TMP_DIR
 export CXX
+export CXX_FLAGS
 # Run all other tests in parallel
 find tests/constexpr -name "test_*.cpp" | grep -v "test_structural_detection.cpp" | sort | xargs -P "$NPROCS" -I {} bash -c 'run_test "$@"' _ {} > "$TMP_DIR/parallel_results.txt"
 

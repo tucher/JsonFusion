@@ -132,7 +132,13 @@ struct NonAggregateConsumer {
     constexpr bool finalize(bool success) { return success; }
     constexpr void reset() {}
 };
+#if !JSONFUSION_USE_REFLECTION
+// PFR mode: non-aggregates are NOT supported as streamer value_type
 static_assert(!ConsumingStreamerLike<NonAggregateConsumer>);
+#else
+// C++26 reflection mode: non-aggregates ARE supported
+static_assert(ConsumingStreamerLike<NonAggregateConsumer>);
+#endif
 
 // ===== Primitives are not streamers =====
 static_assert(!ConsumingStreamerLike<int>);

@@ -1,5 +1,5 @@
 [requires]
-jsonfusion/1.0.0
+jsonfusion/1.0.1
 
 [generators]
 CMakeDeps

@@ -118,7 +118,13 @@ struct NonAggregateProducer {
     }
     constexpr void reset() {}
 };
+#if !JSONFUSION_USE_REFLECTION
+// PFR mode: non-aggregates are NOT supported as streamer value_type
 static_assert(!ProducingStreamerLike<NonAggregateProducer>);
+#else
+// C++26 reflection mode: non-aggregates ARE supported
+static_assert(ProducingStreamerLike<NonAggregateProducer>);
+#endif
 
 // ===== Primitives are not streamers =====
 static_assert(!ProducingStreamerLike<int>);

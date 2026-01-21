@@ -78,12 +78,18 @@ static_assert(!static_schema::SerializableValue<void>);
 // Nested optionals
 static_assert(!static_schema::SerializableValue<std::optional<std::optional<int>>>);
 
-// Optional of non-serializable type
+// Optional of non-serializable type (in C++20/C++23 mode)
 struct NonAggregate {
     NonAggregate() {}  // Constructor makes it non-aggregate
     int x;
 };
+#if !JSONFUSION_USE_REFLECTION
+// PFR mode: non-aggregates are NOT serializable
 static_assert(!static_schema::SerializableValue<std::optional<NonAggregate>>);
+#else
+// C++26 reflection mode: non-aggregates ARE serializable
+static_assert(static_schema::SerializableValue<std::optional<NonAggregate>>);
+#endif
 
 // Containers of non-serializable types
 static_assert(!static_schema::SerializableValue<std::vector<int*>>);

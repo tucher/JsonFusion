@@ -160,7 +160,7 @@ struct IntrospectionImpl {
     
     // Returns Annotated<T, Opts...> where Opts are extracted from [[=OptionsPack<...>{}]] annotation
     template<std::size_t Index>
-    using structureElementTypeByIndex = 
+    using structureElementTypeByIndex =
         typename AnnotationFillerFromPack<
             typename [: std::meta::type_of(get_member<Index>()) :],
             typename [: get_options_pack_type<Index>() :]

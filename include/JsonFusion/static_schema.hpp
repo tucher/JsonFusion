@@ -844,6 +844,8 @@ struct is_json_object {
             return false;
         }else if constexpr (!std::is_class_v<U>) {
             return false;
+        } else if constexpr (input_checks::is_specialization_of_v<U, std::optional> || input_checks::is_specialization_of_v<U, std::unique_ptr>) {
+            return false; // nullable types are handled separately
         } else if constexpr (!std::is_aggregate_v<U>) {
             #if JSONFUSION_USE_REFLECTION
                 // C++26 reflection can handle non-aggregate types (classes with constructors, etc.)
@@ -889,7 +891,11 @@ struct is_json_serializable_array {
             return false; //not arrays
         else if constexpr(serialize_transform_traits<U>::is_transformer) {
             return false;
-        }else {
+        } else if constexpr (MapReadable<U>) {
+            return false; // maps are handled separately, not as arrays
+        } else if constexpr (input_checks::is_specialization_of_v<U, std::optional> || input_checks::is_specialization_of_v<U, std::unique_ptr>) {
+            return false; // nullable types are handled separately (std::optional is a range in C++20!)
+        } else {
             if constexpr(ArrayReadable<U>) {
                 return is_json_serializable_value<typename array_read_cursor<AnnotatedValue<T>>::element_type>::value;
             } else {
@@ -979,11 +985,15 @@ struct is_json_parsable_array {
             return false; // WireSink is NOT an array
         } else if constexpr (ParsableStringLike<T>||BoolLike<T> || NumberLike<T>)
             return false; //not arrays
-        else {
+        else if constexpr(parse_transform_traits<U>::is_transformer) {
+            return false;
+        } else if constexpr (MapWritable<U>) {
+            return false; // maps are handled separately, not as arrays
+        } else if constexpr (input_checks::is_specialization_of_v<U, std::optional> || input_checks::is_specialization_of_v<U, std::unique_ptr>) {
+            return false; // nullable types are handled separately (std::optional is a range in C++20!)
+        } else {
             if constexpr(ArrayWritable<U>) {
                 return is_json_parsable_value<typename array_write_cursor<AnnotatedValue<T>>::element_type>::value;
-            }if constexpr(parse_transform_traits<U>::is_transformer) {
-                return false;
             } else {
                 return false;
             }
