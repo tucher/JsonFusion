@@ -7,15 +7,12 @@ import re
 
 def get_version_from_header():
     """Extract version from version.hpp"""
-    try:
-        version_file = os.path.join(os.path.dirname(__file__), "include", "JsonFusion", "version.hpp")
-        content = load(None, version_file)
-        match = re.search(r'#define\s+JSONFUSION_VERSION\s+"([^"]+)"', content)
-        if match:
-            return match.group(1)
-    except:
-        pass
-    return "0.710.0"  # Fallback version
+    version_file = os.path.join(os.path.dirname(__file__), "include", "JsonFusion", "version.hpp")
+    content = load(None, version_file)
+    match = re.search(r'#define\s+JSONFUSION_VERSION\s+"([^"]+)"', content)
+    if match:
+        return match.group(1)
+    
 
 
 class JsonFusionConan(ConanFile):

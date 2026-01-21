@@ -134,7 +134,7 @@ how it is usually done in Python, Java, Go, etc..
 - **Competitive binary footprint**: On embedded ARM (Cortex-M7 and Cortex-M0+) and on Esp32, on typical application setup with `-Os` JsonFusion matches or beats popular json embedded libraries while maintaining modern C++23 type safety and declarative validation. 
 - The implementation conforms to the JSON standard (including arbitrary field order in objects)
 - Validation of JSON shape and structure, field types compatibility and schema, all done in a single parsing pass
-- No macros, no codegen, no registration – relies on PFR-driven introspection
+- No macros, no codegen, no registration – relies on PFR-driven introspection (or C++26 native reflection when available)
 - Works with deeply nested structs, arrays, strings, and arithmetic types out of the box
 - No data-driven recursion in the parser: recursion depth is bounded by your C++ type nesting, not by JSON depth. With only
  fixed-size containers, there is no unbounded stack growth.
@@ -556,8 +556,7 @@ With the default `JSONFUSION_FP_BACKEND=0`, there are no explicit runtime depend
 Less work means both faster execution *and* smaller binaries.
 It is all about avoiding doing the same work multiple times.
 
-JsonFusion leverages **compile-time reflection** through Boost.PFR, enabling the compiler to know everything about your types before runtime.  This isn't
-a hack – C++26 is expected to standardize native reflection, making this approach future-proof.
+JsonFusion leverages **compile-time reflection** through Boost.PFR (or C++26 native reflection when available), enabling the compiler to know everything about your types before runtime. C++26 reflection support is already implemented and tested with GCC 16 (`-std=c++26 -freflection`), providing zero-dependency introspection and native `[[=OptionsPack<...>{}]]` annotation syntax as an alternative to `Annotated<T, ...>` wrappers.
 
 ### Binary Size (Embedded Focus)
 
