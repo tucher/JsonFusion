@@ -1147,7 +1147,7 @@ g++-14 -std=c++23 -I./include -o /tmp/json_schema_demo ./examples/json_schema_de
 ## Limitations and When NOT to Use
 
 - **Requires GCC 14 or newer**. Other compilers (MSVC, Clang, older GCC versions) are not currently supported due to template instantiation complexity and performance characteristics.
-- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable.
-- Relies on PFR; a few exotic compilers/ABIs may not be supported.
+- Designed for C++23 aggregates (POD-like structs). Classes with custom constructors, virtual methods, etc. are not automatically reflectable. *(C++26 reflection removes this limitation—non-aggregate types are fully supported with GCC 16+ and `-std=c++26 -freflection`.)*
+- Relies on PFR in C++20/23 mode; a few exotic compilers/ABIs may not be supported. *(C++26 reflection mode has zero external dependencies.)*
 - **`THIS IS NOT A JSON DOM LIBRARY.`** It shines when you have a known schema and want to map JSON directly from/into C++ types; if you need a generic JSON tree and ad-hoc editing, JsonFusion is not the right tool; consider using it alongside a DOM library.
 - **Floating-point numbers handling**: JsonFusion uses an in-house constexpr-compatible FP parser/serializer by default (`JSONFUSION_FP_BACKEND=0`). While tested for correctness and sufficient for typical use cases, it is not as precise or fast as state-of-the-art implementations like fast_float. For applications with extreme FP requirements, the backend is swappable—see [docs/FP_BACKEND_ARCHITECTURE.md](docs/FP_BACKEND_ARCHITECTURE.md) for details on alternative backends or implementing custom FP handling. Or just use `YyjsonReader` to get both speed boost and FP correctness.
