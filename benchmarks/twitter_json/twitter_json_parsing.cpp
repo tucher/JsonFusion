@@ -22,7 +22,9 @@
 #include "twitter_model_generic.hpp"
 #include "rapidjson_populate.hpp"
 #include "reflectcpp_parsing.hpp"
+#ifndef JSONFUSION_BENCHMARK_NO_GLAZE
 #include "glaze_parsing.hpp"
+#endif
 #include "yyjson_parsing.hpp"
 
 void print_diff_region(const std::string& a,
@@ -121,7 +123,9 @@ int main(int argc, char* argv[]) {
         rj_parse_only(iterations, json_data);
         rj_parse_populate(iterations, json_data);
         reflectcpp_parse_populate(iterations, json_data);
+#ifndef JSONFUSION_BENCHMARK_NO_GLAZE
         glaze_parse_populate(iterations, json_data);
+#endif
         yyjson_parse(iterations, json_data);
         {
             using namespace JsonFusion;
@@ -239,10 +243,11 @@ int main(int argc, char* argv[]) {
             //     return false;
             // });
             // std::cout << "yyjson serialized size: " << final_size << std::endl;
+#ifndef JSONFUSION_BENCHMARK_NO_GLAZE
             {
                 glaze_serialize(iterations, json_data);
-
             }
+#endif
 
             {
                 reflectcpp_serialize(iterations, json_data);

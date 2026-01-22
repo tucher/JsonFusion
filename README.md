@@ -83,6 +83,7 @@ JsonFusion::Serialize(conf, output);
 - [Advanced Features](#advanced-features)
   - [Optional High-Performance yyjson Backend](#optional-high-performance-yyjson-backend)
   - [Constexpr Parsing & Serialization](#constexpr-parsing--serialization)
+  - [Compile-Time Size Estimation](#compile-time-size-estimation)
   - [Streaming Producers & Consumers (Typed SAX)](#streaming-producers--consumers-typed-sax)
   - [Compile-Time Testing](#compile-time-testing)
   - [JSON Schema Generation](#json-schema-generation)
@@ -879,6 +880,30 @@ For models using compatible containers (`std::string`, `std::vector` are compati
 `Parse` and `Serialize` are fully `constexpr`-compatible, as long as your c++ standard library is modern enough. This enables compile-time JSON/CBOR
 validation, zero-cost embedded configs, see the compile-time test suite [`tests/constexpr/*`](tests/constexpr) for 
 examples with nested structs, arrays, and optionals.
+
+### Compile-Time Size Estimation
+
+For embedded systems or fixed-buffer scenarios, JsonFusion can calculate the **maximum serialized JSON size** at compile time:
+
+```cpp
+#include <JsonFusion/serialize_size_estimator.hpp>
+
+struct Config {
+    int id;
+    bool active;
+    std::array<char, 32> name;
+};
+
+// Calculate at compile time
+constexpr std::size_t max_size = JsonFusion::size_estimator::EstimateMaxSerializedSize<Config>();
+// Result: 61 bytes (conservative upper bound)
+
+// Allocate exact buffer - no guessing, no overflow
+std::array<char, max_size> buffer{};
+auto result = JsonFusion::Serialize(config, buffer.data(), buffer.data() + buffer.size());
+```
+
+This is particularly useful for embedded targets where dynamic allocation is prohibited—you get a **compile-time guarantee** that your buffer is always sufficient.
 
 ### Streaming Producers & Consumers (Typed SAX)
 

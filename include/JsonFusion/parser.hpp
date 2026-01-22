@@ -706,21 +706,6 @@ constexpr bool ParseStructField(ObjT& structObj, Reader & reader, CTX &ctx, std:
     return ok;
 }
 
-template<std::size_t I, class ObjT, class Reader, class CTX, class UserCtx>
-constexpr bool parse_struct_field_one(
-    ObjT& structObj,
-    Reader& reader,
-    CTX& ctx,
-    UserCtx* userCtx)
-{
-    using Opts = options::detail::aggregate_field_opts_getter<ObjT, I>;
-    auto& field = introspection::getStructElementByIndex<I>(structObj);
-    return ParseValue<Opts>(
-        StructFieldMeta<ObjT, I>::getRef(field),
-        reader, ctx, userCtx
-    );
-}
-
 
 template <class Opts, class ObjT, reader::ReaderLike Reader, class CTX, class UserCtx = void>
     requires static_schema::ObjectLike<ObjT>

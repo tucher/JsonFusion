@@ -69,7 +69,9 @@ int main(int argc, char* argv[]) {
     std::cout << std::format("=== Canada.json Benchmark ===({} iterations, µs/iter)\n\n", iterations);
 
     // RapidJSON DOM parsing + population
+#ifndef JSONFUSION_BENCHMARK_NO_GLAZE
     glaze_parse_populate(iterations, json_data);
+#endif
     rj_parse_only(iterations, json_data);
     rj_parse_populate(iterations, json_data);
     rj_sax_counting(iterations, json_data);

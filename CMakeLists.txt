@@ -2,7 +2,18 @@ cmake_minimum_required(VERSION 3.14)  # FetchContent requires 3.11+, using 3.14 
 
 project(JsonFusion VERSION 0.1.0 LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 23)
+# Option to enable C++26 reflection mode
+option(JSONFUSION_CPP26_REFLECTION "Enable C++26 reflection mode (excludes glaze, adds -freflection)" OFF)
+
+if(JSONFUSION_CPP26_REFLECTION)
+    set(CMAKE_CXX_STANDARD 26)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -freflection")
+    message(STATUS "JsonFusion: C++26 reflection mode enabled")
+else()
+    set(CMAKE_CXX_STANDARD 23)
+    message(STATUS "JsonFusion: C++23 mode (default)")
+endif()
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -38,20 +49,22 @@ set(REFLECTCPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(reflectcpp)
 
-# Fetch Glaze
-FetchContent_Declare(
-  glaze
-  GIT_REPOSITORY https://github.com/stephenberry/glaze.git
-  GIT_TAG        main  # Use main branch for latest
-  GIT_SHALLOW    TRUE
-)
+# Fetch Glaze (only in C++23 mode - glaze doesn't support -freflection yet)
+if(NOT JSONFUSION_CPP26_REFLECTION)
+    FetchContent_Declare(
+      glaze
+      GIT_REPOSITORY https://github.com/stephenberry/glaze.git
+      GIT_TAG        main  # Use main branch for latest
+      GIT_SHALLOW    TRUE
+    )
 
-# Configure Glaze (header-only, minimal config)
-set(glaze_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
+    # Configure Glaze (header-only, minimal config)
+    set(glaze_DEVELOPER_MODE OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glaze)
+    FetchContent_MakeAvailable(glaze)
+endif()
+
 # Single include directory containing both JsonFusion/ and pfr/
-
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 
@@ -94,14 +107,20 @@ file(GLOB JSON_FUSION
 # )
 # target_link_libraries(migration_example PRIVATE yyjson)
 
-add_executable(canada_json_parsing
+# Canada JSON benchmark
+set(CANADA_SOURCES
     benchmarks/canada_json/canada_json_parsing.cpp
     benchmarks/canada_json/canada_json_parsing.hpp
     benchmarks/canada_json/canada_json_parsing_rapidjson.cpp
-    benchmarks/canada_json/canada_json_parsing_glaze.cpp
     ${JSON_FUSION}
 )
 
+# Add glaze sources only in C++23 mode
+if(NOT JSONFUSION_CPP26_REFLECTION)
+    list(APPEND CANADA_SOURCES benchmarks/canada_json/canada_json_parsing_glaze.cpp)
+endif()
+
+add_executable(canada_json_parsing ${CANADA_SOURCES})
 
 target_compile_options(canada_json_parsing PRIVATE
   $<$<CONFIG:Release>:
@@ -114,7 +133,6 @@ target_compile_options(canada_json_parsing PRIVATE
     >
   >
 )
-
 
 target_link_options(canada_json_parsing PRIVATE
   $<$<CONFIG:Release>:
@@ -131,26 +149,28 @@ target_include_directories(canada_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
-target_link_libraries(canada_json_parsing PRIVATE glaze::glaze yyjson)
+if(JSONFUSION_CPP26_REFLECTION)
+    target_compile_definitions(canada_json_parsing PRIVATE JSONFUSION_BENCHMARK_NO_GLAZE)
+    target_link_libraries(canada_json_parsing PRIVATE yyjson)
+else()
+    target_link_libraries(canada_json_parsing PRIVATE glaze::glaze yyjson)
+endif()
 
 
-
-
+# Synthetic benchmarks
 add_executable(benchmarks
     benchmarks/syntetic/main.cpp
     benchmarks/syntetic/bench_matrix.hpp
-    # benchmarks/syntetic/benchmarks_jsonfusion_tu.cpp
     benchmarks/syntetic/benchmarks_jsonfusion_tu.hpp
     benchmarks/syntetic/benchmarks_rapidjson_tu.cpp
     benchmarks/syntetic/benchmarks_rapidjson_tu.hpp
     benchmarks/syntetic/benchmarks_models.hpp
     ${JSON_FUSION}
-
 )
+
 target_include_directories(benchmarks PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
-
 
 target_compile_options(benchmarks PRIVATE
   $<$<CONFIG:Release>:
@@ -163,7 +183,6 @@ target_compile_options(benchmarks PRIVATE
     >
   >
 )
-
 
 target_link_options(benchmarks PRIVATE
   $<$<CONFIG:Release>:
@@ -178,30 +197,36 @@ target_link_options(benchmarks PRIVATE
 
 target_link_libraries(benchmarks PRIVATE yyjson)
 
-add_executable(twitter_json_parsing
+
+# Twitter JSON benchmark
+set(TWITTER_SOURCES
     benchmarks/twitter_json/twitter_model_generic.hpp
     benchmarks/twitter_json/twitter_json_parsing.cpp
     benchmarks/twitter_json/rapidjson_populate.hpp
     benchmarks/twitter_json/twitter_json_parsing_rapidjson.cpp
     benchmarks/twitter_json/reflectcpp_parsing.hpp
     benchmarks/twitter_json/twitter_json_parsing_reflectcpp.cpp
-    benchmarks/twitter_json/glaze_parsing.hpp
-    benchmarks/twitter_json/twitter_json_parsing_glaze.cpp
     benchmarks/twitter_json/benchmark.hpp
     benchmarks/twitter_json/twiiter_json_parsing_yyjson.cpp
     ${JSON_FUSION}
-
 )
+
+# Add glaze sources only in C++23 mode
+if(NOT JSONFUSION_CPP26_REFLECTION)
+    list(APPEND TWITTER_SOURCES 
+        benchmarks/twitter_json/glaze_parsing.hpp
+        benchmarks/twitter_json/twitter_json_parsing_glaze.cpp
+    )
+endif()
+
+add_executable(twitter_json_parsing ${TWITTER_SOURCES})
+
 target_include_directories(twitter_json_parsing PRIVATE
   ${rapidjson_SOURCE_DIR}/include
 )
 
-# Link reflect-cpp and Glaze for benchmarking
-target_link_libraries(twitter_json_parsing PRIVATE reflectcpp glaze::glaze yyjson)
-
 target_compile_options(twitter_json_parsing PRIVATE
   $<$<CONFIG:Release>:
-
     $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>:
       -flto=8
       -ffunction-sections
@@ -209,7 +234,6 @@ target_compile_options(twitter_json_parsing PRIVATE
     >
   >
 )
-
 
 target_link_options(twitter_json_parsing PRIVATE
   $<$<CONFIG:Release>:
@@ -221,6 +245,13 @@ target_link_options(twitter_json_parsing PRIVATE
     $<$<PLATFORM_ID:Darwin>:-Wl,-dead_strip>
   >
 )
+
+if(JSONFUSION_CPP26_REFLECTION)
+    target_compile_definitions(twitter_json_parsing PRIVATE JSONFUSION_BENCHMARK_NO_GLAZE)
+    target_link_libraries(twitter_json_parsing PRIVATE reflectcpp yyjson)
+else()
+    target_link_libraries(twitter_json_parsing PRIVATE reflectcpp glaze::glaze yyjson)
+endif()
 
 
 add_executable(fp_test
