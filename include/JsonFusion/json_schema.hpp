@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <limits>
 #include <cstdint>
-#include <cstring>
+#include <string>
 #include <type_traits>
 
 namespace JsonFusion::json_schema {
@@ -46,16 +46,16 @@ constexpr char* format_unsigned_integer(std::size_t value, char* first, char* la
 template<writer::WriterLike W>
 constexpr bool write_property(W & writer, typename W::MapFrame& frame, const char* key, const char* value) {
     if (!writer.advance_after_value(frame)) return false;
-    if (!writer.write_string(key, std::strlen(key), true)) return false;
+    if (!writer.write_string(key, std::char_traits<char>::length(key), true)) return false;
     if (!writer.move_to_value(frame)) return false;
-    return writer.write_string(value, std::strlen(value), true);
+    return writer.write_string(value, std::char_traits<char>::length(value), true);
 }
 
 // Helper to write a numeric key-value pair
 template<writer::WriterLike W, typename NumT>
 constexpr bool write_property_number(W & writer, typename W::MapFrame& frame, const char* key, NumT value) {
     if (!writer.advance_after_value(frame)) return false;
-    if (!writer.write_string(key, std::strlen(key), true)) return false;
+    if (!writer.write_string(key, std::char_traits<char>::length(key), true)) return false;
     if (!writer.move_to_value(frame)) return false;
     return writer.template write_number<NumT>(value);
 }
@@ -64,7 +64,7 @@ constexpr bool write_property_number(W & writer, typename W::MapFrame& frame, co
 template<writer::WriterLike W>
 constexpr bool write_property_bool(W & writer, typename W::MapFrame& frame, const char* key, bool value) {
     if (!writer.advance_after_value(frame)) return false;
-    if (!writer.write_string(key, std::strlen(key), true)) return false;
+    if (!writer.write_string(key, std::char_traits<char>::length(key), true)) return false;
     if (!writer.move_to_value(frame)) return false;
     return writer.write_bool(value);
 }
@@ -1125,7 +1125,7 @@ constexpr bool WriteSchema(W & writer,
         first = false;
         if (!writer.write_string("$schema", 7, true)) return false;
         if (!writer.move_to_value(root_frame)) return false;
-        if (!writer.write_string(schema_uri, std::strlen(schema_uri), true)) return false;
+        if (!writer.write_string(schema_uri, std::char_traits<char>::length(schema_uri), true)) return false;
     }
     
     // Write title
@@ -1134,7 +1134,7 @@ constexpr bool WriteSchema(W & writer,
         first = false;
         if (!writer.write_string("title", 5, true)) return false;
         if (!writer.move_to_value(root_frame)) return false;
-        if (!writer.write_string(title, std::strlen(title), true)) return false;
+        if (!writer.write_string(title, std::char_traits<char>::length(title), true)) return false;
     }
     
     // Write the actual schema under a $defs entry for now (V1 limitation)
