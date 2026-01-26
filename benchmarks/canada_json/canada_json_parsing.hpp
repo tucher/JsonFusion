@@ -61,12 +61,14 @@ struct PointSkippedXY {
 template<typename PT>
 using PointAsArray = Annotated<PT, as_array>;
 
-
 template<typename PT>
-using RingConsumer = streamers::LambdaStreamer<[](Stats * stats, const PointAsArray<PT>&) {
+bool ring_consumer(Stats * stats, const PointAsArray<PT>&) {
     stats->totalPoints ++;
     return true;
-}>;
+}
+template<typename PT>
+using RingConsumer = streamers::LambdaStreamer<ring_consumer<PT>>;
+
 
 template<typename PT>
 using RingsConsumer = streamers::LambdaStreamer<[](Stats * stats, const RingConsumer<PT>&) {
