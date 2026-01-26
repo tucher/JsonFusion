@@ -25,6 +25,10 @@
     min-height: 100vh;
     padding: 24px;
   }
+  .container {
+    max-width: 600px;
+    margin: 0 auto;
+  }
   h1 { font-size: 1.4em; margin-bottom: 4px; }
   .subtitle { color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px; }
   #status {
@@ -112,6 +116,7 @@
 </head>
 <body>
 
+<div class="container">
 <h1>JsonFusion Constexpr Test Suite</h1>
 <div class="subtitle">
   Running C++ constexpr tests entirely in the browser via Clang compiled to WebAssembly.
@@ -129,6 +134,7 @@
 </div>
 
 <div id="results"></div>
+</div>
 
 <script type="module">
 // ── Configuration ──────────────────────────────────────────────────
@@ -336,7 +342,7 @@ for (const tp of testPaths) {
   // parts = ["tests", "constexpr", "basic", "test_parse_int.cpp"]
   const category = parts.length > 3 ? parts[2] : "(root)";
   const filename = parts[parts.length - 1];
-  const name = filename.replace(/\.cpp$/, "");
+  const name = filename.replace(/\.cpp$/, "").replace(/^test_/, "");
   if (!categories[category]) categories[category] = [];
   categories[category].push({ path: tp, name, category });
 }
@@ -377,7 +383,7 @@ for (let i = 0; i < testPaths.length; i++) {
   const parts = tp.split("/");
   const category = parts.length > 3 ? parts[2] : "(root)";
   const filename = parts[parts.length - 1];
-  const name = filename.replace(/\.cpp$/, "");
+  const name = filename.replace(/\.cpp$/, "").replace(/^test_/, "");
   const rel = tp.replace("tests/constexpr/", "");
 
   const badge = document.getElementById(`badge-${name}`);
