@@ -48,6 +48,16 @@ static llvm::cl::opt<std::string> OptPath(
     llvm::cl::desc("Path to input file inside the virtual filesystem"),
     llvm::cl::init("/input.cpp"));
 
+static llvm::cl::opt<bool> OptCheckOnly(
+    "check-only",
+    llvm::cl::desc("Only check compilation (for static_assert tests), don't extract result"),
+    llvm::cl::init(false));
+
+static llvm::cl::list<std::string> OptIncludes(
+    "include-dir",
+    llvm::cl::desc("Additional include directories (-I)"),
+    llvm::cl::ZeroOrMore);
+
 static std::string readAllStdin()
 {
     std::string S;
@@ -293,6 +303,9 @@ public:
 
 int main(int argc, const char **argv)
 {
+    // Reset LLVM command-line option state so callMain() can be invoked
+    // repeatedly from JS without "option already set" errors.
+    llvm::cl::ResetAllOptionOccurrences();
     llvm::cl::ParseCommandLineOptions(argc, argv);
 
     const std::string Path = OptPath;
@@ -362,6 +375,14 @@ int main(int argc, const char **argv)
 #else
     // Native build: let Clang find system headers automatically
 #endif
+
+    // Forward user-specified include directories.
+    for (const auto &Dir : OptIncludes)
+    {
+        Args.push_back("-I");
+        Args.push_back(Dir.c_str());
+    }
+
     Args.push_back(Path.c_str());
 
     auto Invocation = std::make_shared<CompilerInvocation>();
@@ -402,17 +423,34 @@ int main(int argc, const char **argv)
     CI.setFileManager(new FileManager(FSOpts, OFS));
     CI.createSourceManager(CI.getFileManager());
 
-    EvalAction Action(OptResultName);
-    bool Success = CI.ExecuteAction(Action);
+    bool Success;
+    std::string ResultText, ErrorText;
+    bool ActionOk;
+
+    if (OptCheckOnly)
+    {
+        // Check-only mode: just run syntax/semantic analysis (triggers static_assert).
+        SyntaxOnlyAction SOA;
+        Success = CI.ExecuteAction(SOA);
+        ActionOk = Success && !Diags->hasErrorOccurred();
+    }
+    else
+    {
+        EvalAction Action(OptResultName);
+        Success = CI.ExecuteAction(Action);
+        ActionOk = Success && Action.Ok && !Diags->hasErrorOccurred();
+        ResultText = Action.ResultText;
+        ErrorText = Action.ErrorText;
+    }
 
     DiagOS.flush();
 
     llvm::json::Object Out;
-    Out["ok"] = (bool)(Success && Action.Ok && !Diags->hasErrorOccurred());
-    Out["result"] = Action.ResultText;
-    Out["error"] = Action.ErrorText;
+    Out["ok"] = ActionOk;
+    Out["result"] = ResultText;
+    Out["error"] = ErrorText;
     Out["diagnostics"] = DiagBuf;
 
     llvm::outs() << llvm::json::Value(std::move(Out)) << "\n";
-    return (Success && Action.Ok && !Diags->hasErrorOccurred()) ? 0 : 1;
+    return ActionOk ? 0 : 1;
 }
