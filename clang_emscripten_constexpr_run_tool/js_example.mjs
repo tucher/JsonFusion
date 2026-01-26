@@ -24,13 +24,50 @@ const test3 = `
 constexpr auto __result = std::string_view("hello world").size();
 `;
 
+const test4 = `
+static_assert(false, "intentional failure");
+constexpr auto __result = 0;
+`
+
+const test5 = `
+#include <string_view>
+#include <string>
+#include <JsonFusion/parser.hpp>
+#include <JsonFusion/serializer.hpp>
+
+constexpr auto __result = []() consteval {
+    using namespace JsonFusion;
+    constexpr auto json = std::string_view(R"({"key": "value", "number": 42})");
+    struct Model {
+        std::string key{};
+        int number{};
+    };
+    Model model;
+    auto result = Parse(model, json);
+    
+    std::string serialized;
+    auto sRes = Serialize(model, serialized);
+    return (
+        !!result && model.key == "value" && model.number == 42 
+        && 
+        !!sRes && serialized == R"({"key":"value","number":42})"
+        ) ? 0: 1;
+}();
+`;
+
 const mod = await createModule({
   print: (s) => process.stdout.write(s + "\n"),
   printErr: (s) => process.stderr.write(s + "\n"),
   noInitialRun: true,
 });
 
-for (const [name, code] of [["fib(10)", test1], ["array[2]", test2], ["string_view.size()", test3]]) {
+for (const [name, code] of [
+        ["fib(10)", test1],
+        ["array[2]", test2],
+        ["string_view.size()", test3],
+        ["static_assert failure", test4],
+        ["JsonFusion parse/serialize", test5],
+    ]) {
   console.log(`\n--- Test: ${name} ---`);
   mod.FS.writeFile("/input.cpp", code);
   const rc = mod.callMain(["--path=/input.cpp", "--std=c++23", "--result=__result"]);

@@ -136,8 +136,6 @@ if [ ! -d build-ems ]; then
       -sALLOW_MEMORY_GROWTH=1 \
       -sSTACK_SIZE=50MB \
       -sMODULARIZE=1 \
-      -sASSERTIONS=2 \
-      -sSTACK_OVERFLOW_CHECK=2 \
       -sEXPORT_ES6=1 \
       -sENVIRONMENT=web,worker,node \
       -sFILESYSTEM=1 \
