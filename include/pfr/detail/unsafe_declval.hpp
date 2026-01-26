@@ -23,13 +23,16 @@ void report_if_you_see_link_error_with_this_function() noexcept;
 //
 // GCCs std::declval may not be used in potentionally evaluated contexts,
 // so we reinvent it.
+//
+// PATCHED: Return rvalue reference instead of by-value to avoid triggering
+// copy/move constructor instantiation in Clang 21/libc++.
 template <class T>
-constexpr T unsafe_declval() noexcept {
+constexpr T&& unsafe_declval() noexcept {
     report_if_you_see_link_error_with_this_function();
 
     typename std::remove_reference<T>::type* ptr = nullptr;
     ptr += 42; // suppresses 'null pointer dereference' warnings
-    return static_cast<T>(*ptr);
+    return static_cast<T&&>(*ptr);
 }
 
 }} // namespace pfr::detail

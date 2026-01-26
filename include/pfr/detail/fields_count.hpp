@@ -46,9 +46,10 @@ struct ubiq_lref_constructor {
 };
 
 ///////////////////// Structure that can be converted to rvalue reference to anything
+// PATCHED: Return T&& instead of T to avoid copy constructor instantiation
 struct ubiq_rref_constructor {
     std::size_t ignore;
-    template <class Type> /*constexpr*/ operator Type() const && noexcept {  // Allows initialization of rvalue reference fields and move-only types
+    template <class Type> /*constexpr*/ operator Type&&() const && noexcept {  // Allows initialization of rvalue reference fields and move-only types
         return detail::unsafe_declval<Type>();
     }
 };
@@ -145,14 +146,8 @@ struct ubiq_rref_base_asserting {
     }
 };
 
-template <class T, std::size_t I0, std::size_t... I, class /*Enable*/ = std::enable_if_t<std::is_copy_constructible<T>::value>>
-constexpr auto assert_first_not_base(std::index_sequence<I0, I...>) noexcept
-    -> std::add_pointer_t<decltype(T{ ubiq_lref_base_asserting<T>{}, ubiq_lref_constructor{I}... })>
-{
-    return nullptr;
-}
-
-template <class T, std::size_t I0, std::size_t... I, class /*Enable*/ = std::enable_if_t<!std::is_copy_constructible<T>::value>>
+// PATCHED: Removed std::is_copy_constructible check - same issue as enable_if_initializable_helper
+template <class T, std::size_t I0, std::size_t... I>
 constexpr auto assert_first_not_base(std::index_sequence<I0, I...>) noexcept
     -> std::add_pointer_t<decltype(T{ ubiq_rref_base_asserting<T>{}, ubiq_rref_constructor{I}... })>
 {
@@ -177,11 +172,12 @@ constexpr auto assert_first_not_base(long) noexcept
 
 ///////////////////// Helpers for initializable detection
 // Note that these take O(N) compile time and memory!
-template <class T, std::size_t... I, class /*Enable*/ = std::enable_if_t<std::is_copy_constructible<T>::value>>
-constexpr auto enable_if_initializable_helper(std::index_sequence<I...>) noexcept
-    -> std::add_pointer_t<decltype(T{ubiq_lref_constructor{I}...})>;
-
-template <class T, std::size_t... I, class /*Enable*/ = std::enable_if_t<!std::is_copy_constructible<T>::value>>
+//
+// PATCHED: Removed std::is_copy_constructible check which triggers copy constructor
+// instantiation in Clang 21/libc++, causing failures with types containing
+// non-copyable members (e.g., unique_ptr). Using ubiq_rref_constructor unconditionally
+// works for both copyable and move-only types during aggregate initialization detection.
+template <class T, std::size_t... I>
 constexpr auto enable_if_initializable_helper(std::index_sequence<I...>) noexcept
     -> std::add_pointer_t<decltype(T{ubiq_rref_constructor{I}...})>;
 

@@ -106,11 +106,9 @@ for d in bits sys arpa netinet wasi; do
   [ -d "$EMSYSROOT/$d" ] && cp -r "$EMSYSROOT/$d" "$STAGING/include/"
 done
 
-# 4. JsonFusion + PFR headers
-JFROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cp -r "$JFROOT/include/JsonFusion" "$STAGING/include/"
-cp -r "$JFROOT/include/pfr"       "$STAGING/include/"
-[ -f "$JFROOT/include/rapidyaml.hpp" ] && cp "$JFROOT/include/rapidyaml.hpp" "$STAGING/include/"
+# 4. JsonFusion + PFR headers are NOT embedded into the WASM binary.
+#    They are fetched at runtime (from GitHub or local FS) so the WASM
+#    stays stable and doesn't need rebuilding when headers change.
 
 echo "=== Staged headers ==="
 du -sh "$STAGING"

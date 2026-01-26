@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { loadHeadersFromLocal, ensureDir } from "./load_headers.mjs";
 
 const modPath = process.argv[2];
 if (!modPath) {
@@ -42,23 +43,13 @@ const mod = await createModule({
   noInitialRun: true,
 });
 
+// Load JsonFusion + PFR headers into the virtual FS
+const nHeaders = loadHeadersFromLocal(mod.FS, projectRoot);
+console.log(`Loaded ${nHeaders} JsonFusion/PFR headers into virtual FS`);
+
 // Mount test_helpers.hpp into the virtual FS
 const helpersPath = path.join(testRoot, "test_helpers.hpp");
 const helpersContent = fs.readFileSync(helpersPath, "utf-8");
-
-// Create directory structure in Emscripten FS
-function ensureDir(fsObj, dirPath) {
-  const parts = dirPath.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current += "/" + part;
-    try {
-      fsObj.stat(current);
-    } catch {
-      fsObj.mkdir(current);
-    }
-  }
-}
 
 ensureDir(mod.FS, "/tests/constexpr");
 mod.FS.writeFile("/tests/constexpr/test_helpers.hpp", helpersContent);

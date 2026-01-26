@@ -1,8 +1,14 @@
+import path from "node:path";
+import { loadHeadersFromLocal } from "./load_headers.mjs";
+
 const modPath = process.argv[2];
 if (!modPath) {
   console.error("Usage: node js_example.mjs ./clang-constexpr-run.mjs");
   process.exit(2);
 }
+
+const scriptDir = path.dirname(new URL(import.meta.url).pathname);
+const projectRoot = path.resolve(scriptDir, "..");
 
 const { default: createModule } = await import(modPath);
 
@@ -60,6 +66,10 @@ const mod = await createModule({
   printErr: (s) => process.stderr.write(s + "\n"),
   noInitialRun: true,
 });
+
+// Load JsonFusion + PFR headers into the virtual FS
+const nHeaders = loadHeadersFromLocal(mod.FS, projectRoot);
+console.log(`Loaded ${nHeaders} JsonFusion/PFR headers into virtual FS`);
 
 for (const [name, code] of [
         ["fib(10)", test1],

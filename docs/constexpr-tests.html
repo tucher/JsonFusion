@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JsonFusion Constexpr Test Suite</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --surface2: #0f3460;
+    --text: #e0e0e0;
+    --text-dim: #8888aa;
+    --pass: #4caf50;
+    --fail: #f44336;
+    --skip: #ff9800;
+    --accent: #00b4d8;
+    --border: #2a2a4a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 { font-size: 1.4em; margin-bottom: 4px; }
+  .subtitle { color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px; }
+  #status {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    margin-bottom: 16px;
+    white-space: pre-wrap;
+    font-size: 0.85em;
+    line-height: 1.6;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  #progress-bar-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    height: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  #progress-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.15s;
+  }
+  #summary {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 16px;
+    font-size: 0.95em;
+  }
+  #summary .count { font-weight: bold; font-size: 1.1em; }
+  #summary .pass-count { color: var(--pass); }
+  #summary .fail-count { color: var(--fail); }
+  #summary .skip-count { color: var(--skip); }
+  #summary .total-count { color: var(--text-dim); }
+  .category-header {
+    background: var(--surface2);
+    padding: 6px 12px;
+    font-size: 0.8em;
+    color: var(--accent);
+    border-radius: 4px 4px 0 0;
+    margin-top: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .test-row {
+    display: flex;
+    align-items: center;
+    padding: 5px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82em;
+    background: var(--surface);
+  }
+  .test-row:last-child { border-bottom: none; border-radius: 0 0 4px 4px; }
+  .test-name { flex: 1; }
+  .test-badge {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: bold;
+  }
+  .test-badge.pass { background: var(--pass); color: #000; }
+  .test-badge.fail { background: var(--fail); color: #fff; cursor: pointer; }
+  .test-badge.skip { background: var(--skip); color: #000; }
+  .test-badge.running { background: var(--accent); color: #000; }
+  .test-diag {
+    display: none;
+    background: #0a0a1a;
+    padding: 8px 12px;
+    font-size: 0.75em;
+    color: #ff8a80;
+    white-space: pre-wrap;
+    word-break: break-all;
+    border-bottom: 1px solid var(--border);
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .test-diag.open { display: block; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<h1>JsonFusion Constexpr Test Suite</h1>
+<div class="subtitle">
+  Running C++ constexpr tests entirely in the browser via Clang compiled to WebAssembly.
+  <a href="https://github.com/tucher/JsonFusion">GitHub</a>
+</div>
+
+<div id="progress-bar-container"><div id="progress-bar"></div></div>
+<div id="status">Initializing...</div>
+
+<div id="summary" style="display:none">
+  <div>Passed: <span class="count pass-count" id="pass-count">0</span></div>
+  <div>Failed: <span class="count fail-count" id="fail-count">0</span></div>
+  <div>Skipped: <span class="count skip-count" id="skip-count">0</span></div>
+  <div>Total: <span class="count total-count" id="total-count">0</span></div>
+</div>
+
+<div id="results"></div>
+
+<script type="module">
+// ── Configuration ──────────────────────────────────────────────────
+const GITHUB_OWNER = "tucher";
+const GITHUB_REPO  = "JsonFusion";
+const GITHUB_BRANCH = "master";
+const RELEASE_TAG  = "wasm-v1";
+
+// Override via URL params: ?branch=dev&release=wasm-v2&local_wasm=http://localhost:8080/
+const params = new URLSearchParams(location.search);
+const branch    = params.get("branch") || GITHUB_BRANCH;
+const release   = params.get("release") || RELEASE_TAG;
+const localWasm = params.get("local_wasm"); // e.g. http://localhost:8080/
+
+const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${branch}`;
+const API_TREES = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${branch}?recursive=1`;
+const RELEASE_BASE = localWasm || `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${release}/`;
+
+const SKIP_PATTERNS = ["annotations/test_cpp26"];
+
+// ── DOM refs ───────────────────────────────────────────────────────
+const statusEl   = document.getElementById("status");
+const progressEl = document.getElementById("progress-bar");
+const summaryEl  = document.getElementById("summary");
+const resultsEl  = document.getElementById("results");
+const passEl     = document.getElementById("pass-count");
+const failEl     = document.getElementById("fail-count");
+const skipEl     = document.getElementById("skip-count");
+const totalEl    = document.getElementById("total-count");
+
+function log(msg) {
+  statusEl.textContent += msg + "\n";
+  statusEl.scrollTop = statusEl.scrollHeight;
+}
+
+function setProgress(pct) {
+  progressEl.style.width = Math.min(100, pct) + "%";
+}
+
+// ── Fetch helpers ──────────────────────────────────────────────────
+
+// Concurrent fetch pool to avoid overwhelming the browser
+async function fetchAllWithPool(urls, concurrency = 30) {
+  const results = new Array(urls.length);
+  let idx = 0;
+
+  async function worker() {
+    while (idx < urls.length) {
+      const i = idx++;
+      const resp = await fetch(urls[i]);
+      if (!resp.ok) throw new Error(`Failed to fetch ${urls[i]}: ${resp.status}`);
+      results[i] = await resp.text();
+    }
+  }
+
+  const workers = [];
+  for (let w = 0; w < Math.min(concurrency, urls.length); w++) {
+    workers.push(worker());
+  }
+  await Promise.all(workers);
+  return results;
+}
+
+function ensureDir(fsObj, dirPath) {
+  const parts = dirPath.split("/").filter(Boolean);
+  let current = "";
+  for (const p of parts) {
+    current += "/" + p;
+    try { fsObj.stat(current); }
+    catch { fsObj.mkdir(current); }
+  }
+}
+
+// ── Phase 1: Discover files via GitHub Trees API ───────────────────
+log("Discovering files via GitHub Trees API...");
+
+let headerPaths, testPaths, helpersPath;
+
+try {
+  const treeResp = await fetch(API_TREES);
+  if (!treeResp.ok) throw new Error(`Trees API returned ${treeResp.status}`);
+  const treeData = await treeResp.json();
+
+  if (treeData.truncated) {
+    log("Warning: tree response was truncated. Some files may be missing.");
+  }
+
+  const allFiles = treeData.tree
+    .filter(e => e.type === "blob")
+    .map(e => e.path);
+
+  // Headers: include/JsonFusion/** and include/pfr/**
+  headerPaths = allFiles.filter(p =>
+    (p.startsWith("include/JsonFusion/") || p.startsWith("include/pfr/")) &&
+    (p.endsWith(".hpp") || p.endsWith(".h"))
+  );
+
+  // Test files: tests/constexpr/**/test_*.cpp
+  testPaths = allFiles.filter(p =>
+    p.startsWith("tests/constexpr/") &&
+    p.match(/\/test_[^/]+\.cpp$/)
+  );
+
+  // test_helpers.hpp
+  helpersPath = allFiles.find(p => p === "tests/constexpr/test_helpers.hpp");
+
+  log(`Found ${headerPaths.length} header files, ${testPaths.length} test files`);
+} catch (err) {
+  log(`Error discovering files: ${err.message}`);
+  throw err;
+}
+
+setProgress(5);
+
+// ── Phase 2: Load WASM module ──────────────────────────────────────
+log("Loading Clang WASM module...");
+
+let mod;
+try {
+  const mjsUrl = RELEASE_BASE + "clang-constexpr-run.mjs";
+  log(`  Fetching module from ${mjsUrl}`);
+  const mjsResp = await fetch(mjsUrl);
+  if (!mjsResp.ok) throw new Error(`Failed to fetch .mjs: ${mjsResp.status}`);
+  const mjsText = await mjsResp.text();
+
+  const blob = new Blob([mjsText], { type: "application/javascript" });
+  const blobUrl = URL.createObjectURL(blob);
+  const { default: createModule } = await import(blobUrl);
+  URL.revokeObjectURL(blobUrl);
+
+  mod = await createModule({
+    locateFile: (path) => RELEASE_BASE + path,
+    print: () => {},    // suppress stdout in browser
+    printErr: () => {}, // suppress stderr in browser
+    noInitialRun: true,
+  });
+
+  log("  WASM module loaded successfully");
+} catch (err) {
+  log(`Error loading WASM: ${err.message}`);
+  throw err;
+}
+
+setProgress(30);
+
+// ── Phase 3: Load headers ──────────────────────────────────────────
+log(`Loading ${headerPaths.length} header files...`);
+
+try {
+  const headerUrls = headerPaths.map(p => `${RAW_BASE}/${p}`);
+  const headerContents = await fetchAllWithPool(headerUrls);
+
+  for (let i = 0; i < headerPaths.length; i++) {
+    // headerPaths[i] is like "include/JsonFusion/parser.hpp"
+    // Mount at /sysroot/include/JsonFusion/parser.hpp
+    const stripped = headerPaths[i].replace(/^include\//, "");
+    const vpath = "/sysroot/include/" + stripped;
+    ensureDir(mod.FS, vpath.substring(0, vpath.lastIndexOf("/")));
+    mod.FS.writeFile(vpath, headerContents[i]);
+  }
+  log(`  ${headerPaths.length} headers loaded`);
+} catch (err) {
+  log(`Error loading headers: ${err.message}`);
+  throw err;
+}
+
+setProgress(55);
+
+// ── Phase 4: Load test files ───────────────────────────────────────
+log(`Loading ${testPaths.length} test files...`);
+
+try {
+  // Also fetch test_helpers.hpp
+  const allTestFetchPaths = helpersPath ? [helpersPath, ...testPaths] : testPaths;
+  const testUrls = allTestFetchPaths.map(p => `${RAW_BASE}/${p}`);
+  const testContents = await fetchAllWithPool(testUrls);
+
+  for (let i = 0; i < allTestFetchPaths.length; i++) {
+    // testPaths[i] is like "tests/constexpr/basic/test_parse_int.cpp"
+    // Mount at /tests/constexpr/basic/test_parse_int.cpp
+    const vpath = "/" + allTestFetchPaths[i];
+    ensureDir(mod.FS, vpath.substring(0, vpath.lastIndexOf("/")));
+    mod.FS.writeFile(vpath, testContents[i]);
+  }
+  log(`  ${allTestFetchPaths.length} test files loaded`);
+} catch (err) {
+  log(`Error loading test files: ${err.message}`);
+  throw err;
+}
+
+setProgress(75);
+
+// ── Phase 5: Run tests ─────────────────────────────────────────────
+log("Running tests...\n");
+summaryEl.style.display = "flex";
+
+// Sort tests by category
+testPaths.sort();
+
+// Group by category
+const categories = {};
+for (const tp of testPaths) {
+  // tp = "tests/constexpr/basic/test_parse_int.cpp"
+  const parts = tp.split("/");
+  // parts = ["tests", "constexpr", "basic", "test_parse_int.cpp"]
+  const category = parts.length > 3 ? parts[2] : "(root)";
+  const filename = parts[parts.length - 1];
+  const name = filename.replace(/\.cpp$/, "");
+  if (!categories[category]) categories[category] = [];
+  categories[category].push({ path: tp, name, category });
+}
+
+// Build UI skeleton
+const testElements = {};
+for (const [cat, tests] of Object.entries(categories)) {
+  const header = document.createElement("div");
+  header.className = "category-header";
+  header.textContent = cat;
+  resultsEl.appendChild(header);
+
+  for (const t of tests) {
+    const row = document.createElement("div");
+    row.className = "test-row";
+    row.innerHTML = `<span class="test-name">${t.name}</span><span class="test-badge" id="badge-${t.name}">...</span>`;
+    resultsEl.appendChild(row);
+
+    const diag = document.createElement("div");
+    diag.className = "test-diag";
+    diag.id = `diag-${t.name}`;
+    resultsEl.appendChild(diag);
+
+    testElements[t.name] = { row, badge: null, diag };
+  }
+}
+
+// Run each test
+let pass = 0, fail = 0, skip = 0, total = testPaths.length;
+totalEl.textContent = total;
+
+let stdoutBuf = "";
+// Capture stdout for diagnostics
+mod.print = (s) => { stdoutBuf += s + "\n"; };
+
+for (let i = 0; i < testPaths.length; i++) {
+  const tp = testPaths[i];
+  const parts = tp.split("/");
+  const category = parts.length > 3 ? parts[2] : "(root)";
+  const filename = parts[parts.length - 1];
+  const name = filename.replace(/\.cpp$/, "");
+  const rel = tp.replace("tests/constexpr/", "");
+
+  const badge = document.getElementById(`badge-${name}`);
+  const diagEl = document.getElementById(`diag-${name}`);
+
+  // Check skip
+  if (SKIP_PATTERNS.some(pat => rel.includes(pat))) {
+    badge.textContent = "SKIP";
+    badge.className = "test-badge skip";
+    skip++;
+    skipEl.textContent = skip;
+    continue;
+  }
+
+  badge.textContent = "...";
+  badge.className = "test-badge running";
+
+  // Small yield to let the browser render
+  await new Promise(r => setTimeout(r, 0));
+
+  stdoutBuf = "";
+  const vpath = "/" + tp;
+  const rc = mod.callMain([
+    "--check-only",
+    "--std=c++23",
+    "--include-dir=/tests/constexpr",
+    `--path=${vpath}`,
+  ]);
+
+  if (rc === 0) {
+    badge.textContent = "PASS";
+    badge.className = "test-badge pass";
+    pass++;
+  } else {
+    badge.textContent = "FAIL";
+    badge.className = "test-badge fail";
+    fail++;
+
+    // Parse diagnostics
+    let diagText = "";
+    try {
+      const json = JSON.parse(stdoutBuf.trim());
+      diagText = json.diagnostics || json.error || "Unknown error";
+    } catch {
+      diagText = stdoutBuf || "No output";
+    }
+    diagEl.textContent = diagText;
+
+    // Click to toggle diagnostics
+    badge.addEventListener("click", () => {
+      diagEl.classList.toggle("open");
+    });
+  }
+
+  passEl.textContent = pass;
+  failEl.textContent = fail;
+  skipEl.textContent = skip;
+
+  setProgress(75 + (25 * (i + 1) / testPaths.length));
+}
+
+// Final status
+setProgress(100);
+const finalMsg = fail === 0
+  ? `All ${pass} tests passed!`
+  : `${fail} test(s) failed. Click FAIL badges for diagnostics.`;
+log(finalMsg);
+
+</script>
+</body>
+</html>
