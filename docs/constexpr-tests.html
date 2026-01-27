@@ -4,30 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JsonFusion Constexpr Test Suite</title>
+<link rel="stylesheet" href="css/docs.css">
 <style>
-  :root {
-    --bg: #1a1a2e;
-    --surface: #16213e;
-    --surface2: #0f3460;
-    --text: #e0e0e0;
-    --text-dim: #8888aa;
-    --pass: #4caf50;
-    --fail: #f44336;
-    --skip: #ff9800;
-    --accent: #00b4d8;
-    --border: #2a2a4a;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Variables and reset inherited from css/docs.css */
   body {
     font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    padding: 24px;
+    padding: 0;
   }
   .container {
     max-width: 600px;
     margin: 0 auto;
+    padding: 24px;
   }
   h1 { font-size: 1.4em; margin-bottom: 4px; }
   .subtitle { color: var(--text-dim); font-size: 0.85em; margin-bottom: 20px; }
@@ -111,16 +98,23 @@
     overflow-y: auto;
   }
   .test-diag.open { display: block; }
-  a { color: var(--accent); }
 </style>
 </head>
 <body>
 
+<header class="site-header">
+  <a class="logo" href="index.html">JsonFusion</a>
+  <nav>
+    <a href="index.html">Docs</a>
+    <a href="constexpr-tests.html">Test Suite</a>
+    <a href="https://github.com/tucher/JsonFusion">GitHub</a>
+  </nav>
+</header>
+
 <div class="container">
-<h1>JsonFusion Constexpr Test Suite</h1>
+<h1>Constexpr Test Suite</h1>
 <div class="subtitle">
   Running C++ constexpr tests entirely in the browser via Clang compiled to WebAssembly.
-  <a href="https://github.com/tucher/JsonFusion">GitHub</a>
 </div>
 
 <div id="progress-bar-container"><div id="progress-bar"></div></div>

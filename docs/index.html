@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JsonFusion Documentation</title>
+<link rel="stylesheet" href="css/docs.css">
+
+<!-- markdown-it (UMD global) -->
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+
+<!-- highlight.js + C++ language -->
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/languages/cpp.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/styles/github-dark.min.css">
+
+<!-- CodeMirror 6 import map (loaded lazily by live-editor.mjs) -->
+<script type="importmap">
+{
+  "imports": {
+    "codemirror": "https://esm.sh/codemirror@6.0.1",
+    "@codemirror/lang-cpp": "https://esm.sh/@codemirror/lang-cpp@6.0.3",
+    "@codemirror/theme-one-dark": "https://esm.sh/@codemirror/theme-one-dark@6.1.3",
+    "@codemirror/state": "https://esm.sh/@codemirror/state@6.5.4",
+    "@codemirror/view": "https://esm.sh/@codemirror/view@6.39.11"
+  }
+}
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <a class="logo" href="#">JsonFusion</a>
+  <nav>
+    <a href="#">Docs</a>
+    <a href="constexpr-tests.html">Test Suite</a>
+    <a href="https://github.com/tucher/JsonFusion">GitHub</a>
+  </nav>
+</header>
+
+<main class="content" id="content">
+  <div class="loading">Loading documentation...</div>
+</main>
+
+<script type="module" src="js/doc-app.mjs"></script>
+</body>
+</html>

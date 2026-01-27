@@ -2,6 +2,11 @@
 const WORKER_SOURCE = `
 let mod = null;
 
+// Mutable handlers — Emscripten captures closures at init time,
+// so we delegate to these variables which we swap per-compile.
+let onPrint = () => {};
+let onPrintErr = () => {};
+
 function ensureDir(fs, dirPath) {
   const parts = dirPath.split("/").filter(Boolean);
   let cur = "";
@@ -22,10 +27,10 @@ self.onmessage = async (e) => {
       URL.revokeObjectURL(url);
 
       mod = await createModule({
-        wasmBinary: msg.wasmBinary,  // Pre-fetched ArrayBuffer, no network request
-        locateFile: (path) => msg.wasmBaseUrl + path,  // Fallback for other resources
-        print: () => {},
-        printErr: () => {},
+        wasmBinary: msg.wasmBinary,
+        locateFile: (path) => msg.wasmBaseUrl + path,
+        print: (s) => onPrint(s),
+        printErr: (s) => onPrintErr(s),
         noInitialRun: true,
       });
       self.postMessage({ type: "ready" });
@@ -57,12 +62,19 @@ self.onmessage = async (e) => {
     for (const d of (msg.includeDirs || [])) args.push("--include-dir=" + d);
     args.push("--path=" + msg.path);
 
+    // Capture output via mutable handlers
     let stdout = "";
-    mod.print = (s) => { stdout += s + "\\n"; };
+    let stderr = "";
+    onPrint = (s) => { stdout += s + "\\n"; };
+    onPrintErr = (s) => { stderr += s + "\\n"; };
 
     const rc = mod.callMain(args);
 
-    let result = { ok: rc === 0, result: "", error: "", diagnostics: "" };
+    // Reset handlers
+    onPrint = () => {};
+    onPrintErr = () => {};
+
+    let result = { ok: rc === 0, result: "", error: "", diagnostics: stderr.trim() };
     try { Object.assign(result, JSON.parse(stdout.trim())); } catch {}
 
     self.postMessage({ type: "result", id: msg.id, ...result });
