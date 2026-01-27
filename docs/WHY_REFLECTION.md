@@ -7,12 +7,13 @@
 
 JsonFusion is built on a simple idea:
 
-        Your C++ types are more than memory layout — they encode what you actually care about.
+        Your C++ types are more than memory layout 
+            — they encode what you actually care about.
 
 Many JSON libraries throw that information away early and try to compensate with:
-	•	DOM trees,
-	•	dynamic lookups,
-	•	and heavily optimized low-level parsers (SIMD, hand-tuned FSMs, etc).
+- DOM trees,
+- dynamic lookups,
+- and heavily optimized low-level parsers (SIMD, hand-tuned FSMs, etc).
 
 JsonFusion goes in the opposite direction:
 - keep as much static type information as possible,

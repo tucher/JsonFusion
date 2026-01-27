@@ -492,6 +492,6 @@ No core pollution, no hardcoded buffering policy, no half-baked schema algebra g
 
 "But wait," you might say, "doesn't this make it really hard to use variants in practice?"
 
-Not at all. In fact, we ship `JsonFusion::VariantOneOf` ready to use in [`include/JsonFusion/variant_transformer.hpp`](../include/JsonFusion/variant_transformer.hpp).
+Not at all. In fact, we ship `JsonFusion::VariantOneOf` ready to use in [`JsonFusion/variant_transformer.hpp`](https://github.com/tucher/JsonFusion/blob/master/include/JsonFusion/variant_transformer.hpp).
 
 **The difference?** It's implemented as a **layer 3 transformer** using the exact building blocks described above—not as special-case logic in the parser core. Open that file and you'll see: it's ~50 lines proving that the architecture works. The core stays pure, and you still get convenient `std::variant` support. Best of both worlds.

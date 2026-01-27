@@ -142,7 +142,7 @@ how it is usually done in Python, Java, Go, etc..
 - **Rich error reporting**: Diagnostics with JSON path tracking (e.g., `$.statuses[3].user.name`),
 input iterator position, parse error codes, and validator error codes with failed constraint details. Path tracking uses
 compile-time sized storage based on schema depth analysis (zero runtime allocation overhead). Works in both runtime
-and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/ERROR_HANDLING.md)
+and constexpr contexts. Cyclic recursive types can opt into dynamic path tracking via macro configuration. [Docs](docs/how-to/ERROR_HANDLING.md)
 - **CBOR support** with the same guarantees 
 - **Escape hatches**: `WireSink<>` core type to capture raw unparsed fragments when structure is unknown at compile time (plugins, pass-through, deferred parsing, schema algebra implementations).
 JsonFusion validates protocol correctness while preserving the original fragment as a string, bridging typed and untyped worlds when needed.

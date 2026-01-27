@@ -7,10 +7,10 @@ Just define your structs — JsonFusion handles the rest using compile-time refl
 
 | I want to... | Go to... |
 |---|---|
-| Learn step by step | [Tutorials](tutorials/01-getting-started.md) |
-| Solve a specific problem | How-to Guides *(coming soon)* |
-| Look up API details | Reference *(coming soon)* |
-| Understand design decisions | [Why Reflection?](WHY_REFLECTION.md) |
+| Learn step by step | [Getting Started](tutorials/01-getting-started.md) · [Type Mapping](tutorials/02-modeling-json-types.md) · [Validation](tutorials/03-validation-and-annotations.md) · [Errors](tutorials/04-error-handling.md) · [Streaming](tutorials/05-streaming.md) |
+| Solve a specific problem | [How-to Guides](how-to/index.md) |
+| Look up API details | [Reference](reference/index.md) |
+| Understand design decisions | [Why Reflection?](WHY_REFLECTION.md) · [Architecture](explanation/architecture.md) · [Three Layers of JSON](JSON_SCHEMA.md)|
 
 ## Quick Example
 
