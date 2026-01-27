@@ -22,7 +22,8 @@ self.onmessage = async (e) => {
       URL.revokeObjectURL(url);
 
       mod = await createModule({
-        locateFile: (path) => msg.wasmBaseUrl + path,
+        wasmBinary: msg.wasmBinary,  // Pre-fetched ArrayBuffer, no network request
+        locateFile: (path) => msg.wasmBaseUrl + path,  // Fallback for other resources
         print: () => {},
         printErr: () => {},
         noInitialRun: true,
@@ -101,13 +102,22 @@ export class CompilerEngine {
     };
   }
 
-  /** Fetch .mjs, spawn workers, instantiate WASM in each. */
+  /** Fetch .mjs + .wasm once, spawn workers, instantiate WASM in each. */
   async init() {
     const { wasmBaseUrl, workerCount } = this.#config;
 
-    // Fetch the Emscripten glue code once
+    // Fetch the Emscripten glue code and WASM binary once (in parallel)
     const mjsUrl = wasmBaseUrl + "clang-constexpr-run.mjs";
-    this.#mjsCode = await this.#fetchText(mjsUrl);
+    const wasmUrl = wasmBaseUrl + "clang-constexpr-run.wasm";
+
+    const [mjsCode, wasmBinary] = await Promise.all([
+      this.#fetchText(mjsUrl),
+      fetch(wasmUrl).then(r => {
+        if (!r.ok) throw new Error(`Fetch failed: ${wasmUrl} (${r.status})`);
+        return r.arrayBuffer();
+      }),
+    ]);
+    this.#mjsCode = mjsCode;
 
     // Create worker blob
     const workerBlob = new Blob([WORKER_SOURCE], { type: "application/javascript" });
@@ -128,7 +138,7 @@ export class CompilerEngine {
         w.addEventListener("message", handler);
       }));
 
-      w.postMessage({ type: "init", mjsCode: this.#mjsCode, wasmBaseUrl });
+      w.postMessage({ type: "init", mjsCode, wasmBinary, wasmBaseUrl });
     }
 
     await Promise.all(readyPromises);
