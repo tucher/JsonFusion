@@ -16,6 +16,17 @@ const { default: createModule } = await import(modPath);
 const test1 = `
 constexpr int fib(int n){ return n<2? n : fib(n-1)+fib(n-2); }
 constexpr auto __result = fib(10);
+
+template<auto V>
+[[deprecated("JSON_FUSION_PRINT_DEBUG")]] 
+constexpr auto show() { return V; }
+
+template<auto V>
+constexpr auto print() {
+    return show<V>();
+}
+
+constexpr auto result = print<__result>();
 `;
 
 // Test 2: using <array> from libc++

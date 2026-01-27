@@ -137,21 +137,20 @@
 </div>
 
 <script type="module">
-// ── Configuration ──────────────────────────────────────────────────
-const GITHUB_OWNER = "tucher";
-const GITHUB_REPO  = "JsonFusion";
-const GITHUB_BRANCH = "master";
-const RELEASE_TAG  = "wasm-v1";
+import { CompilerEngine } from "./js/compiler-engine.mjs";
 
-// Override via URL params: ?branch=dev&release=wasm-v2&local_wasm=http://localhost:8080/
-const params = new URLSearchParams(location.search);
+// ── Configuration ──────────────────────────────────────────────────
+const GITHUB_OWNER  = "tucher";
+const GITHUB_REPO   = "JsonFusion";
+const GITHUB_BRANCH = "master";
+
+const params    = new URLSearchParams(location.search);
 const branch    = params.get("branch") || GITHUB_BRANCH;
-const release   = params.get("release") || RELEASE_TAG;
 const localWasm = params.get("local_wasm"); // e.g. http://localhost:8080/
 
-const RAW_BASE = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${branch}`;
+const WASM_BASE = localWasm || `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/wasm-v1/wasm-v1/`;
+const RAW_BASE  = `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/${branch}`;
 const API_TREES = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${branch}?recursive=1`;
-const RELEASE_BASE = localWasm || `https://raw.githubusercontent.com/${GITHUB_OWNER}/${GITHUB_REPO}/wasm-v1/wasm-v1/`;
 
 const SKIP_PATTERNS = ["annotations/test_cpp26"];
 
@@ -174,181 +173,140 @@ function setProgress(pct) {
   progressEl.style.width = Math.min(100, pct) + "%";
 }
 
-// ── Fetch helpers ──────────────────────────────────────────────────
-
-// Concurrent fetch pool to avoid overwhelming the browser
-async function fetchAllWithPool(urls, concurrency = 30) {
+// ── Fetch helper ───────────────────────────────────────────────────
+async function fetchAllPooled(urls, concurrency = 30) {
   const results = new Array(urls.length);
   let idx = 0;
-
   async function worker() {
     while (idx < urls.length) {
       const i = idx++;
       const resp = await fetch(urls[i]);
-      if (!resp.ok) throw new Error(`Failed to fetch ${urls[i]}: ${resp.status}`);
+      if (!resp.ok) throw new Error(`Fetch failed: ${urls[i]} (${resp.status})`);
       results[i] = await resp.text();
     }
   }
-
   const workers = [];
-  for (let w = 0; w < Math.min(concurrency, urls.length); w++) {
-    workers.push(worker());
-  }
+  for (let w = 0; w < Math.min(concurrency, urls.length); w++) workers.push(worker());
   await Promise.all(workers);
   return results;
 }
 
-function ensureDir(fsObj, dirPath) {
-  const parts = dirPath.split("/").filter(Boolean);
-  let current = "";
-  for (const p of parts) {
-    current += "/" + p;
-    try { fsObj.stat(current); }
-    catch { fsObj.mkdir(current); }
-  }
-}
+// ── Phase 1: Initialize compiler engine ────────────────────────────
+log("Initializing compiler engine...");
 
-// ── Phase 1: Discover files via GitHub Trees API ───────────────────
-log("Discovering files via GitHub Trees API...");
-
-let headerPaths, testPaths, helpersPath;
+const engine = new CompilerEngine({
+  wasmBaseUrl: WASM_BASE,
+  githubOwner: GITHUB_OWNER,
+  githubRepo: GITHUB_REPO,
+  githubBranch: branch,
+});
 
 try {
-  const treeResp = await fetch(API_TREES);
-  if (!treeResp.ok) throw new Error(`Trees API returned ${treeResp.status}`);
-  const treeData = await treeResp.json();
+  await engine.init();
+  log(`  ${engine.workerCount} workers ready`);
+} catch (err) {
+  log(`Error initializing engine: ${err.message}`);
+  throw err;
+}
+
+setProgress(25);
+
+// ── Phase 2: Load standard headers into all workers ────────────────
+log("Loading standard headers...");
+
+try {
+  const nHeaders = await engine.loadStandardHeaders();
+  log(`  ${nHeaders} headers loaded into ${engine.workerCount} workers`);
+} catch (err) {
+  log(`Error loading headers: ${err.message}`);
+  throw err;
+}
+
+setProgress(40);
+
+// ── Phase 3: Discover test files via GitHub Trees API ──────────────
+log("Discovering test files...");
+
+let testPaths, helpersPath;
+
+try {
+  const resp = await fetch(API_TREES);
+  if (!resp.ok) throw new Error(`Trees API returned ${resp.status}`);
+  const treeData = await resp.json();
 
   if (treeData.truncated) {
-    log("Warning: tree response was truncated. Some files may be missing.");
+    log("  Warning: tree response was truncated. Some files may be missing.");
   }
 
   const allFiles = treeData.tree
     .filter(e => e.type === "blob")
     .map(e => e.path);
 
-  // Headers: include/JsonFusion/** and include/pfr/**
-  headerPaths = allFiles.filter(p =>
-    (p.startsWith("include/JsonFusion/") || p.startsWith("include/pfr/")) &&
-    (p.endsWith(".hpp") || p.endsWith(".h"))
-  );
-
-  // Test files: tests/constexpr/**/test_*.cpp
   testPaths = allFiles.filter(p =>
     p.startsWith("tests/constexpr/") &&
-    p.match(/\/test_[^/]+\.cpp$/)
+    /\/test_[^/]+\.cpp$/.test(p)
   );
 
-  // test_helpers.hpp
   helpersPath = allFiles.find(p => p === "tests/constexpr/test_helpers.hpp");
 
-  log(`Found ${headerPaths.length} header files, ${testPaths.length} test files`);
+  testPaths.sort();
+  log(`  Found ${testPaths.length} test files`);
 } catch (err) {
   log(`Error discovering files: ${err.message}`);
   throw err;
 }
 
-setProgress(5);
+// ── Phase 4: Fetch test helpers & test files ───────────────────────
+log("Fetching test files...");
 
-// ── Phase 2: Load WASM module ──────────────────────────────────────
-log("Loading Clang WASM module...");
-
-let mod;
-try {
-  const mjsUrl = RELEASE_BASE + "clang-constexpr-run.mjs";
-  log(`  Fetching module from ${mjsUrl}`);
-  const mjsResp = await fetch(mjsUrl);
-  if (!mjsResp.ok) throw new Error(`Failed to fetch .mjs: ${mjsResp.status}`);
-  const mjsText = await mjsResp.text();
-
-  const blob = new Blob([mjsText], { type: "application/javascript" });
-  const blobUrl = URL.createObjectURL(blob);
-  const { default: createModule } = await import(blobUrl);
-  URL.revokeObjectURL(blobUrl);
-
-  mod = await createModule({
-    locateFile: (path) => RELEASE_BASE + path,
-    print: () => {},    // suppress stdout in browser
-    printErr: () => {}, // suppress stderr in browser
-    noInitialRun: true,
-  });
-
-  log("  WASM module loaded successfully");
-} catch (err) {
-  log(`Error loading WASM: ${err.message}`);
-  throw err;
-}
-
-setProgress(30);
-
-// ── Phase 3: Load headers ──────────────────────────────────────────
-log(`Loading ${headerPaths.length} header files...`);
+let testContents;
 
 try {
-  const headerUrls = headerPaths.map(p => `${RAW_BASE}/${p}`);
-  const headerContents = await fetchAllWithPool(headerUrls);
-
-  for (let i = 0; i < headerPaths.length; i++) {
-    // headerPaths[i] is like "include/JsonFusion/parser.hpp"
-    // Mount at /sysroot/include/JsonFusion/parser.hpp
-    const stripped = headerPaths[i].replace(/^include\//, "");
-    const vpath = "/sysroot/include/" + stripped;
-    ensureDir(mod.FS, vpath.substring(0, vpath.lastIndexOf("/")));
-    mod.FS.writeFile(vpath, headerContents[i]);
+  // Load test_helpers.hpp into all workers
+  if (helpersPath) {
+    const helpersResp = await fetch(`${RAW_BASE}/${helpersPath}`);
+    if (!helpersResp.ok) throw new Error(`Failed to fetch helpers: ${helpersResp.status}`);
+    await engine.writeSharedFiles([{
+      path: "/" + helpersPath,
+      content: await helpersResp.text(),
+    }]);
+    log("  test_helpers.hpp loaded into all workers");
   }
-  log(`  ${headerPaths.length} headers loaded`);
+
+  // Fetch all test .cpp files in parallel
+  const testUrls = testPaths.map(p => `${RAW_BASE}/${p}`);
+  testContents = await fetchAllPooled(testUrls);
+  log(`  ${testPaths.length} test files fetched`);
 } catch (err) {
-  log(`Error loading headers: ${err.message}`);
+  log(`Error fetching test files: ${err.message}`);
   throw err;
 }
 
-setProgress(55);
+setProgress(60);
 
-// ── Phase 4: Load test files ───────────────────────────────────────
-log(`Loading ${testPaths.length} test files...`);
-
-try {
-  // Also fetch test_helpers.hpp
-  const allTestFetchPaths = helpersPath ? [helpersPath, ...testPaths] : testPaths;
-  const testUrls = allTestFetchPaths.map(p => `${RAW_BASE}/${p}`);
-  const testContents = await fetchAllWithPool(testUrls);
-
-  for (let i = 0; i < allTestFetchPaths.length; i++) {
-    // testPaths[i] is like "tests/constexpr/basic/test_parse_int.cpp"
-    // Mount at /tests/constexpr/basic/test_parse_int.cpp
-    const vpath = "/" + allTestFetchPaths[i];
-    ensureDir(mod.FS, vpath.substring(0, vpath.lastIndexOf("/")));
-    mod.FS.writeFile(vpath, testContents[i]);
-  }
-  log(`  ${allTestFetchPaths.length} test files loaded`);
-} catch (err) {
-  log(`Error loading test files: ${err.message}`);
-  throw err;
-}
-
-setProgress(75);
-
-// ── Phase 5: Run tests ─────────────────────────────────────────────
-log("Running tests...\n");
+// ── Phase 5: Build UI & run tests in parallel ──────────────────────
+log(`Running tests across ${engine.workerCount} workers...\n`);
 summaryEl.style.display = "flex";
 
-// Sort tests by category
-testPaths.sort();
-
-// Group by category
+// Build test list grouped by category
 const categories = {};
-for (const tp of testPaths) {
-  // tp = "tests/constexpr/basic/test_parse_int.cpp"
+const testList = [];
+
+for (let i = 0; i < testPaths.length; i++) {
+  const tp = testPaths[i];
   const parts = tp.split("/");
-  // parts = ["tests", "constexpr", "basic", "test_parse_int.cpp"]
   const category = parts.length > 3 ? parts[2] : "(root)";
   const filename = parts[parts.length - 1];
   const name = filename.replace(/\.cpp$/, "").replace(/^test_/, "");
+  const id = `${category}--${name}`;
+  const rel = tp.replace("tests/constexpr/", "");
+
   if (!categories[category]) categories[category] = [];
-  categories[category].push({ path: tp, name, category });
+  categories[category].push({ name, id });
+  testList.push({ path: tp, name, category, id, rel, contentIdx: i });
 }
 
 // Build UI skeleton
-const testElements = {};
 for (const [cat, tests] of Object.entries(categories)) {
   const header = document.createElement("div");
   header.className = "category-header";
@@ -358,92 +316,70 @@ for (const [cat, tests] of Object.entries(categories)) {
   for (const t of tests) {
     const row = document.createElement("div");
     row.className = "test-row";
-    row.innerHTML = `<span class="test-name">${t.name}</span><span class="test-badge" id="badge-${t.name}">...</span>`;
+    row.innerHTML = `<span class="test-name">${t.name}</span><span class="test-badge" id="badge-${t.id}">...</span>`;
     resultsEl.appendChild(row);
 
     const diag = document.createElement("div");
     diag.className = "test-diag";
-    diag.id = `diag-${t.name}`;
+    diag.id = `diag-${t.id}`;
     resultsEl.appendChild(diag);
-
-    testElements[t.name] = { row, badge: null, diag };
   }
 }
 
-// Run each test
-let pass = 0, fail = 0, skip = 0, total = testPaths.length;
+// Counters
+let pass = 0, fail = 0, skip = 0, completed = 0;
+const total = testList.length;
 totalEl.textContent = total;
 
-let stdoutBuf = "";
-// Capture stdout for diagnostics
-mod.print = (s) => { stdoutBuf += s + "\n"; };
+// Fire all tests — the engine's worker pool handles scheduling
+const promises = testList.map(({ path: tp, id, rel, contentIdx }) => {
+  const badge = document.getElementById(`badge-${id}`);
+  const diagEl = document.getElementById(`diag-${id}`);
 
-for (let i = 0; i < testPaths.length; i++) {
-  const tp = testPaths[i];
-  const parts = tp.split("/");
-  const category = parts.length > 3 ? parts[2] : "(root)";
-  const filename = parts[parts.length - 1];
-  const name = filename.replace(/\.cpp$/, "").replace(/^test_/, "");
-  const rel = tp.replace("tests/constexpr/", "");
-
-  const badge = document.getElementById(`badge-${name}`);
-  const diagEl = document.getElementById(`diag-${name}`);
-
-  // Check skip
+  // Skip C++26 tests
   if (SKIP_PATTERNS.some(pat => rel.includes(pat))) {
     badge.textContent = "SKIP";
     badge.className = "test-badge skip";
     skip++;
+    completed++;
     skipEl.textContent = skip;
-    continue;
+    return Promise.resolve();
   }
 
   badge.textContent = "...";
   badge.className = "test-badge running";
 
-  // Small yield to let the browser render
-  await new Promise(r => setTimeout(r, 0));
+  return engine.compile({
+    code: testContents[contentIdx],
+    path: "/" + tp,
+    mode: "check-only",
+    std: "c++23",
+    includeDirs: ["/tests/constexpr"],
+  }).then(result => {
+    completed++;
 
-  stdoutBuf = "";
-  const vpath = "/" + tp;
-  const rc = mod.callMain([
-    "--check-only",
-    "--std=c++23",
-    "--include-dir=/tests/constexpr",
-    `--path=${vpath}`,
-  ]);
+    if (result.ok) {
+      badge.textContent = "PASS";
+      badge.className = "test-badge pass";
+      pass++;
+    } else {
+      badge.textContent = "FAIL";
+      badge.className = "test-badge fail";
+      fail++;
 
-  if (rc === 0) {
-    badge.textContent = "PASS";
-    badge.className = "test-badge pass";
-    pass++;
-  } else {
-    badge.textContent = "FAIL";
-    badge.className = "test-badge fail";
-    fail++;
-
-    // Parse diagnostics
-    let diagText = "";
-    try {
-      const json = JSON.parse(stdoutBuf.trim());
-      diagText = json.diagnostics || json.error || "Unknown error";
-    } catch {
-      diagText = stdoutBuf || "No output";
+      const diagText = result.diagnostics || result.error || "Unknown error";
+      diagEl.textContent = diagText;
+      badge.addEventListener("click", () => diagEl.classList.toggle("open"));
     }
-    diagEl.textContent = diagText;
 
-    // Click to toggle diagnostics
-    badge.addEventListener("click", () => {
-      diagEl.classList.toggle("open");
-    });
-  }
+    passEl.textContent = pass;
+    failEl.textContent = fail;
+    skipEl.textContent = skip;
+    setProgress(60 + (40 * completed / total));
+  });
+});
 
-  passEl.textContent = pass;
-  failEl.textContent = fail;
-  skipEl.textContent = skip;
-
-  setProgress(75 + (25 * (i + 1) / testPaths.length));
-}
+await Promise.all(promises);
 
 // Final status
 setProgress(100);
