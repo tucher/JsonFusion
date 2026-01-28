@@ -83,7 +83,7 @@ struct Point { int x; int y; };
 constexpr bool test() {
     std::string json;
     JsonFusion::Serialize(
-        std::vector<Point>{{1, 2}, {3, 4}}, json);
+        std::vector<Point>{ {1, 2}, {3, 4} }, json);
     return json == R"([{"x":1,"y":2},{"x":3,"y":4}])";
 }
 
