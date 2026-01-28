@@ -26,3 +26,5 @@ graph_info.json
 cmake-build-*
 CMakeFiles/
 CMakeCache.txt
+test_rapidyaml
+rapidyaml.hpp

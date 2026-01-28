@@ -42,7 +42,7 @@ Exhaustive, lookup-oriented documentation for every public API surface in JsonFu
 |------|---------|
 | [Transformers Reference](../TRANSFORMERS.md) | `Transformed<>`, `ArrayReduceField`, `MapReduceField`, `VariantOneOf<>` — building blocks and composition |
 | [WireSink](wiresink.md) | `WireSink<>` — raw fragment capture, format-specific behavior, round-trip semantics |
-| [JSON Schema Generation](../JSON_SCHEMA.md) | `json_schema.hpp` — generation API, supported validators, recursive type handling |
+| [JSON Schema Generation](schema-generator.md) | `json_schema.hpp` — generation API, supported validators, recursive type handling |
 | [Size Estimation](size-estimation.md) | `EstimateMaxSerializedSize<T>()` — algorithm, supported types, FixedMap integration |
 
 ## Configuration
