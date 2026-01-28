@@ -1,4 +1,5 @@
 # JsonFusion
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue?logo=github&logoColor=white&link=https://tucher.github.io/JsonFusion/)](https://tucher.github.io/JsonFusion/)
 [![Constexpr Tests](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/constexpr_tests.yml)
 [![Embedded code size benchmarks](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_benchmarks.yml/badge.svg)](https://github.com/tucher/JsonFusion/actions/workflows/embedded_code_size_benchmarks.yml)
 
