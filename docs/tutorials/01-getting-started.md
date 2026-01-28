@@ -1,7 +1,24 @@
 # Getting Started
 
 This tutorial takes you from zero to a working JSON parse in a few steps.
-Every code block below is interactive — click **Compile** to compile it right in your browser. Because JsonFusion is `constexpr`, you can use `static_assert` for tests instead of `assert`: testing/playing without running any binaries. If the assertion fails, you'll see a compilation error. 
+Every code block below is interactive — click **Compile** to compile it right in your browser. Because JsonFusion is `constexpr`, you can use `static_assert` for tests instead of `assert`: testing/playing without running any binaries. If the assertion fails, you'll see a compilation error.
+
+## Setup
+
+JsonFusion is header-only. Clone the repository and point your compiler to the `include/` directory:
+
+```bash
+git clone https://github.com/tucher/JsonFusion.git
+cd JsonFusion
+```
+
+Save any example below as `example.cpp`, then compile and run:
+
+```bash
+g++ -std=c++23 -I include example.cpp -o example && ./example
+```
+
+**Requirements:** GCC 14+ or Clang 20+ with C++23 support.
 
 ## Your First Parse
 
@@ -15,21 +32,22 @@ struct Config {
     std::string host;
 };
 
-constexpr auto data = R"({"port": 8080, "host": "localhost"})";
-
-static_assert([]() constexpr {
+constexpr bool test() {
     Config conf;
-    return 
-        !!JsonFusion::Parse(conf, data) 
-        && conf.port == 8080 
-        && conf.host == "localhost";
-}());
+    if(!JsonFusion::Parse(conf, R"({"port": 8080, "host": "localhost"})")) {
+        return false;
+    }
+    return conf.port == 8080 && conf.host == "localhost";
+}
 
+static_assert(test());
+
+int main() { return test() ? 0: 1; }
 ```
 
 The `Parse(object, data)` function returns a bool-convertible result. 
 
-> Try changing `8080` to another value and recompile! This will fail:
+> Try changing `8080` to another value in the assertion and recompile — the `static_assert` will catch the mismatch:
 
 ```cpp live check-only
 #include <JsonFusion/parser.hpp>
@@ -39,16 +57,17 @@ struct Config {
     std::string host;
 };
 
-constexpr auto data = R"({"port": 8081, "host": "localhost"})";
-
-constexpr auto res = []() constexpr {
+constexpr bool test() {
     Config conf;
-    return std::make_pair(!!JsonFusion::Parse(conf, data), conf);
-}();
+    if(!JsonFusion::Parse(conf, R"({"port": 8081, "host": "localhost"})")) {
+        return false;
+    }
+    return conf.port == 8080; // mismatch — will fail!
+}
 
-static_assert(res.first);
-static_assert(res.second.port==8080);
+static_assert(test());
 
+int main() { return test() ? 0: 1; }
 ```
 
 ## Serialization
@@ -61,14 +80,16 @@ Converting back to JSON is just as simple:
 
 struct Point { int x; int y; };
 
-static_assert([]() constexpr {
-    std::string res;
+constexpr bool test() {
+    std::string json;
     JsonFusion::Serialize(
-        std::vector<Point> {
-            {1, 2}, {3, 4}
-        }, res);
-    return res == R"([{"x":1,"y":2},{"x":3,"y":4}])";
-}());
+        std::vector<Point>{{1, 2}, {3, 4}}, json);
+    return json == R"([{"x":1,"y":2},{"x":3,"y":4}])";
+}
+
+static_assert(test());
+
+int main() { return test() ? 0: 1; }
 ```
 
 ## Nested Structures
@@ -76,6 +97,7 @@ static_assert([]() constexpr {
 Structs can contain other structs. JsonFusion handles nesting automatically:
 
 ```cpp live check-only
+#include <JsonFusion/parser.hpp>
 
 struct Address {
     std::string street;
@@ -88,23 +110,23 @@ struct Person {
     Address address;
 };
 
+constexpr bool test() {
+    Person p;
+    JsonFusion::Parse(p, R"({
+        "name": "Alice",
+        "age": 30,
+        "address": {"street": "123 Main St", "city": "Springfield"}
+    })");
+    return p.name == "Alice"
+        && p.age == 30
+        && p.address.city == "Springfield";
+}
+
+static_assert(test());
+
+int main() { return test() ? 0: 1; }
 ```
 
-## Validation with static_assert
-
-Because parsing is `constexpr`, you can validate your JSON schemas at compile time.
-If the assertion fails, you'll see a compilation error — not a runtime crash:
-
-```cpp live check-only
-
-struct Config {
-    int port;
-    std::string host;
-};
-
-```
-
-> Try changing the assertion to `cfg.port > 9000` — what happens?
 
 ## What's Next
 

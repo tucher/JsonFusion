@@ -45,12 +45,18 @@ directly in the browser — powered by Clang compiled to WebAssembly.
 ```cpp live check-only
 #include <JsonFusion/parser.hpp>
 
-static_assert([]() constexpr {
+constexpr bool test() {
     struct Point { int x{}; int y{}; };
     Point conf;
     JsonFusion::Parse(conf, R"({"x":10,"y":20})");
     return conf.x == 10 && conf.y == 20;
-}());
+}
+
+// Compile-time execution and assertion. 
+static_assert(test()); 
+// "Compiles means works"
+
+int main() { return test() ? 0: 1; }
 ```
 
 ## More
