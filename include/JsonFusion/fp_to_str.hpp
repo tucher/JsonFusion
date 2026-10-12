@@ -5,6 +5,7 @@
 #endif
 
 #if JSONFUSION_FP_BACKEND == 0
+#include <array>
 #include <cstdint>
 #include <limits>
 #endif
@@ -52,21 +53,27 @@ constexpr inline bool parse_decimal_number(const char* buf, DecimalNumber& out) 
 
     bool in_fraction = false;
 
+    // Leading zeros carry no precision; fractional ones only shift the scale.
+    while (*p == '0') {
+        any_digit = true;
+        ++p;
+    }
+    if (*p == '.' && any_digit) {
+        in_fraction = true;
+        ++p;
+        while (*p == '0') {
+            if (exp10 > kMinExp10) {
+                --exp10;
+            }
+            ++p;
+        }
+    }
+
     while (true) {
         char c = *p;
         if (c >= '0' && c <= '9') {
             any_digit = true;
             unsigned digit = static_cast<unsigned>(c - '0');
-
-            // Skip the integer '0' in "0.xxx" so that fractional digits
-            // become the first significant digits.
-            if (!in_fraction && sig_digits == 0 && digit == 0) {
-                char next = *(p + 1);
-                if (next == '.') {
-                    ++p;
-                    continue; // don't touch mantissa/exp10
-                }
-            }
 
             if (sig_digits < max_sig_digits) {
                 mantissa = mantissa * 10u + digit;
@@ -195,6 +202,27 @@ constexpr double scale_by_power_of_10(double value, int32_t exp10) noexcept {
     return result;
 }
 
+// Largest e with 10^e exact in double: 5^e must fit the significand.
+constexpr int32_t kMaxExactPow10 = [] {
+    int32_t e = 0;
+    uint64_t pow5 = 1;
+    while (pow5 * 5 < (uint64_t(1) << std::numeric_limits<double>::digits)) {
+        pow5 *= 5;
+        ++e;
+    }
+    return e;
+}();
+constexpr uint64_t kMaxExactMantissa = uint64_t(1) << std::numeric_limits<double>::digits;
+constexpr auto kExactPow10 = [] {
+    std::array<double, kMaxExactPow10 + 1> table{};
+    double pow10 = 1.0;
+    for (double & entry : table) {
+        entry = pow10;
+        pow10 *= 10.0;
+    }
+    return table;
+}();
+
 }
 
 constexpr inline bool parse_number_to_double(const char * buf, double& out) {
@@ -210,7 +238,14 @@ constexpr inline bool parse_number_to_double(const char * buf, double& out) {
     }
 
     double v = static_cast<double>(dec.mantissa);
-    v = detail::scale_by_power_of_10(v, dec.exp10);
+    if (dec.mantissa <= detail::kMaxExactMantissa
+        && dec.exp10 >= -detail::kMaxExactPow10 && dec.exp10 <= detail::kMaxExactPow10) {
+        // Exact operands, one IEEE operation: correctly rounded.
+        v = dec.exp10 < 0 ? v / detail::kExactPow10[static_cast<std::size_t>(-dec.exp10)]
+                          : v * detail::kExactPow10[static_cast<std::size_t>(dec.exp10)];
+    } else {
+        v = detail::scale_by_power_of_10(v, dec.exp10);
+    }
 
     if (dec.negative) {
         v = -v;

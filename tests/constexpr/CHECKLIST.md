@@ -118,8 +118,9 @@ The in-house floating-point parser is constexpr-compatible. Do not use `JSONFUSI
 - [x] test_limits_many_fields.cpp - Many fields (50 fields, 30 mixed, nested, array fields)
 - [x] test_limits_many_map_keys.cpp - Many map keys (30 allowed, 20 required, 30 forbidden, combined, binary search threshold)
 
-## fp/ (5 files) ✅ COMPLETE
+## fp/ (6 files) ✅ COMPLETE
 - [x] test_fp_boundary_values.cpp - Powers of 2, powers of 10, scientific notation
+- [x] test_fp_correct_rounding.cpp - Short decimals parse correctly rounded, leading zeros, zero shapes
 - [x] test_fp_difficult_cases.cpp - David Gay suite samples, rounding boundaries
 - [x] test_fp_subnormals.cpp - Subnormal numbers, gradual underflow
 - [x] test_fp_exponent_extremes.cpp - DBL_MAX/DBL_MIN edge cases

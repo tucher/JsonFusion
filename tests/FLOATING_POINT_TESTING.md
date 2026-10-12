@@ -33,7 +33,7 @@
 
 ## ✅ Constexpr Testing Completed
 
-**Status:** **123 constexpr tests** implemented in `tests/constexpr/fp/`
+**Status:** **155 constexpr tests** implemented in `tests/constexpr/fp/`
 
 ### **Completed Tests:**
 1. ✅ `test_fp_boundary_values.cpp` (28 tests) - Powers of 2/10, scientific notation, decimals
@@ -41,6 +41,7 @@
 3. ✅ `test_fp_subnormals.cpp` (14 tests) - Subnormal numbers, DBL_MIN transitions, underflow
 4. ✅ `test_fp_exponent_extremes.cpp` (18 tests) - DBL_MAX/DBL_MIN edges, extreme exponents
 5. ✅ `test_fp_serialization_roundtrip.cpp` (44 tests) - Serialization roundtrip, format verification
+6. ✅ `test_fp_correct_rounding.cpp` (32 tests) - Short decimals parse correctly rounded, exact power-of-ten range edges, leading zeros, zero shapes
 
 **Coverage:**
 - ✅ Powers of 2 boundaries (Section 2.1) - **Parsing + Serialization**

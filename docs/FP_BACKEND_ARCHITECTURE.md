@@ -27,7 +27,8 @@ namespace JsonFusion::fp_to_str_detail {
 - Fully `constexpr`
 - Zero dependencies (no libc, no external libs)
 - ~16KB on ARM Cortex-M7 (includes full parser)
-- ≤ 1 ULP accuracy
+- Correctly rounded parsing when the significant digits fit in 2^53 and the decimal exponent is within ±22 (typical hand-written values such as `0.3` or `123.456`); outside that range, e.g. 17-digit round-trip output, a few ULP off
+- Correct rounding assumes IEEE double arithmetic without extended-precision evaluation (`FLT_EVAL_METHOD == 0`) and without `-ffast-math`
 - 2-5x slower than fast_float on FP-heavy workloads
 - Competitive on mixed JSON (Twitter, Canada benchmarks)
 
@@ -76,7 +77,7 @@ namespace JsonFusion::fp_to_str_detail {
 |---------|-----------|-----------|-----------|
 | Constexpr | ✅ | ❌ | Implementation-dependent |
 | Dependencies | Zero | fast_float + simdjson | Implementation-dependent |
-| Accuracy | ≤ 1 ULP | Best-in-class | Implementation-dependent |
+| Accuracy | Correctly rounded for typical values, a few ULP for long mantissas | Best-in-class | Implementation-dependent |
 | Performance | 2-5x slower FP | Maximum FP | Implementation-dependent |
 | Use Case | Default | Academic/testing | Fixed-point/decimal |
 
